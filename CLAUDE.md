@@ -42,6 +42,13 @@ src/
     ingestion/                # Bulk import + batch proposal creation
     definition/               # Model/field/relation/binding/governance CRUD
 public/index.html             # Single-page admin UI (sidebar nav, hash router)
+                              #   Content: entity list by model, detail with status actions
+                              #   Proposals: pending review + history
+                              #   Datasets: manage bindings, snapshots, publish
+                              #   Model Designer: model/field CRUD + governance policy
+                              #   New Record: dynamic form from model schema → proposal
+                              #   Publish Console: one-page publish workflow testing
+                              #   API Playground: interactive endpoint explorer
 scripts/
   seed.ts                     # Sample data
   migrate-entity-types.ts     # One-time entity.type → modelDefinitionId migration
@@ -66,7 +73,15 @@ Both exist. `type` is a denormalized string (always = `modelDefinition.key`). `m
 `generateSnapshot()` checks for `DatasetModelBinding` records first. If found, queries by `modelDefinitionId`. If not, falls back to the legacy `entityTypes` JSON array.
 
 ### Proposal Auto-Approval
-When `GovernancePolicy.approvalMode = "auto"` exists for a model, `createProposal()` automatically calls `approveProposal()` after validation passes.
+When `GovernancePolicy.approvalMode = "auto"` exists for a model, `createProposal()` automatically calls `approveProposal()` after validation passes. This applies to all proposal types (create, update, delete) — the model is resolved from `proposedChange.data.type` or from the entity's `modelDefinitionId` via `entityId`.
+
+### Entity Status Lifecycle
+Approved create proposals default to `active` status. Status changes (activate/archive) are done via proposals — the frontend creates a proposal and the backend auto-approves if the governance policy allows. No direct status writes.
+
+### Governance Policy
+Set per model via UI (Model Designer > model detail > Governance Policy) or API. Controls:
+- `approvalMode`: `manual` (default) requires human review, `auto` auto-approves if validation passes
+- `publishMode`: `manual` (default) or `auto`
 
 ## API Endpoints
 
@@ -97,6 +112,24 @@ When `GovernancePolicy.approvalMode = "auto"` exists for a model, `createProposa
 ### Ingestion
 - `POST /api/v1/ingestion/import` — bulk import (trusted sources)
 - `POST /api/v1/ingestion/proposal-set` — batch proposal creation
+
+## Frontend Pages (hash routes)
+
+| Route | Page |
+|-------|------|
+| `#content` | All records |
+| `#content/{modelKey}` | Records filtered by model |
+| `#content/{modelKey}/{id}` | Entity detail + status actions |
+| `#new-record/{modelKey}` | Dynamic form → create proposal |
+| `#proposals` | Pending + history |
+| `#proposals/{id}` | Review + approve/reject |
+| `#datasets` | Dataset list + create |
+| `#datasets/{id}` | Bindings + snapshots + publish |
+| `#publications` | Publication history |
+| `#publish-console` | One-page publish workflow testing |
+| `#models` | Model Designer list + create |
+| `#models/{id}` | Fields, relations, governance policy |
+| `#api-playground` | Interactive API endpoint explorer |
 
 ## Ports
 
