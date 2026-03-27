@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as publicationService from "./publication.service.js";
+import { publishSchema, rollbackSchema } from "../../shared/validation.js";
 
 export const publicationRouter = Router();
 
@@ -16,10 +17,9 @@ publicationRouter.get("/", async (_req, res, next) => {
 // POST /api/v1/publications/publish
 publicationRouter.post("/publish", async (req, res, next) => {
   try {
-    const { datasetSnapshotId } = req.body;
-    if (!datasetSnapshotId)
-      return res.status(400).json({ error: "datasetSnapshotId is required" });
-    const result = await publicationService.publishSnapshot(datasetSnapshotId);
+    const { datasetSnapshotId } = publishSchema.parse(req.body);
+    const result =
+      await publicationService.publishSnapshot(datasetSnapshotId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -29,11 +29,7 @@ publicationRouter.post("/publish", async (req, res, next) => {
 // POST /api/v1/publications/rollback
 publicationRouter.post("/rollback", async (req, res, next) => {
   try {
-    const { datasetDefinitionId } = req.body;
-    if (!datasetDefinitionId)
-      return res
-        .status(400)
-        .json({ error: "datasetDefinitionId is required" });
+    const { datasetDefinitionId } = rollbackSchema.parse(req.body);
     const result = await publicationService.rollback(datasetDefinitionId);
     res.json(result);
   } catch (err) {

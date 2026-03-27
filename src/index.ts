@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { ZodError } from "zod";
 import prisma from "./db/client.js";
 import { entityRouter } from "./modules/entity/entity.router.js";
 import { proposalRouter } from "./modules/proposal/proposal.router.js";
@@ -35,8 +36,36 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
+    // Zod validation errors → 400
+    if (err instanceof ZodError) {
+      res.status(400).json({
+        error: "Validation error",
+        details: err.errors.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })),
+      });
+      return;
+    }
+
+    // Business logic errors (from service layer) → 400
+    const businessErrors = [
+      "not found",
+      "not pending",
+      "required for",
+      "must be in",
+      "Unknown action",
+      "No active release",
+      "No previous snapshot",
+    ];
+    if (businessErrors.some((msg) => err.message.includes(msg))) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    // Unexpected errors → 500
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Internal server error" });
   },
 );
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as entityService from "./entity.service.js";
+import { uuidParamSchema } from "../../shared/validation.js";
 
 export const entityRouter = Router();
 
@@ -19,7 +20,8 @@ entityRouter.get("/", async (req, res, next) => {
 // GET /api/v1/entities/:id
 entityRouter.get("/:id", async (req, res, next) => {
   try {
-    const entity = await entityService.getEntity(req.params.id);
+    const { id } = uuidParamSchema.parse(req.params);
+    const entity = await entityService.getEntity(id);
     if (!entity) return res.status(404).json({ error: "Entity not found" });
     res.json(entity);
   } catch (err) {

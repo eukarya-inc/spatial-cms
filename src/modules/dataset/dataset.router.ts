@@ -1,5 +1,9 @@
 import { Router } from "express";
 import * as datasetService from "./dataset.service.js";
+import {
+  createDatasetDefinitionSchema,
+  uuidParamSchema,
+} from "../../shared/validation.js";
 
 export const datasetRouter = Router();
 
@@ -16,7 +20,8 @@ datasetRouter.get("/", async (_req, res, next) => {
 // GET /api/v1/datasets/:id
 datasetRouter.get("/:id", async (req, res, next) => {
   try {
-    const dataset = await datasetService.getDatasetDefinition(req.params.id);
+    const { id } = uuidParamSchema.parse(req.params);
+    const dataset = await datasetService.getDatasetDefinition(id);
     if (!dataset)
       return res.status(404).json({ error: "Dataset definition not found" });
     res.json(dataset);
@@ -28,7 +33,8 @@ datasetRouter.get("/:id", async (req, res, next) => {
 // POST /api/v1/datasets
 datasetRouter.post("/", async (req, res, next) => {
   try {
-    const dataset = await datasetService.createDatasetDefinition(req.body);
+    const data = createDatasetDefinitionSchema.parse(req.body);
+    const dataset = await datasetService.createDatasetDefinition(data);
     res.status(201).json(dataset);
   } catch (err) {
     next(err);
@@ -38,7 +44,8 @@ datasetRouter.post("/", async (req, res, next) => {
 // POST /api/v1/datasets/:id/snapshot
 datasetRouter.post("/:id/snapshot", async (req, res, next) => {
   try {
-    const snapshot = await datasetService.generateSnapshot(req.params.id);
+    const { id } = uuidParamSchema.parse(req.params);
+    const snapshot = await datasetService.generateSnapshot(id);
     res.status(201).json(snapshot);
   } catch (err) {
     next(err);
