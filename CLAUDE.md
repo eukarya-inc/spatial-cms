@@ -115,21 +115,26 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 
 ## Frontend Pages (hash routes)
 
-| Route | Page |
-|-------|------|
-| `#content` | All records |
-| `#content/{modelKey}` | Records filtered by model |
-| `#content/{modelKey}/{id}` | Entity detail + status actions |
-| `#new-record/{modelKey}` | Dynamic form → create proposal |
-| `#proposals` | Pending + history |
-| `#proposals/{id}` | Review + approve/reject |
-| `#datasets` | Dataset list + create |
-| `#datasets/{id}` | Bindings + snapshots + publish |
-| `#publications` | Publication history |
-| `#publish-console` | One-page publish workflow testing |
-| `#models` | Model Designer list + create |
-| `#models/{id}` | Fields, relations, governance policy |
-| `#api-playground` | Interactive API endpoint explorer |
+Organized by product workflow: **Define → Manage → Publish**
+
+| Route | Section | Page |
+|-------|---------|------|
+| `#define/models` | Define | Model Designer list + create |
+| `#define/models/{id}` | Define | Fields, relations, governance policy |
+| `#define/governance` | Define | Governance policy overview for all models |
+| `#manage/records` | Manage | All records |
+| `#manage/records/{modelKey}` | Manage | Records filtered by model |
+| `#manage/records/{modelKey}/{id}` | Manage | Entity detail + status actions |
+| `#manage/new/{modelKey}` | Manage | Dynamic form → create proposal |
+| `#manage/review` | Manage | Review queue (pending + history) |
+| `#manage/review/{id}` | Manage | Proposal detail + approve/reject |
+| `#publish/datasets` | Publish | Dataset list + create |
+| `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish |
+| `#publish/history` | Publish | Publication history |
+| `#dev/api` | Developer | Interactive API endpoint explorer |
+| `#dev/console` | Developer | One-page publish workflow testing |
+
+Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `#api-playground`, `#publish-console`) auto-redirect to new paths.
 
 ## Ports
 
