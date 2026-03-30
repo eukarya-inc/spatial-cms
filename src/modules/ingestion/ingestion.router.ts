@@ -23,11 +23,28 @@ const importSchema = z.object({
       z.object({
         type: z.string().min(1),
         properties: z.record(z.unknown()),
-        geometry: geoJsonSchema.optional(),
+        geometry: geoJsonSchema.nullish(),
       }),
     )
     .min(1),
   source: z.enum(["human", "machine", "import_"]).optional(),
+  options: z
+    .object({
+      skipInvalid: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+const validateSchema = z.object({
+  modelKey: z.string().min(1),
+  entities: z
+    .array(
+      z.object({
+        properties: z.record(z.unknown()),
+        geometry: geoJsonSchema.nullish(),
+      }),
+    )
+    .min(1),
 });
 
 const proposalSetSchema = z.object({
@@ -40,7 +57,7 @@ const proposalSetSchema = z.object({
           data: z.object({
             type: z.string().min(1).optional(),
             properties: z.record(z.unknown()).optional(),
-            geometry: geoJsonSchema.optional(),
+            geometry: geoJsonSchema.nullish(),
             status: z.enum(["draft", "active", "archived"]).optional(),
           }),
         }),
@@ -50,6 +67,20 @@ const proposalSetSchema = z.object({
   source: z.enum(["human", "machine", "import_"]).optional(),
 });
 
+// POST /api/v1/ingestion/validate
+ingestionRouter.post("/validate", async (req, res, next) => {
+  try {
+    const data = validateSchema.parse(req.body);
+    const result = await ingestionService.validateBulk(
+      data.modelKey,
+      data.entities,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/v1/ingestion/import
 ingestionRouter.post("/import", async (req, res, next) => {
   try {
@@ -57,6 +88,7 @@ ingestionRouter.post("/import", async (req, res, next) => {
     const result = await ingestionService.bulkImport(
       data.entities,
       data.source,
+      data.options,
     );
     res.status(201).json(result);
   } catch (err) {

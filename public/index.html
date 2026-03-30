@@ -1318,33 +1318,28 @@ async function viewIngestionDocs(main) {
     </div>
 
     <div class="card">
-      <h3>Quick Test</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Import sample data directly into the system.</p>
-      <div class="form-group">
-        <label>Target Model</label>
-        <select id="ing-model">
-          ${models.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Import Data (JSON array of entities)</label>
-        <textarea id="ing-data" rows="8" style="font-family:monospace;font-size:13px">[
-  { "name": "Sample Entity 1" },
-  { "name": "Sample Entity 2" }
-]</textarea>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">Each object becomes the <code>properties</code> field. The model type is set automatically.</div>
-      </div>
+      <h3>Test Data Generator</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Generate random test data for any model, optionally with errors to test validation.</p>
       <div class="form-row">
-        <div class="form-group">
-          <label>Mode</label>
-          <select id="ing-mode">
-            <option value="import">Direct Import (trusted, immediate)</option>
-            <option value="proposal">Proposal Batch (requires review)</option>
-          </select>
-        </div>
+        <div class="form-group"><label>Model</label><select id="ing-model">${models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('')}</select></div>
+        <div class="form-group"><label>Count</label><select id="ing-count"><option value="10">10</option><option value="50">50</option><option value="100" selected>100</option><option value="500">500</option><option value="1000">1000</option></select></div>
+        <div class="form-group"><label>Error Rate</label><select id="ing-errors"><option value="0">0% (all valid)</option><option value="5">5%</option><option value="10" selected>10%</option><option value="20">20%</option></select></div>
+        <div class="form-group" style="flex:0;display:flex;align-items:end"><button class="btn btn-outline" id="ing-generate">Generate</button></div>
       </div>
-      <button class="btn btn-primary" id="ing-run">Run Import</button>
-      <div id="ing-result" style="margin-top:12px"></div>
+      <div class="form-group">
+        <label>Data Preview <span id="ing-data-count" style="color:var(--muted)"></span></label>
+        <textarea id="ing-data" rows="10" style="font-family:monospace;font-size:12px" placeholder="Click Generate or paste your own JSON array..."></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Validate & Import</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-outline" id="ing-validate">Step 1: Validate</button>
+        <button class="btn btn-primary" id="ing-import" disabled>Step 2: Import</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-left:12px"><input type="checkbox" id="ing-skip-invalid"> Skip invalid records</label>
+      </div>
+      <div id="ing-result"></div>
     </div>
 
     <div class="card">
@@ -1356,41 +1351,145 @@ cat buildings.geojson | jq '{
     type: "building",
     properties: .properties,
     geometry: .geometry
-  }]
+  }],
+  options: { skipInvalid: true }
 }' | curl -X POST ${baseUrl}/ingestion/import \\
   -H "Content-Type: application/json" \\
   -d @-</pre>
     </div>`;
 
-  $('ing-run').onclick = async () => {
+  // ── Generate test data ──
+  $('ing-generate').onclick = async () => {
     const modelKey = $('ing-model').value;
-    const mode = $('ing-mode').value;
-    const resultEl = $('ing-result');
+    const modelId = $('ing-model').selectedOptions[0]?.dataset.id;
+    const count = parseInt($('ing-count').value);
+    const errorRate = parseInt($('ing-errors').value) / 100;
 
+    let schema;
+    try { schema = await api(`/definitions/models/${modelId}/schema`); } catch { toast('Failed to load model schema', 'error'); return; }
+
+    const items = [];
+    const names = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta','Iota','Kappa','Lambda','Mu','Nu','Xi','Omicron','Pi','Rho','Sigma','Tau','Upsilon','Phi','Chi','Psi','Omega'];
+
+    for (let i = 0; i < count; i++) {
+      const isError = Math.random() < errorRate;
+      const props = {};
+
+      for (const f of schema.fields) {
+        if (isError && f.isRequired && Math.random() < 0.5) continue; // skip required field
+        switch (f.fieldType) {
+          case 'string': props[f.key] = isError && Math.random() < 0.3 ? 12345 : `${names[Math.floor(Math.random()*names.length)]}-${i+1}`; break;
+          case 'number': props[f.key] = isError && Math.random() < 0.3 ? 'not_a_number' : Math.round(Math.random() * 1000 * 10) / 10; break;
+          case 'boolean': props[f.key] = Math.random() > 0.5; break;
+          case 'enum_': {
+            const vals = f.enumValues || [];
+            props[f.key] = isError && Math.random() < 0.3 ? 'INVALID_ENUM' : vals[Math.floor(Math.random() * vals.length)];
+            break;
+          }
+          case 'date': props[f.key] = new Date(Date.now() - Math.random() * 365 * 86400000).toISOString().split('T')[0]; break;
+          default: props[f.key] = `value_${i}`;
+        }
+      }
+
+      const entity = { properties: props };
+      // Add geometry for models that support it
+      if (schema.geometryType === 'POINT' || schema.geometryType === 'MIXED') {
+        if (!isError || Math.random() > 0.3) {
+          entity.geometry = { type: 'Point', coordinates: [135 + Math.random() * 5, 34 + Math.random() * 2] };
+        } else {
+          entity.geometry = { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] }; // wrong type
+        }
+      }
+      items.push(entity);
+    }
+
+    $('ing-data').value = JSON.stringify(items, null, 2);
+    $('ing-data-count').textContent = `(${items.length} items)`;
+    $('ing-import').disabled = true;
+    $('ing-result').innerHTML = '';
+    toast(`Generated ${count} test items (${Math.round(errorRate*100)}% error rate)`);
+  };
+
+  // ── Validate ──
+  $('ing-validate').onclick = async () => {
+    const modelKey = $('ing-model').value;
+    const resultEl = $('ing-result');
     let items;
     try { items = JSON.parse($('ing-data').value); } catch { toast('Invalid JSON', 'error'); return; }
-    if (!Array.isArray(items)) { toast('Data must be a JSON array', 'error'); return; }
+    if (!Array.isArray(items)) { toast('Must be a JSON array', 'error'); return; }
 
-    resultEl.innerHTML = '<span style="color:var(--muted)">Importing...</span>';
+    resultEl.innerHTML = '<span style="color:var(--muted)">Validating...</span>';
 
     try {
-      let result;
-      if (mode === 'import') {
-        const entities = items.map(props => ({ type: modelKey, properties: props }));
-        result = await api('/ingestion/import', { method: 'POST', body: JSON.stringify({ entities, source: 'import_' }) });
-        resultEl.innerHTML = `<div style="padding:12px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0">
-          <strong style="color:var(--success)">Imported ${result.imported} entities</strong>
-          <pre style="margin-top:8px;font-size:12px;max-height:150px;overflow:auto">${JSON.stringify(result.entities, null, 2)}</pre>
-        </div>`;
-      } else {
-        const proposals = items.map(props => ({ proposedChange: { action: 'create', data: { type: modelKey, properties: props } } }));
-        result = await api('/ingestion/proposal-set', { method: 'POST', body: JSON.stringify({ proposals, source: 'machine' }) });
-        resultEl.innerHTML = `<div style="padding:12px;background:#dbeafe;border-radius:var(--radius);border:1px solid #93c5fd">
-          <strong style="color:#1e40af">Created ${result.created} proposals (pending review)</strong>
-          <pre style="margin-top:8px;font-size:12px;max-height:150px;overflow:auto">${JSON.stringify(result.proposals.map(p => ({ id: p.id, status: p.status })), null, 2)}</pre>
-        </div>`;
-        refreshPendingCount();
-      }
+      const result = await api('/ingestion/validate', { method: 'POST', body: JSON.stringify({ modelKey, entities: items }) });
+      const hasErrors = result.invalid > 0;
+
+      resultEl.innerHTML = `
+        <div style="display:flex;gap:16px;margin-bottom:12px">
+          <div style="padding:12px 20px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--success)">${result.valid}</div>
+            <div style="font-size:12px;color:var(--muted)">Valid</div>
+          </div>
+          ${hasErrors ? `<div style="padding:12px 20px;background:#fee2e2;border-radius:var(--radius);border:1px solid #fecaca;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--danger)">${result.invalid}</div>
+            <div style="font-size:12px;color:var(--muted)">Invalid</div>
+          </div>` : ''}
+          <div style="padding:12px 20px;background:var(--bg);border-radius:var(--radius);text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--text)">${result.total}</div>
+            <div style="font-size:12px;color:var(--muted)">Total</div>
+          </div>
+        </div>
+        ${hasErrors ? `<div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+          ${result.errors.slice(0, 50).map(e => `<div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="color:var(--danger);font-weight:600">Row ${e.index}</span>
+            <span style="color:var(--muted);margin-left:8px">${e.errors.join('; ')}</span>
+          </div>`).join('')}
+          ${result.errors.length > 50 ? `<div style="padding:8px 12px;color:var(--muted);font-size:13px">... and ${result.errors.length - 50} more errors</div>` : ''}
+        </div>` : '<div style="padding:12px;color:var(--success);font-weight:500">All records are valid. Ready to import.</div>'}`;
+
+      // Enable import button
+      $('ing-import').disabled = false;
+    } catch (err) {
+      resultEl.innerHTML = `<div style="padding:12px;background:#fee2e2;border-radius:var(--radius);border:1px solid #fecaca"><strong style="color:var(--danger)">Error:</strong> ${err.message}</div>`;
+    }
+  };
+
+  // ── Import ──
+  $('ing-import').onclick = async () => {
+    const modelKey = $('ing-model').value;
+    const skipInvalid = $('ing-skip-invalid').checked;
+    const resultEl = $('ing-result');
+    let items;
+    try { items = JSON.parse($('ing-data').value); } catch { toast('Invalid JSON', 'error'); return; }
+
+    const entities = items.map(item => ({ type: modelKey, properties: item.properties, geometry: item.geometry }));
+    resultEl.innerHTML = `<span style="color:var(--muted)">Importing ${entities.length} records...</span>`;
+
+    try {
+      const t0 = Date.now();
+      const result = await api('/ingestion/import', { method: 'POST', body: JSON.stringify({ entities, source: 'import_', options: { skipInvalid } }) });
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+      resultEl.innerHTML = `
+        <div style="display:flex;gap:16px;margin-bottom:12px">
+          <div style="padding:12px 20px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--success)">${result.imported}</div>
+            <div style="font-size:12px;color:var(--muted)">Imported</div>
+          </div>
+          ${result.skipped > 0 ? `<div style="padding:12px 20px;background:#fef3c7;border-radius:var(--radius);border:1px solid #fde68a;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--warning)">${result.skipped}</div>
+            <div style="font-size:12px;color:var(--muted)">Skipped</div>
+          </div>` : ''}
+          <div style="padding:12px 20px;background:var(--bg);border-radius:var(--radius);text-align:center">
+            <div style="font-size:24px;font-weight:700;color:var(--text)">${elapsed}s</div>
+            <div style="font-size:12px;color:var(--muted)">Duration</div>
+          </div>
+        </div>
+        ${result.errors?.length ? `<div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
+          ${result.errors.slice(0, 20).map(e => `<div style="padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--danger)">Row ${e.index}:</span> ${e.errors.join('; ')}</div>`).join('')}
+        </div>` : ''}
+        <div style="font-size:13px;color:var(--muted)">Import complete. <a style="color:var(--primary);cursor:pointer" onclick="nav('manage/records')">View records</a></div>`;
+
       refreshModels();
     } catch (err) {
       resultEl.innerHTML = `<div style="padding:12px;background:#fee2e2;border-radius:var(--radius);border:1px solid #fecaca"><strong style="color:var(--danger)">Error:</strong> ${err.message}</div>`;
