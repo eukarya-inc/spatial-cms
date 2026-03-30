@@ -105,7 +105,11 @@ export async function updateEntityInternal(
   // Update entity fields (excluding geometry)
   const updateData: Record<string, unknown> = {};
   if (changes.type) updateData.type = changes.type;
-  if (changes.properties) updateData.properties = changes.properties;
+  if (changes.properties) {
+    // Merge with existing properties to preserve fields not in the update
+    const existing = await prisma.entity.findUnique({ where: { id }, select: { properties: true } });
+    updateData.properties = { ...(existing?.properties as object || {}), ...changes.properties };
+  }
   if (changes.status) updateData.status = changes.status;
 
   if (Object.keys(updateData).length > 0) {

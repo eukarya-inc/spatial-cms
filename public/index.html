@@ -589,8 +589,13 @@ async function viewEntityDetail(main, entityId) {
       const schemaKeys = new Set(schema.fields.map(f => f.key));
       const extraKeys = Object.keys(e.properties || {}).filter(k => !schemaKeys.has(k));
       if (extraKeys.length) {
-        propsEl.innerHTML += `<div style="margin-top:8px;font-size:12px;color:var(--muted)">Other properties:</div>
-          <pre style="font-size:12px">${JSON.stringify(Object.fromEntries(extraKeys.map(k => [k, e.properties[k]])), null, 2)}</pre>`;
+        propsEl.innerHTML += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--warning);font-weight:600;margin-bottom:6px">Preserved data (field removed from schema)</div>
+          ${extraKeys.map(k => `<div style="display:flex;gap:8px;padding:6px 0;font-size:13px">
+            <div style="min-width:140px;color:var(--muted)"><code>${k}</code></div>
+            <div>${JSON.stringify(e.properties[k])}</div>
+          </div>`).join('')}
+        </div>`;
       }
     } catch {
       propsEl.innerHTML = `<pre>${JSON.stringify(e.properties, null, 2)}</pre>`;
@@ -714,6 +719,12 @@ async function viewEntityDetail(main, entityId) {
         $('ef-submit').onclick = async () => {
           try {
             const properties = {};
+            // Preserve orphaned fields (from deleted field definitions)
+            const schemaKeys = new Set(schema.fields.map(f => f.key));
+            for (const [k, v] of Object.entries(e.properties || {})) {
+              if (!schemaKeys.has(k)) properties[k] = v;
+            }
+            // Collect form values
             for (const f of schema.fields) {
               const el = $(`ef-${f.key}`);
               if (!el) continue;
@@ -1647,7 +1658,7 @@ async function viewModelDetail(main, modelId) {
   // Delete field handlers
   main.querySelectorAll('[data-del-field]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Delete field "${btn.dataset.fieldLabel}"?`)) return;
+      if (!confirm(`Delete field "${btn.dataset.fieldLabel}"?\n\nExisting entity data for this field will be preserved in the database but hidden from the UI and forms.`)) return;
       try {
         await api(`/definitions/models/${modelId}/fields/${btn.dataset.delField}`, { method: 'DELETE' });
         toast('Field deleted');
