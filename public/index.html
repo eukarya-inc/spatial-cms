@@ -128,11 +128,11 @@
     .sidebar-section[data-section="define"] { color: rgba(139,92,246,0.5); }
     .sidebar-section[data-section="manage"] { color: rgba(59,130,246,0.5); }
     .sidebar-section[data-section="publish"] { color: rgba(34,197,94,0.5); }
-    .sidebar-section[data-section="developer"] { color: rgba(107,114,128,0.5); }
+    .sidebar-section[data-section="integrate"] { color: rgba(107,114,128,0.5); }
     .sidebar-item[data-section="define"].active { border-left-color: #8b5cf6; }
     .sidebar-item[data-section="manage"].active { border-left-color: #3b82f6; }
     .sidebar-item[data-section="publish"].active { border-left-color: #22c55e; }
-    .sidebar-item[data-section="developer"].active { border-left-color: #6b7280; }
+    .sidebar-item[data-section="integrate"].active { border-left-color: #6b7280; }
 
     .workflow { display: flex; align-items: center; gap: 4px; margin-left: auto; font-size: 12px; }
     .workflow-step { padding: 4px 12px; border-radius: 4px; color: var(--muted); cursor: pointer; transition: all 0.15s; }
@@ -172,9 +172,10 @@
     <div class="sidebar-item" data-section="publish" onclick="nav('publish/delivery')" data-nav="publish/delivery"><span>Delivery API</span></div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-section" data-section="developer">Developer</div>
-    <div class="sidebar-item" data-section="developer" onclick="nav('dev/api')" data-nav="dev/api"><span>API Playground</span></div>
-    <div class="sidebar-item" data-section="developer" onclick="nav('dev/console')" data-nav="dev/console"><span>Publish Console</span></div>
+    <div class="sidebar-section" data-section="integrate">Integrate</div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/ingestion')" data-nav="integrate/ingestion"><span>Ingestion API</span></div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('dev/api')" data-nav="dev/api"><span>API Explorer</span></div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('dev/console')" data-nav="dev/console"><span>Publish Console</span></div>
   </aside>
 
   <div class="topbar">
@@ -306,6 +307,7 @@ async function router() {
     else if (parts[0] === 'publish' && parts[1] === 'datasets' && parts[2]) await viewDatasetDetail(main, parts[2]);
     else if (route === 'publish/history') await viewPublications(main);
     else if (route === 'publish/delivery') await viewDeliveryDocs(main);
+    else if (route === 'integrate/ingestion') await viewIngestionDocs(main);
     else if (route === 'dev/api') await viewApiPlayground(main);
     else if (route === 'dev/console') await viewPublishConsole(main);
     else await viewContentAll(main);
@@ -1233,6 +1235,167 @@ function deliveryCopyUrl(dsId) {
   navigator.clipboard.writeText(url).then(() => toast('URL copied to clipboard')).catch(() => {
     prompt('Copy this URL:', url);
   });
+}
+
+// ─── Ingestion API Docs ────────────────────────────
+async function viewIngestionDocs(main) {
+  setBreadcrumb(['Integrate'], ['Ingestion API']);
+  setActiveNav('integrate/ingestion');
+  const models = modelCache;
+  const baseUrl = window.location.origin + '/api/v1';
+
+  main.innerHTML = `
+    <div class="page-header"><div><h2>Ingestion API</h2><div class="sub">Batch data import for pipelines, ETL scripts, and external systems</div></div></div>
+
+    <div class="card">
+      <h3>Overview</h3>
+      <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
+        The Ingestion API enables automated data pipelines to load data into Spatial CMS at scale.
+        Two modes are available depending on trust level:
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:14px">
+        <div style="padding:16px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;margin-bottom:4px">Direct Import</div>
+          <div style="color:var(--muted);font-size:13px;margin-bottom:8px">For trusted sources (migrations, authoritative datasets). Entities are created directly as <code>active</code> with an audit proposal.</div>
+          <code style="font-size:12px">POST /api/v1/ingestion/import</code>
+        </div>
+        <div style="padding:16px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;margin-bottom:4px">Proposal Batch</div>
+          <div style="color:var(--muted);font-size:13px;margin-bottom:8px">For untrusted/external sources. Creates pending proposals that require human review before data enters the system.</div>
+          <code style="font-size:12px">POST /api/v1/ingestion/proposal-set</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Endpoints</h3>
+
+      <div style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--primary);background:rgba(99,102,241,0.1);padding:2px 8px;border-radius:4px">POST</span>
+          <code style="font-size:14px">/api/v1/ingestion/import</code>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Directly creates entities + versions + audit proposals. All entities are set to <code>active</code> status.</p>
+        <pre style="font-size:12px">{
+  "entities": [
+    {
+      "type": "building",
+      "properties": { "name": "Tokyo Tower", "height": 333 },
+      "geometry": { "type": "Point", "coordinates": [139.7454, 35.6586] }
+    },
+    {
+      "type": "building",
+      "properties": { "name": "Sky Tree", "height": 634 },
+      "geometry": { "type": "Point", "coordinates": [139.8107, 35.7101] }
+    }
+  ],
+  "source": "import_"
+}</pre>
+      </div>
+
+      <div style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--primary);background:rgba(99,102,241,0.1);padding:2px 8px;border-radius:4px">POST</span>
+          <code style="font-size:14px">/api/v1/ingestion/proposal-set</code>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Creates multiple pending proposals. Each must be individually reviewed and approved via the Review Queue.</p>
+        <pre style="font-size:12px">{
+  "proposals": [
+    {
+      "proposedChange": {
+        "action": "create",
+        "data": {
+          "type": "building",
+          "properties": { "name": "New Building", "height": 100 },
+          "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+        }
+      }
+    }
+  ],
+  "source": "machine"
+}</pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Quick Test</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Import sample data directly into the system.</p>
+      <div class="form-group">
+        <label>Target Model</label>
+        <select id="ing-model">
+          ${models.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Import Data (JSON array of entities)</label>
+        <textarea id="ing-data" rows="8" style="font-family:monospace;font-size:13px">[
+  { "name": "Sample Entity 1" },
+  { "name": "Sample Entity 2" }
+]</textarea>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Each object becomes the <code>properties</code> field. The model type is set automatically.</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mode</label>
+          <select id="ing-mode">
+            <option value="import">Direct Import (trusted, immediate)</option>
+            <option value="proposal">Proposal Batch (requires review)</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="ing-run">Run Import</button>
+      <div id="ing-result" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Pipeline Example</h3>
+      <pre style="font-size:13px">#!/bin/bash
+# Import buildings from GeoJSON file
+cat buildings.geojson | jq '{
+  entities: [.features[] | {
+    type: "building",
+    properties: .properties,
+    geometry: .geometry
+  }]
+}' | curl -X POST ${baseUrl}/ingestion/import \\
+  -H "Content-Type: application/json" \\
+  -d @-</pre>
+    </div>`;
+
+  $('ing-run').onclick = async () => {
+    const modelKey = $('ing-model').value;
+    const mode = $('ing-mode').value;
+    const resultEl = $('ing-result');
+
+    let items;
+    try { items = JSON.parse($('ing-data').value); } catch { toast('Invalid JSON', 'error'); return; }
+    if (!Array.isArray(items)) { toast('Data must be a JSON array', 'error'); return; }
+
+    resultEl.innerHTML = '<span style="color:var(--muted)">Importing...</span>';
+
+    try {
+      let result;
+      if (mode === 'import') {
+        const entities = items.map(props => ({ type: modelKey, properties: props }));
+        result = await api('/ingestion/import', { method: 'POST', body: JSON.stringify({ entities, source: 'import_' }) });
+        resultEl.innerHTML = `<div style="padding:12px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0">
+          <strong style="color:var(--success)">Imported ${result.imported} entities</strong>
+          <pre style="margin-top:8px;font-size:12px;max-height:150px;overflow:auto">${JSON.stringify(result.entities, null, 2)}</pre>
+        </div>`;
+      } else {
+        const proposals = items.map(props => ({ proposedChange: { action: 'create', data: { type: modelKey, properties: props } } }));
+        result = await api('/ingestion/proposal-set', { method: 'POST', body: JSON.stringify({ proposals, source: 'machine' }) });
+        resultEl.innerHTML = `<div style="padding:12px;background:#dbeafe;border-radius:var(--radius);border:1px solid #93c5fd">
+          <strong style="color:#1e40af">Created ${result.created} proposals (pending review)</strong>
+          <pre style="margin-top:8px;font-size:12px;max-height:150px;overflow:auto">${JSON.stringify(result.proposals.map(p => ({ id: p.id, status: p.status })), null, 2)}</pre>
+        </div>`;
+        refreshPendingCount();
+      }
+      refreshModels();
+    } catch (err) {
+      resultEl.innerHTML = `<div style="padding:12px;background:#fee2e2;border-radius:var(--radius);border:1px solid #fecaca"><strong style="color:var(--danger)">Error:</strong> ${err.message}</div>`;
+    }
+  };
 }
 
 // ─── Publish Console ───────────────────────────────
