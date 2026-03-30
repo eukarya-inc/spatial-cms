@@ -1133,14 +1133,20 @@ async function viewDeliveryDocs(main) {
 
     <div class="card">
       <h3>Currently Published</h3>
-      ${datasets.length ? `<table><thead><tr><th>Dataset</th><th>Version</th><th>Entities</th><th>Published</th><th></th></tr></thead>
-        <tbody>${datasets.map(d => `<tr>
-          <td><strong>${d.name}</strong></td>
-          <td>v${d.snapshot.version}</td>
-          <td>${d.snapshot.entityCount}</td>
-          <td style="color:var(--muted)">${new Date(d.snapshot.publishedAt).toLocaleString()}</td>
-          <td><button class="btn btn-ghost btn-sm" onclick="window.open('${baseUrl}/delivery/datasets/${d.id}/entities','_blank')">View JSON</button></td>
-        </tr>`).join('')}</tbody></table>` : '<p style="color:var(--muted)">No datasets published yet. Publish a dataset snapshot first.</p>'}
+      ${datasets.length ? datasets.map(d => `
+        <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fafafa">
+            <div>
+              <strong>${d.name}</strong>
+              <span style="font-size:12px;color:var(--muted);margin-left:8px">v${d.snapshot.version} &middot; ${d.snapshot.entityCount} entities &middot; ${new Date(d.snapshot.publishedAt).toLocaleDateString()}</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-outline btn-sm" onclick="deliveryCopyUrl('${d.id}')">Copy URL</button>
+              <button class="btn btn-primary btn-sm" data-preview-ds="${d.id}">Preview</button>
+            </div>
+          </div>
+          <div id="delivery-preview-${d.id}" style="display:none;padding:16px;border-top:1px solid var(--border)"></div>
+        </div>`).join('') : '<p style="color:var(--muted)">No datasets published yet. Publish a dataset snapshot first.</p>'}
     </div>
 
     <div class="card">
@@ -1155,6 +1161,78 @@ entities.forEach(entity => {
   console.log(entity.properties.name, entity.geometry);
 });</pre>
     </div>`;
+
+  // Preview button handlers
+  main.querySelectorAll('[data-preview-ds]').forEach(btn => {
+    btn.onclick = async () => {
+      const dsId = btn.dataset.previewDs;
+      const container = $(`delivery-preview-${dsId}`);
+      const isVisible = container.style.display === 'block';
+      if (isVisible) { container.style.display = 'none'; btn.textContent = 'Preview'; return; }
+
+      container.style.display = 'block';
+      container.innerHTML = '<span style="color:var(--muted)">Loading...</span>';
+      btn.textContent = 'Hide';
+
+      try {
+        const result = await api(`/delivery/datasets/${dsId}/entities`);
+        const entities = result.entities || [];
+        container.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:13px;color:var(--muted)">
+              v${result.dataset.snapshotVersion} &middot; ${entities.length} entities &middot; Published ${new Date(result.dataset.publishedAt).toLocaleString()}
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-outline btn-sm" data-toggle-raw="${dsId}">Raw JSON</button>
+            </div>
+          </div>
+          <div id="delivery-structured-${dsId}">
+            ${entities.length ? `<table><thead><tr><th>Name</th><th>Type</th><th>Geometry</th><th>Version</th><th></th></tr></thead>
+              <tbody>${entities.map((e, i) => `<tr>
+                <td>${e.properties?.name || '<em style="color:var(--muted)">Untitled</em>'}</td>
+                <td><code style="font-size:12px">${e.type}</code></td>
+                <td>${e.geometry ? `<span class="badge badge-none">${e.geometry.type}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+                <td style="color:var(--muted)">v${e.version}</td>
+                <td><button class="btn btn-ghost btn-sm" data-expand-entity="${dsId}-${i}">Expand</button></td>
+              </tr>
+              <tr id="entity-expand-${dsId}-${i}" style="display:none"><td colspan="5"><pre style="max-height:200px;overflow:auto;margin:0;font-size:12px">${JSON.stringify(e, null, 2)}</pre></td></tr>`).join('')}
+              </tbody></table>` : '<p style="color:var(--muted)">No entities in this snapshot.</p>'}
+          </div>
+          <div id="delivery-raw-${dsId}" style="display:none">
+            <pre style="max-height:400px;overflow:auto;font-size:12px">${JSON.stringify(result, null, 2)}</pre>
+          </div>`;
+
+        // Toggle raw/structured
+        container.querySelector(`[data-toggle-raw="${dsId}"]`).onclick = () => {
+          const structured = $(`delivery-structured-${dsId}`);
+          const raw = $(`delivery-raw-${dsId}`);
+          const isRaw = raw.style.display === 'block';
+          structured.style.display = isRaw ? 'block' : 'none';
+          raw.style.display = isRaw ? 'none' : 'block';
+          container.querySelector(`[data-toggle-raw="${dsId}"]`).textContent = isRaw ? 'Raw JSON' : 'Structured';
+        };
+
+        // Expand individual entities
+        container.querySelectorAll('[data-expand-entity]').forEach(ebtn => {
+          ebtn.onclick = () => {
+            const row = $(`entity-expand-${ebtn.dataset.expandEntity}`);
+            const visible = row.style.display === 'table-row';
+            row.style.display = visible ? 'none' : 'table-row';
+            ebtn.textContent = visible ? 'Expand' : 'Collapse';
+          };
+        });
+      } catch (err) {
+        container.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`;
+      }
+    };
+  });
+}
+
+function deliveryCopyUrl(dsId) {
+  const url = `${window.location.origin}/api/v1/delivery/datasets/${dsId}/entities`;
+  navigator.clipboard.writeText(url).then(() => toast('URL copied to clipboard')).catch(() => {
+    prompt('Copy this URL:', url);
+  });
 }
 
 // ─── Publish Console ───────────────────────────────
