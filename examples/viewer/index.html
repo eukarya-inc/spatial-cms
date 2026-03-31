@@ -70,7 +70,10 @@
 
 <script>
 // ─── Config ───
-const CMS_URL = 'http://localhost:3001/api/v1';
+// Auto-detect CMS URL: same host as viewer, port 3001
+const CMS_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001/api/v1'
+  : `http://${window.location.hostname}:3001/api/v1`;
 let DATASET_ID = '';
 let allEntities = [];
 let filteredEntities = [];
