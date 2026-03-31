@@ -42,7 +42,7 @@ src/
     publication/              # Publish/rollback/hook
     ingestion/                # Bulk import + batch proposal creation + validation
     definition/               # Model/field/relation/binding/governance CRUD
-    delivery/                 # Read-only API for external data consumers
+    delivery/                 # Read-only API for external data consumers + OGC API
 public/index.html             # Single-page admin UI (sidebar nav, hash router)
                               #   Dashboard: stats, records by model, recent activity, pending review
                               #   Content: entity list by model, search/filter, detail with
@@ -139,7 +139,24 @@ Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) r
 ### Delivery (read-only, for external consumers)
 - `GET /api/v1/delivery/datasets` — list published datasets
 - `GET /api/v1/delivery/datasets/:id` — published dataset metadata
-- `GET /api/v1/delivery/datasets/:id/entities` — entities in published snapshot
+- `GET /api/v1/delivery/datasets/:id/schema` — model schemas (fields, types, constraints)
+- `GET /api/v1/delivery/datasets/:id/entities` — entities with query support:
+  - `?page=1&pageSize=100` — pagination (max 1000)
+  - `?bbox=minLon,minLat,maxLon,maxLat` — bounding box spatial query
+  - `?near=lon,lat&radius=meters` — proximity search
+  - `?filter[field]=value` or `?filter[field][$gte]=100` — property filtering
+  - `?sort=field:asc` — sorting
+  - `?format=geojson` — GeoJSON FeatureCollection output
+- `GET /api/v1/delivery/datasets/:id/entities/:entityId` — single entity
+
+### OGC API - Features (standard-compliant, for GIS tools)
+- `GET /api/v1/ogc/` — landing page
+- `GET /api/v1/ogc/conformance` — conformance declaration
+- `GET /api/v1/ogc/collections` — published datasets as OGC collections
+- `GET /api/v1/ogc/collections/:id` — collection metadata
+- `GET /api/v1/ogc/collections/:id/schema` — JSON Schema format
+- `GET /api/v1/ogc/collections/:id/items` — GeoJSON FeatureCollection (`?limit=`, `?offset=`, `?bbox=`)
+- `GET /api/v1/ogc/collections/:id/items/:featureId` — single GeoJSON Feature
 
 ## Frontend Pages (hash routes)
 
@@ -159,6 +176,7 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#publish/datasets` | Publish | Dataset list + create |
 | `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish + publication history |
 | `#publish/delivery` | Publish | Delivery API docs + inline preview |
+| `#publish/ogc` | Publish | OGC Services docs + QGIS connection guide |
 | `#integrate/ingestion` | Integrate | Import API docs + test data generator + validate/import |
 | `#dev/api` | Dev Only | Interactive API endpoint explorer |
 | `#dev/console` | Dev Only | One-page publish workflow testing |
