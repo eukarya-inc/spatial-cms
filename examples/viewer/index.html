@@ -159,10 +159,114 @@ document.getElementById('log-clear').onclick = () => { apiLogs.length = 0; rende
 
 // ─── Map ───
 const map = L.map('map').setView([35.715, 139.783], 15);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OSM',
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OSM &copy; CARTO',
   maxZoom: 19,
+  subdomains: 'abcd',
 }).addTo(map);
+
+// ─── Draw bbox search tool ───
+let drawingBox = false;
+let drawStart = null;
+let drawRect = null;
+let searchRect = null;
+
+const drawBtn = L.control({ position: 'topright' });
+drawBtn.onAdd = () => {
+  const div = L.DomUtil.create('div', '');
+  div.innerHTML = `<button id="draw-bbox-btn" style="background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:6px 10px;cursor:pointer;font-size:13px;font-weight:600;color:#3b82f6" title="Draw a rectangle to search">&#x25A1; Bbox Search</button>
+    <button id="clear-bbox-btn" style="display:none;background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:6px 10px;cursor:pointer;font-size:13px;color:#ef4444;margin-top:4px">&#x2715; Clear</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+drawBtn.addTo(map);
+
+// Near-point search control
+const nearBtn = L.control({ position: 'topright' });
+nearBtn.onAdd = () => {
+  const div = L.DomUtil.create('div', '');
+  div.innerHTML = `<button id="near-search-btn" style="background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:6px 10px;cursor:pointer;font-size:13px;font-weight:600;color:#8b5cf6" title="Click a point to search nearby">&#x25CE; Near Search</button>`;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+nearBtn.addTo(map);
+
+let nearMode = false;
+let nearCircle = null;
+let nearMarker = null;
+
+setTimeout(() => {
+  // Bbox draw handlers
+  document.getElementById('draw-bbox-btn').onclick = () => {
+    drawingBox = true;
+    nearMode = false;
+    map.getContainer().style.cursor = 'crosshair';
+    document.getElementById('draw-bbox-btn').style.background = '#dbeafe';
+  };
+  document.getElementById('clear-bbox-btn').onclick = () => {
+    if (searchRect) { map.removeLayer(searchRect); searchRect = null; }
+    if (nearCircle) { map.removeLayer(nearCircle); nearCircle = null; }
+    if (nearMarker) { map.removeLayer(nearMarker); nearMarker = null; }
+    document.getElementById('clear-bbox-btn').style.display = 'none';
+    // Force reload by temporarily clearing searchRect reference
+    const bounds = map.getBounds();
+    const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
+    loadMapDataWithBbox(bbox);
+  };
+
+  // Near-point handler
+  document.getElementById('near-search-btn').onclick = () => {
+    nearMode = true;
+    drawingBox = false;
+    map.getContainer().style.cursor = 'crosshair';
+    document.getElementById('near-search-btn').style.background = '#f3e8ff';
+  };
+}, 100);
+
+map.on('mousedown', (e) => {
+  if (drawingBox) { drawStart = e.latlng; }
+});
+map.on('mousemove', (e) => {
+  if (drawingBox && drawStart) {
+    if (drawRect) map.removeLayer(drawRect);
+    drawRect = L.rectangle([drawStart, e.latlng], { color: '#3b82f6', weight: 2, fillOpacity: 0.1, dashArray: '5,5' }).addTo(map);
+  }
+});
+map.on('mouseup', (e) => {
+  if (drawingBox && drawStart) {
+    drawingBox = false;
+    map.getContainer().style.cursor = '';
+    document.getElementById('draw-bbox-btn').style.background = '#fff';
+    if (drawRect) map.removeLayer(drawRect);
+
+    const bounds = L.latLngBounds(drawStart, e.latlng);
+    if (searchRect) map.removeLayer(searchRect);
+    searchRect = L.rectangle(bounds, { color: '#3b82f6', weight: 2, fillOpacity: 0.08 }).addTo(map);
+    document.getElementById('clear-bbox-btn').style.display = 'block';
+    drawStart = null;
+
+    // Use drawn bbox for query
+    const bbox = `${bounds.getWest().toFixed(5)},${bounds.getSouth().toFixed(5)},${bounds.getEast().toFixed(5)},${bounds.getNorth().toFixed(5)}`;
+    loadMapDataWithBbox(bbox);
+  }
+});
+map.on('click', (e) => {
+  if (nearMode) {
+    nearMode = false;
+    map.getContainer().style.cursor = '';
+    document.getElementById('near-search-btn').style.background = '#fff';
+
+    if (nearCircle) map.removeLayer(nearCircle);
+    if (nearMarker) map.removeLayer(nearMarker);
+
+    const radius = 300; // meters
+    nearMarker = L.circleMarker(e.latlng, { radius: 5, color: '#8b5cf6', fillColor: '#8b5cf6', fillOpacity: 1 }).addTo(map);
+    nearCircle = L.circle(e.latlng, { radius, color: '#8b5cf6', weight: 2, fillOpacity: 0.08, dashArray: '5,5' }).addTo(map);
+
+    document.getElementById('clear-bbox-btn').style.display = 'block';
+    loadMapDataWithNear(e.latlng.lng, e.latlng.lat, radius);
+  }
+});
 
 // ─── Init ───
 async function init() {
@@ -215,6 +319,8 @@ async function init() {
 
 // ─── Load map data via server-side bbox ───
 async function loadMapData() {
+  // Skip auto-load if user has an active search rect or near circle
+  if (searchRect || nearCircle) return;
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest().toFixed(4)},${bounds.getSouth().toFixed(4)},${bounds.getEast().toFixed(4)},${bounds.getNorth().toFixed(4)}`;
   const search = document.getElementById('search').value.trim();
@@ -251,6 +357,46 @@ async function loadMapData() {
     // Render list
     renderList(features);
     document.getElementById('count-badge').textContent = `${fc.metadata?.total ?? features.length} in view`;
+  } catch (err) {
+    document.getElementById('list').innerHTML = `<div class="loading" style="color:#f87171">${err.message}</div>`;
+  }
+}
+
+// ─── Custom bbox query (drawn rectangle) ───
+async function loadMapDataWithBbox(bbox) {
+  const enumField = document.querySelector('.filter-chip')?.dataset.field;
+  let path = `/delivery/datasets/${DATASET_ID}/entities?bbox=${bbox}&pageSize=500&format=geojson`;
+  if (activeType && enumField) path += `&filter[${enumField}]=${encodeURIComponent(activeType)}`;
+
+  try {
+    const fc = await apiGet(path);
+    const features = fc.features || [];
+    if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+    geoJsonLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+      style: () => ({ color: '#3b82f6', weight: 1, fillColor: '#60a5fa', fillOpacity: 0.3 }),
+      onEachFeature: (feature, layer) => { layer.on('click', () => selectFeature(feature)); },
+    }).addTo(map);
+    renderList(features);
+    document.getElementById('count-badge').textContent = `${fc.metadata?.total ?? features.length} in bbox`;
+  } catch (err) {
+    document.getElementById('list').innerHTML = `<div class="loading" style="color:#f87171">${err.message}</div>`;
+  }
+}
+
+// ─── Near-point query ───
+async function loadMapDataWithNear(lon, lat, radius) {
+  let path = `/delivery/datasets/${DATASET_ID}/entities?near=${lon.toFixed(5)},${lat.toFixed(5)}&radius=${radius}&pageSize=500&format=geojson`;
+
+  try {
+    const fc = await apiGet(path);
+    const features = fc.features || [];
+    if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+    geoJsonLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+      style: () => ({ color: '#8b5cf6', weight: 1, fillColor: '#a78bfa', fillOpacity: 0.3 }),
+      onEachFeature: (feature, layer) => { layer.on('click', () => selectFeature(feature)); },
+    }).addTo(map);
+    renderList(features);
+    document.getElementById('count-badge').textContent = `${fc.metadata?.total ?? features.length} nearby`;
   } catch (err) {
     document.getElementById('list').innerHTML = `<div class="loading" style="color:#f87171">${err.message}</div>`;
   }
