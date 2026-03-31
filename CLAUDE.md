@@ -34,18 +34,21 @@ src/
     geometry.ts               # PostGIS helpers (ST_AsGeoJSON, ST_GeomFromGeoJSON)
     validation.ts             # Zod schemas for API input
     dynamic-validation.ts     # Runtime validation against ModelDefinition fields
+    errors.ts                 # BusinessError, NotFoundError classes
   modules/
     entity/                   # Entity read + internal create/update (used by proposal)
     proposal/                 # Create/approve/reject + auto-approval via governance
     dataset/                  # Dataset definitions + snapshot generation (dual-path)
     publication/              # Publish/rollback/hook
-    ingestion/                # Bulk import + batch proposal creation
+    ingestion/                # Bulk import + batch proposal creation + validation
     definition/               # Model/field/relation/binding/governance CRUD
+    delivery/                 # Read-only API for external data consumers
 public/index.html             # Single-page admin UI (sidebar nav, hash router)
                               #   Dashboard: stats, records by model, recent activity, pending review
                               #   Content: entity list by model, search/filter, detail with
                               #     structured properties, version history, inline edit, status actions
                               #   Proposals: pending review + history, diff view for updates
+                              #     batch approve (all or by model filter)
                               #   Datasets: manage bindings, snapshots, publish, publication history
                               #   Model Designer: model/field CRUD + governance policy columns
                               #   New Record: dynamic form from model schema → proposal
@@ -85,10 +88,24 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 - `approvalMode`: `manual` (default) requires human review, `auto` auto-approves if validation passes
 - `publishMode`: `manual` (default) or `auto`
 
+### Entity Update Transactions
+`updateEntityInternal()` uses `prisma.$transaction()` to atomically merge properties and increment version numbers. This prevents race conditions on concurrent updates.
+
+### Properties Merge on Update
+Entity updates merge new properties with existing ones (not replace). Orphaned properties (from deleted field definitions) are preserved. The edit form also preserves orphaned fields when submitting update proposals.
+
+### Error Handling
+Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) replace fragile string matching. Prisma errors are handled by code: P2002 → 409 (duplicate), P2025 → 404 (not found). Auto-approval failures are logged via `console.warn`.
+
+### Delivery API vs Management API
+- **Management API** (`/api/v1/entities`, `/proposals`, etc.) — internal use by admin UI
+- **Delivery API** (`/api/v1/delivery/`) — read-only, external consumers, only published data
+- **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
+
 ## API Endpoints
 
 ### Content
-- `GET/POST /api/v1/entities` — list (supports `?type=` filter)
+- `GET /api/v1/entities` — list (supports `?type=` and `?status=` filters)
 - `GET /api/v1/entities/:id` — detail with geometry
 - `GET /api/v1/entities/:id/versions` — version history
 
@@ -97,6 +114,7 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 - `GET /api/v1/proposals` — list (supports `?status=` filter)
 - `POST /api/v1/proposals/:id/approve` — approve (runs dynamic validation)
 - `POST /api/v1/proposals/:id/reject`
+- `POST /api/v1/proposals/approve-batch` — batch approve (all, by model filter, or by IDs)
 
 ### Definitions
 - `CRUD /api/v1/definitions/models` — model definitions
@@ -113,8 +131,15 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 - `POST /api/v1/publications/rollback` — rollback
 
 ### Ingestion
-- `POST /api/v1/ingestion/import` — bulk import (trusted sources)
-- `POST /api/v1/ingestion/proposal-set` — batch proposal creation
+- `POST /api/v1/ingestion/validate` — validate entities against model (no write)
+- `POST /api/v1/ingestion/import` — bulk import (trusted, bypasses review)
+- `POST /api/v1/ingestion/governed` — governed import (respects governance policy)
+- `POST /api/v1/ingestion/proposal-set` — batch proposal creation (all pending)
+
+### Delivery (read-only, for external consumers)
+- `GET /api/v1/delivery/datasets` — list published datasets
+- `GET /api/v1/delivery/datasets/:id` — published dataset metadata
+- `GET /api/v1/delivery/datasets/:id/entities` — entities in published snapshot
 
 ## Frontend Pages (hash routes)
 
@@ -125,18 +150,18 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#dashboard` | Manage | Dashboard: stats, activity, pending review |
 | `#define/models` | Define | Model Designer list + create + governance columns |
 | `#define/models/{id}` | Define | Fields, relations, governance policy |
-| `#define/governance` | Define | Governance policy overview for all models |
-| `#manage/records` | Manage | All records |
+| `#manage/records` | Manage | All records with search/filter |
 | `#manage/records/{modelKey}` | Manage | Records filtered by model |
 | `#manage/records/{modelKey}/{id}` | Manage | Entity detail + structured props + version history + edit |
 | `#manage/new/{modelKey}` | Manage | Dynamic form → create proposal |
-| `#manage/review` | Manage | Review queue (pending + history) |
-| `#manage/review/{id}` | Manage | Proposal detail + approve/reject |
+| `#manage/review` | Manage | Review queue + batch approve + history |
+| `#manage/review/{id}` | Manage | Proposal detail + diff view + approve/reject |
 | `#publish/datasets` | Publish | Dataset list + create |
-| `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish |
-| `#publish/history` | Publish | Publication history |
-| `#dev/api` | Developer | Interactive API endpoint explorer |
-| `#dev/console` | Developer | One-page publish workflow testing |
+| `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish + publication history |
+| `#publish/delivery` | Publish | Delivery API docs + inline preview |
+| `#integrate/ingestion` | Integrate | Import API docs + test data generator + validate/import |
+| `#dev/api` | Dev Only | Interactive API endpoint explorer |
+| `#dev/console` | Dev Only | One-page publish workflow testing |
 
 Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `#api-playground`, `#publish-console`) auto-redirect to new paths.
 
