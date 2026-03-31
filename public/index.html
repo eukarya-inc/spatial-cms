@@ -1303,9 +1303,11 @@ entities.forEach(entity => {
 
 function deliveryCopyUrl(dsId) {
   const url = `${window.location.origin}/api/v1/delivery/datasets/${dsId}/entities`;
-  navigator.clipboard.writeText(url).then(() => toast('URL copied to clipboard')).catch(() => {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(() => toast('URL copied to clipboard')).catch(() => prompt('Copy this URL:', url));
+  } else {
     prompt('Copy this URL:', url);
-  });
+  }
 }
 
 // ─── Ingestion API Docs ────────────────────────────
