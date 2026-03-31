@@ -200,6 +200,7 @@ setTimeout(() => {
   document.getElementById('draw-bbox-btn').onclick = () => {
     drawingBox = true;
     nearMode = false;
+    map.dragging.disable();
     map.getContainer().style.cursor = 'crosshair';
     document.getElementById('draw-bbox-btn').style.background = '#dbeafe';
   };
@@ -235,6 +236,7 @@ map.on('mousemove', (e) => {
 map.on('mouseup', (e) => {
   if (drawingBox && drawStart) {
     drawingBox = false;
+    map.dragging.enable();
     map.getContainer().style.cursor = '';
     document.getElementById('draw-bbox-btn').style.background = '#fff';
     if (drawRect) map.removeLayer(drawRect);
