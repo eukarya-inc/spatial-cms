@@ -136,12 +136,12 @@ async function apiGet(path) {
     const elapsed = Math.round(performance.now() - t0);
     const data = await res.json();
     const count = data.pagination?.total ?? data.features?.length ?? data.entities?.length ?? (Array.isArray(data) ? data.length : '—');
-    apiLogs.unshift({ ts: new Date(), method: 'GET', url: shortUrl, status: res.status, elapsed, count, ok: res.ok });
+    apiLogs.unshift({ ts: new Date(), method: 'GET', url: shortUrl, status: res.status, elapsed, count, ok: res.ok, data });
     renderApiLog();
     return data;
   } catch (err) {
     const elapsed = Math.round(performance.now() - t0);
-    apiLogs.unshift({ ts: new Date(), method: 'GET', url: shortUrl, status: 'ERR', elapsed, count: '—', ok: false });
+    apiLogs.unshift({ ts: new Date(), method: 'GET', url: shortUrl, status: 'ERR', elapsed, count: '—', ok: false, data: { error: err.message } });
     renderApiLog();
     throw err;
   }
@@ -149,13 +149,14 @@ async function apiGet(path) {
 
 function renderApiLog() {
   const el = document.getElementById('api-log');
-  el.innerHTML = apiLogs.slice(0, 30).map(l => {
+  el.innerHTML = apiLogs.slice(0, 30).map((l, i) => {
     const ts = l.ts.toLocaleTimeString();
-    return `<div class="log-entry"><span class="log-ts">${ts}</span> <span class="log-method">${l.method}</span> <span class="log-url">${l.url}</span> <span class="log-status ${l.ok ? 'ok' : 'err'}">${l.status}</span> <span class="log-meta">${l.elapsed}ms · ${l.count} items</span></div>`;
+    return `<div class="log-entry" style="cursor:pointer" onclick="toggleLogDetail(${i})"><span class="log-ts">${ts}</span> <span class="log-method">${l.method}</span> <span class="log-url">${l.url}</span> <span class="log-status ${l.ok ? 'ok' : 'err'}">${l.status}</span> <span class="log-meta">${l.elapsed}ms · ${l.count} items ▸</span></div><div id="log-detail-${i}" style="display:none;padding:4px 14px 8px;max-height:200px;overflow:auto"><pre style="margin:0;font-size:11px;color:#94a3b8;white-space:pre-wrap">${JSON.stringify(l.data, null, 2).substring(0, 3000)}${JSON.stringify(l.data).length > 3000 ? '\n... (truncated)' : ''}</pre></div>`;
   }).join('');
 }
 
 document.getElementById('log-clear').onclick = () => { apiLogs.length = 0; renderApiLog(); };
+function toggleLogDetail(i) { const el = document.getElementById(`log-detail-${i}`); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 
 // ─── Map ───
 const map = L.map('map').setView([35.715, 139.783], 15);
