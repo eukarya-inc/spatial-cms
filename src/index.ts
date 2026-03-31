@@ -2,7 +2,9 @@ import "dotenv/config";
 import path from "path";
 import express from "express";
 import { ZodError } from "zod";
+import { Prisma } from "@prisma/client";
 import prisma from "./db/client.js";
+import { BusinessError, NotFoundError } from "./shared/errors.js";
 import { entityRouter } from "./modules/entity/entity.router.js";
 import { proposalRouter } from "./modules/proposal/proposal.router.js";
 import { datasetRouter } from "./modules/dataset/dataset.router.js";
@@ -56,19 +58,26 @@ app.use(
       return;
     }
 
-    // Business logic errors (from service layer) → 400
-    const businessErrors = [
-      "not found",
-      "not pending",
-      "required for",
-      "must be in",
-      "Unknown action",
-      "No active release",
-      "No previous snapshot",
-      "Validation failed",
-      "already exists",
-    ];
-    if (businessErrors.some((msg) => err.message.includes(msg))) {
+    // Custom error classes
+    if (err instanceof NotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof BusinessError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    // Prisma known errors (constraint violations, not found, etc.)
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        res.status(404).json({ error: "Record not found" });
+        return;
+      }
+      if (err.code === "P2002") {
+        res.status(409).json({ error: "Duplicate record: a record with this value already exists" });
+        return;
+      }
       res.status(400).json({ error: err.message });
       return;
     }

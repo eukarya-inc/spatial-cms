@@ -1,13 +1,14 @@
 import prisma from "../../db/client.js";
+import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
 /** Publish a snapshot: mark as published, update active release state */
 export async function publishSnapshot(datasetSnapshotId: string) {
   const snapshot = await prisma.datasetSnapshot.findUnique({
     where: { id: datasetSnapshotId },
   });
-  if (!snapshot) throw new Error("Snapshot not found");
+  if (!snapshot) throw new NotFoundError("Snapshot");
   if (snapshot.status !== "ready")
-    throw new Error("Snapshot must be in 'ready' status to publish");
+    throw new BusinessError("Snapshot must be in 'ready' status to publish");
 
   // Mark snapshot as published
   await prisma.datasetSnapshot.update({
@@ -44,7 +45,7 @@ export async function rollback(datasetDefinitionId: string) {
   const activeRelease = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
   });
-  if (!activeRelease) throw new Error("No active release to rollback");
+  if (!activeRelease) throw new BusinessError("No active release to rollback");
 
   // Find the previous published snapshot
   const previousSnapshot = await prisma.datasetSnapshot.findFirst({
@@ -55,7 +56,7 @@ export async function rollback(datasetDefinitionId: string) {
     },
     orderBy: { version: "desc" },
   });
-  if (!previousSnapshot) throw new Error("No previous snapshot to rollback to");
+  if (!previousSnapshot) throw new BusinessError("No previous snapshot to rollback to");
 
   // Update active release
   await prisma.activeReleaseState.update({
@@ -84,7 +85,7 @@ export async function triggerPublishHook(datasetSnapshotId: string) {
     where: { id: datasetSnapshotId },
     include: { datasetDefinition: true },
   });
-  if (!snapshot) throw new Error("Snapshot not found");
+  if (!snapshot) throw new NotFoundError("Snapshot");
 
   const payload = {
     event: "publish",

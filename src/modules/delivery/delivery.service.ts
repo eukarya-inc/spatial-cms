@@ -73,20 +73,27 @@ export async function getPublishedEntities(datasetDefinitionId: string) {
     snapshot: { properties?: object; geometry?: object } | null;
   }>;
 
-  // Fetch current geometry for each entity (manifest may not have it)
+  // Fetch fresh geometry from entity table (primary), fall back to snapshot (stale)
   const entities = await Promise.all(
     manifest.map(async (item) => {
-      // Try to get fresh geometry from the entity table
-      const entityWithGeo = await getEntityWithGeometry(item.entityId).catch(
-        () => null,
-      );
+      let geometry = null;
+      try {
+        const fresh = await getEntityWithGeometry(item.entityId);
+        geometry = fresh?.geometry ?? null;
+      } catch (err) {
+        console.warn(
+          `[Delivery] Failed to fetch geometry for entity ${item.entityId}, using snapshot fallback:`,
+          err instanceof Error ? err.message : err,
+        );
+        geometry = item.snapshot?.geometry ?? null;
+      }
 
       return {
         id: item.entityId,
         type: item.type,
         version: item.versionNumber,
         properties: item.snapshot?.properties ?? {},
-        geometry: item.snapshot?.geometry ?? entityWithGeo?.geometry ?? null,
+        geometry,
       };
     }),
   );

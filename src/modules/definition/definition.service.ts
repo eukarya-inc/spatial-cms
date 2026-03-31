@@ -1,4 +1,5 @@
 import prisma from "../../db/client.js";
+import { BusinessError } from "../../shared/errors.js";
 
 // ─── Model Definition ────────────────────────────────
 
@@ -222,6 +223,15 @@ export async function upsertGovernancePolicy(data: {
   approvalMode?: "manual" | "auto";
   publishMode?: "manual" | "auto";
 }) {
+  // Validate that the target actually exists
+  if (data.targetType === "model") {
+    const model = await prisma.modelDefinition.findUnique({ where: { id: data.targetId } });
+    if (!model) throw new BusinessError(`Model with id ${data.targetId} not found`);
+  } else if (data.targetType === "dataset") {
+    const dataset = await prisma.datasetDefinition.findUnique({ where: { id: data.targetId } });
+    if (!dataset) throw new BusinessError(`Dataset with id ${data.targetId} not found`);
+  }
+
   return prisma.governancePolicy.upsert({
     where: {
       targetType_targetId: {

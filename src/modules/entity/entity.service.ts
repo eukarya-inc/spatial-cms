@@ -47,11 +47,9 @@ export async function createEntityInternal(data: {
   let type = data.type;
 
   if (modelDefId) {
-    // If modelDefinitionId provided, set type from model key
     const model = await prisma.modelDefinition.findUnique({ where: { id: modelDefId } });
     if (model) type = model.key;
   } else if (type) {
-    // If only type provided, try to find matching ModelDefinition
     const model = await findModelDefinitionByKey(type);
     if (model) modelDefId = model.id;
   }
@@ -69,7 +67,6 @@ export async function createEntityInternal(data: {
     await setEntityGeometry(entity.id, data.geometry);
   }
 
-  // Create initial version
   await prisma.entityVersion.create({
     data: {
       entityId: entity.id,
@@ -95,44 +92,53 @@ export async function updateEntityInternal(
     status?: "draft" | "active" | "archived";
   },
 ) {
-  // Get current version number
-  const latestVersion = await prisma.entityVersion.findFirst({
-    where: { entityId: id },
-    orderBy: { versionNumber: "desc" },
+  // Use transaction to prevent race conditions on properties merge and version number
+  await prisma.$transaction(async (tx) => {
+    // Lock the entity row by reading it inside the transaction
+    const entity = await tx.entity.findUniqueOrThrow({ where: { id } });
+
+    // Merge properties (preserves fields not in the update)
+    const updateData: Record<string, unknown> = {};
+    if (changes.type) updateData.type = changes.type;
+    if (changes.properties) {
+      const existing = (entity.properties as object) ?? {};
+      updateData.properties = { ...existing, ...changes.properties };
+    }
+    if (changes.status) updateData.status = changes.status;
+
+    if (Object.keys(updateData).length > 0) {
+      await tx.entity.update({ where: { id }, data: updateData });
+    }
+
+    // Get next version number atomically within the transaction
+    const latestVersion = await tx.entityVersion.findFirst({
+      where: { entityId: id },
+      orderBy: { versionNumber: "desc" },
+    });
+    const nextVersion = (latestVersion?.versionNumber ?? 0) + 1;
+
+    // Create version snapshot (geometry fetched after update)
+    const mergedProps = changes.properties
+      ? { ...((entity.properties as object) ?? {}), ...changes.properties }
+      : entity.properties;
+
+    await tx.entityVersion.create({
+      data: {
+        entityId: id,
+        versionNumber: nextVersion,
+        snapshot: {
+          type: changes.type ?? entity.type,
+          properties: mergedProps,
+          geometry: changes.geometry ?? null,
+        },
+      },
+    });
   });
-  const nextVersion = (latestVersion?.versionNumber ?? 0) + 1;
 
-  // Update entity fields (excluding geometry)
-  const updateData: Record<string, unknown> = {};
-  if (changes.type) updateData.type = changes.type;
-  if (changes.properties) {
-    // Merge with existing properties to preserve fields not in the update
-    const existing = await prisma.entity.findUnique({ where: { id }, select: { properties: true } });
-    updateData.properties = { ...(existing?.properties as object || {}), ...changes.properties };
-  }
-  if (changes.status) updateData.status = changes.status;
-
-  if (Object.keys(updateData).length > 0) {
-    await prisma.entity.update({ where: { id }, data: updateData });
-  }
-
+  // Geometry update is outside transaction (raw SQL via PostGIS)
   if (changes.geometry) {
     await setEntityGeometry(id, changes.geometry);
   }
 
-  // Create new version snapshot
-  const current = await getEntityWithGeometry(id);
-  await prisma.entityVersion.create({
-    data: {
-      entityId: id,
-      versionNumber: nextVersion,
-      snapshot: {
-        type: current?.type,
-        properties: current?.properties,
-        geometry: current?.geometry,
-      },
-    },
-  });
-
-  return current;
+  return getEntityWithGeometry(id);
 }

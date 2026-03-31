@@ -7,6 +7,7 @@ import {
   validateAgainstModel,
   findModelDefinitionByKey,
 } from "../../shared/dynamic-validation.js";
+import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
 interface ProposalInput {
   entityId?: string;
@@ -41,7 +42,6 @@ export async function createProposal(input: ProposalInput) {
     const model = await findModelDefinitionByKey(type);
     if (model) resolvedModelId = model.id;
   }
-  // Also resolve from entityId (for update/delete proposals)
   if (!resolvedModelId && input.entityId) {
     const entity = await prisma.entity.findUnique({ where: { id: input.entityId } });
     if (entity?.modelDefinitionId) resolvedModelId = entity.modelDefinitionId;
@@ -57,8 +57,12 @@ export async function createProposal(input: ProposalInput) {
       try {
         const result = await approveProposal(proposal.id);
         return result.proposal;
-      } catch {
-        // Auto-approval failed (e.g. validation error), leave as pending
+      } catch (err) {
+        // Log the failure reason instead of swallowing silently
+        console.warn(
+          `[Auto-approval] Failed for proposal ${proposal.id}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
   }
@@ -82,9 +86,9 @@ export async function getProposal(id: string) {
 
 export async function approveProposal(id: string) {
   const proposal = await prisma.proposal.findUnique({ where: { id } });
-  if (!proposal) throw new Error("Proposal not found");
+  if (!proposal) throw new NotFoundError("Proposal");
   if (proposal.status !== "pending")
-    throw new Error("Proposal is not pending");
+    throw new BusinessError("Proposal is not pending");
 
   const change = proposal.proposedChange as {
     action: string;
@@ -118,7 +122,7 @@ export async function approveProposal(id: string) {
       change.data.geometry ?? null,
     );
     if (!validation.valid) {
-      throw new Error(
+      throw new BusinessError(
         `Validation failed: ${validation.errors.join("; ")}`,
       );
     }
@@ -134,18 +138,17 @@ export async function approveProposal(id: string) {
       geometry: change.data.geometry,
     });
   } else if (change.action === "update") {
-    if (!proposal.entityId) throw new Error("entityId required for update");
+    if (!proposal.entityId) throw new BusinessError("entityId required for update");
     entity = await updateEntityInternal(proposal.entityId, change.data);
   } else if (change.action === "delete") {
-    if (!proposal.entityId) throw new Error("entityId required for delete");
+    if (!proposal.entityId) throw new BusinessError("entityId required for delete");
     entity = await updateEntityInternal(proposal.entityId, {
       status: "archived",
     });
   } else {
-    throw new Error(`Unknown action: ${change.action}`);
+    throw new BusinessError(`Unknown action: ${change.action}`);
   }
 
-  // Mark proposal as approved
   await prisma.proposal.update({
     where: { id },
     data: { status: "approved" },

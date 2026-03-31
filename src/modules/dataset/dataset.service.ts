@@ -1,4 +1,5 @@
 import prisma from "../../db/client.js";
+import { NotFoundError, BusinessError } from "../../shared/errors.js";
 
 export async function listDatasetDefinitions() {
   return prisma.datasetDefinition.findMany({
@@ -37,7 +38,7 @@ export async function generateSnapshot(datasetDefinitionId: string) {
   const definition = await prisma.datasetDefinition.findUnique({
     where: { id: datasetDefinitionId },
   });
-  if (!definition) throw new Error("Dataset definition not found");
+  if (!definition) throw new NotFoundError("Dataset definition");
 
   // Check for model bindings (new path)
   const bindings = await prisma.datasetModelBinding.findMany({
@@ -64,9 +65,9 @@ export async function generateSnapshot(datasetDefinitionId: string) {
     });
   } else {
     // Legacy path: query by entityTypes array
-    const entityTypes = definition.entityTypes as string[];
+    const entityTypes = (definition.entityTypes as string[] | null) ?? [];
     if (!entityTypes.length) {
-      throw new Error("Dataset has no model bindings and no entity types");
+      throw new BusinessError("Dataset has no model bindings and no entity types configured");
     }
     entities = await prisma.entity.findMany({
       where: {
