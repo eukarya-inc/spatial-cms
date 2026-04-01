@@ -842,75 +842,158 @@ async function viewProposals(main) {
   const pending = proposals.filter(p => p.status === 'pending');
   const history = proposals.filter(p => p.status !== 'pending');
 
-  // Get unique model types from pending proposals for filter
   const pendingTypes = [...new Set(pending.map(p => p.proposedChange.data?.type).filter(Boolean))];
+  const pendingSources = [...new Set(pending.map(p => p.source).filter(Boolean))];
 
-  main.innerHTML = '';
-  const header = h('div', { className: 'page-header' });
-  header.append(h('div', {}, h('h2', {}, 'Review Queue'), h('div', { className: 'sub' }, `${pending.length} pending`)));
-  if (pending.length) {
-    const actions = h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } });
-    actions.innerHTML = `
-      <select id="rq-filter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+  main.innerHTML = `
+    <div class="page-header">
+      <div><h2>Review Queue</h2><div class="sub">${pending.length} pending</div></div>
+    </div>
+
+    ${pending.length ? `
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <select id="rq-filter-model" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
         <option value="">All models</option>
         ${pendingTypes.map(t => `<option value="${t}">${t}</option>`).join('')}
       </select>
-      <button class="btn btn-success btn-sm" id="rq-approve-all">Approve All</button>`;
-    header.append(actions);
-  }
-  main.append(header);
+      <select id="rq-filter-source" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <option value="">All sources</option>
+        ${pendingSources.map(s => `<option value="${s}">${s}</option>`).join('')}
+      </select>
+      <span id="rq-visible-count" style="font-size:12px;color:var(--muted)"></span>
+    </div>
 
-  if (pending.length) {
-    main.innerHTML += `<div id="rq-result" style="margin-bottom:12px"></div>`;
-    const t = document.createElement('table');
-    t.innerHTML = `<thead><tr><th>Action</th><th>Model</th><th>Name</th><th>Source</th><th>Created</th><th></th></tr></thead>
-      <tbody>${pending.map(p => `<tr>
+    <!-- Batch action bar (hidden until selection) -->
+    <div id="rq-batch" style="display:none;padding:10px 16px;background:var(--primary);color:#fff;border-radius:var(--radius);margin-bottom:12px;display:none;align-items:center;gap:12px;font-size:13px">
+      <span id="rq-sel-count" style="font-weight:600"></span>
+      <button class="btn btn-sm" id="rq-approve-sel" style="background:rgba(255,255,255,0.2);color:#fff">Approve Selected</button>
+      <button class="btn btn-sm" id="rq-reject-sel" style="background:rgba(255,255,255,0.2);color:#fff">Reject Selected</button>
+      <button class="btn btn-sm" id="rq-clear-sel" style="background:transparent;color:rgba(255,255,255,0.7)">Clear</button>
+    </div>
+
+    <div id="rq-result" style="margin-bottom:12px"></div>
+
+    <!-- Table -->
+    <table id="rq-table">
+      <thead><tr>
+        <th style="width:32px"><input type="checkbox" id="rq-select-all"></th>
+        <th>Action</th><th>Model</th><th>Name</th><th>Source</th><th>Created</th><th></th>
+      </tr></thead>
+      <tbody>${pending.map(p => `<tr data-id="${p.id}" data-type="${p.proposedChange.data?.type || ''}" data-source="${p.source}">
+        <td><input type="checkbox" class="rq-check" value="${p.id}"></td>
         <td><span class="badge badge-pending">${p.proposedChange.action}</span></td>
         <td><code>${p.proposedChange.data?.type || '—'}</code></td>
         <td>${p.proposedChange.data?.properties?.name || '—'}</td>
         <td style="color:var(--muted)">${p.source}</td>
         <td style="color:var(--muted)">${new Date(p.createdAt).toLocaleDateString()}</td>
         <td><button class="btn btn-primary btn-sm" onclick="nav('manage/review/${p.id}')">Review</button></td>
-      </tr>`).join('')}</tbody>`;
-    main.append(t);
+      </tr>`).join('')}</tbody>
+    </table>
+    ` : '<div class="card"><div class="empty"><h4>No pending proposals</h4><p>All proposals have been reviewed.</p></div></div>'}
 
-    // Approve All handler
-    $('rq-approve-all').onclick = async () => {
-      const filterType = $('rq-filter')?.value || undefined;
-      const count = filterType ? pending.filter(p => p.proposedChange.data?.type === filterType).length : pending.length;
-      if (!confirm(`Approve ${count} pending proposal${count > 1 ? 's' : ''}${filterType ? ` for "${filterType}"` : ''}?`)) return;
-
-      const resultEl = $('rq-result');
-      resultEl.innerHTML = '<span style="color:var(--muted)">Approving...</span>';
-
-      try {
-        const body = filterType ? { filter: { type: filterType } } : {};
-        const result = await api('/proposals/approve-batch', { method: 'POST', body: JSON.stringify(body) });
-        resultEl.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:#f0fdf4;border:1px solid #bbf7d0">
-          <strong style="color:var(--success)">${result.approved} approved</strong>
-          ${result.failed > 0 ? `<span style="color:var(--danger);margin-left:12px">${result.failed} failed</span>` : ''}
-        </div>`;
-        refreshPendingCount();
-        setTimeout(() => reload(), 1500);
-      } catch (err) { resultEl.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`; }
-    };
-  } else {
-    main.append(h('div', { className: 'card', innerHTML: '<div class="empty"><h4>No pending proposals</h4><p>All proposals have been reviewed.</p></div>' }));
-  }
-
-  if (history.length) {
-    main.append(h('h3', { style: { margin: '24px 0 12px', fontSize: '16px', color: 'var(--muted)' } }, 'History'));
-    const t2 = document.createElement('table');
-    t2.innerHTML = `<thead><tr><th>Action</th><th>Model</th><th>Status</th><th>Source</th><th>Created</th></tr></thead>
+    ${history.length ? `<h3 style="margin:24px 0 12px;font-size:16px;color:var(--muted)">History</h3>
+    <table><thead><tr><th>Action</th><th>Model</th><th>Status</th><th>Source</th><th>Created</th></tr></thead>
       <tbody>${history.slice(0, 20).map(p => `<tr>
         <td>${p.proposedChange.action}</td>
         <td><code>${p.proposedChange.data?.type || '—'}</code></td>
         <td>${badge(p.status)}</td>
         <td style="color:var(--muted)">${p.source}</td>
         <td style="color:var(--muted)">${new Date(p.createdAt).toLocaleDateString()}</td>
-      </tr>`).join('')}</tbody>`;
-    main.append(t2);
+      </tr>`).join('')}</tbody></table>` : ''}`;
+
+  if (!pending.length) return;
+
+  // ── Filter logic ──
+  function applyFilter() {
+    const modelF = $('rq-filter-model')?.value || '';
+    const sourceF = $('rq-filter-source')?.value || '';
+    let visible = 0;
+    document.querySelectorAll('#rq-table tbody tr').forEach(row => {
+      const show = (!modelF || row.dataset.type === modelF) && (!sourceF || row.dataset.source === sourceF);
+      row.style.display = show ? '' : 'none';
+      if (!show) row.querySelector('.rq-check').checked = false; // uncheck hidden
+      if (show) visible++;
+    });
+    $('rq-visible-count').textContent = modelF || sourceF ? `${visible} shown` : '';
+    updateSelection();
   }
+  $('rq-filter-model').onchange = applyFilter;
+  $('rq-filter-source').onchange = applyFilter;
+
+  // ── Selection logic ──
+  function getVisibleChecks() {
+    return [...document.querySelectorAll('#rq-table tbody tr')].filter(r => r.style.display !== 'none').map(r => r.querySelector('.rq-check'));
+  }
+  function getSelectedIds() {
+    return getVisibleChecks().filter(c => c.checked).map(c => c.value);
+  }
+  function updateSelection() {
+    const ids = getSelectedIds();
+    const batch = $('rq-batch');
+    if (ids.length > 0) {
+      batch.style.display = 'flex';
+      $('rq-sel-count').textContent = `${ids.length} selected`;
+    } else {
+      batch.style.display = 'none';
+    }
+    // Update select-all checkbox
+    const visible = getVisibleChecks();
+    const allChecked = visible.length > 0 && visible.every(c => c.checked);
+    $('rq-select-all').checked = allChecked;
+  }
+
+  // Select all
+  $('rq-select-all').onchange = () => {
+    const checked = $('rq-select-all').checked;
+    getVisibleChecks().forEach(c => c.checked = checked);
+    updateSelection();
+  };
+  // Individual checkboxes
+  document.querySelectorAll('.rq-check').forEach(c => { c.onchange = updateSelection; });
+  // Clear selection
+  $('rq-clear-sel').onclick = () => {
+    document.querySelectorAll('.rq-check').forEach(c => c.checked = false);
+    $('rq-select-all').checked = false;
+    updateSelection();
+  };
+
+  // ── Batch Approve ──
+  $('rq-approve-sel').onclick = async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Approve ${ids.length} proposal${ids.length > 1 ? 's' : ''}?`)) return;
+    const resultEl = $('rq-result');
+    resultEl.innerHTML = '<span style="color:var(--muted)">Approving...</span>';
+    try {
+      const result = await api('/proposals/approve-batch', { method: 'POST', body: JSON.stringify({ ids }) });
+      resultEl.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:#f0fdf4;border:1px solid #bbf7d0">
+        <strong style="color:var(--success)">${result.approved} approved</strong>
+        ${result.failed > 0 ? `<span style="color:var(--danger);margin-left:12px">${result.failed} failed</span>` : ''}
+      </div>`;
+      refreshPendingCount();
+      setTimeout(() => reload(), 1500);
+    } catch (err) { resultEl.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`; }
+  };
+
+  // ── Batch Reject ──
+  $('rq-reject-sel').onclick = async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Reject ${ids.length} proposal${ids.length > 1 ? 's' : ''}?`)) return;
+    const resultEl = $('rq-result');
+    resultEl.innerHTML = '<span style="color:var(--muted)">Rejecting...</span>';
+    let rejected = 0, failed = 0;
+    for (const id of ids) {
+      try { await api(`/proposals/${id}/reject`, { method: 'POST' }); rejected++; } catch { failed++; }
+    }
+    resultEl.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:#fee2e2;border:1px solid #fecaca">
+      <strong style="color:var(--danger)">${rejected} rejected</strong>
+      ${failed > 0 ? `<span style="color:var(--muted);margin-left:12px">${failed} failed</span>` : ''}
+    </div>`;
+    refreshPendingCount();
+    setTimeout(() => reload(), 1500);
+  };
 }
 
 // ─── Proposal Detail ───────────────────────────────
