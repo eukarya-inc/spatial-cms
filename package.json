@@ -11,7 +11,9 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed.ts",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "test": "node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
+    "test:watch": "node --import tsx --test --watch tests/integration/*.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
