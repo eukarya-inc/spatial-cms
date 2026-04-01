@@ -176,6 +176,7 @@
     <div class="sidebar-section" data-section="integrate">Integrate</div>
     <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/import')" data-nav="integrate/import"><span>Import Data</span></div>
     <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/api')" data-nav="integrate/api"><span>Import API</span></div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/management')" data-nav="integrate/management"><span>Management API</span></div>
 
     <div class="sidebar-section" data-section="integrate" style="opacity:0.5;font-size:9px">Dev Only</div>
     <div class="sidebar-item" data-section="integrate" onclick="nav('dev/api')" data-nav="dev/api" style="opacity:0.5"><span>API Explorer</span></div>
@@ -314,6 +315,7 @@ async function router() {
     else if (route === 'publish/ogc') await viewOgcDocs(main);
     else if (route === 'integrate/import') await viewImportData(main);
     else if (route === 'integrate/api') await viewImportApi(main);
+    else if (route === 'integrate/management') await viewManagementApi(main);
     else if (route === 'integrate/ingestion') await viewImportData(main); // legacy redirect
     else if (route === 'dev/api') await viewApiPlayground(main);
     else if (route === 'dev/console') await viewPublishConsole(main);
@@ -2083,6 +2085,135 @@ function setupFileImport(models) {
       return { properties, geometry };
     });
   }
+}
+
+// ─── Management API Docs ───────────────────────────
+async function viewManagementApi(main) {
+  setBreadcrumb(['Integrate'], ['Management API']);
+  setActiveNav('integrate/management');
+  const baseUrl = window.location.origin + '/api/v1';
+
+  main.innerHTML = `
+    <div class="page-header"><div><h2>Management API</h2><div class="sub">Full read/write API for external tools, scripts, and integrations</div></div></div>
+
+    <div class="card">
+      <h3>When to Use Which API</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:var(--success);margin-bottom:4px">Delivery API</div>
+          <div style="color:var(--muted)">Read-only. Published data only. For consumer apps.</div>
+          <code style="font-size:11px">/api/v1/delivery/</code>
+        </div>
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:var(--primary);margin-bottom:4px">Import API</div>
+          <div style="color:var(--muted)">Write-only. Batch import. For data pipelines.</div>
+          <code style="font-size:11px">/api/v1/ingestion/</code>
+        </div>
+        <div style="padding:12px;background:#eff6ff;border-radius:var(--radius);border:1px solid #bfdbfe">
+          <div style="font-weight:600;color:#1e40af;margin-bottom:4px">Management API</div>
+          <div style="color:var(--muted)">Read + Write. All data. For tools & automation.</div>
+          <code style="font-size:11px">/api/v1/entities, /proposals, ...</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Entities</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Read entities. To create or modify, use Proposals.</p>
+      <table style="box-shadow:none;font-size:13px"><tbody>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities</code></td><td>List entities. Filter: <code>?type=</code> <code>?status=</code></td></tr>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities/:id</code></td><td>Single entity with geometry (GeoJSON)</td></tr>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities/:id/versions</code></td><td>Version history (all snapshots)</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="card">
+      <h3>Proposals</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">All data changes go through proposals. Create a proposal, then approve it.</p>
+      <table style="box-shadow:none;font-size:13px"><tbody>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/proposals</code></td><td>Create proposal (action: create/update/delete)</td></tr>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/proposals</code></td><td>List proposals. Filter: <code>?status=pending</code></td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/proposals/:id/approve</code></td><td>Approve (runs validation)</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/proposals/:id/reject</code></td><td>Reject</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/proposals/approve-batch</code></td><td>Batch approve (by IDs, filter, or all)</td></tr>
+      </tbody></table>
+      <div style="margin-top:12px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Create entity example:</div>
+        <pre style="font-size:12px">{
+  "proposedChange": {
+    "action": "create",
+    "data": {
+      "type": "building",
+      "properties": { "name": "New Building", "height": 50 },
+      "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+    }
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Definitions</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Manage models, fields, and governance policies programmatically.</p>
+      <table style="box-shadow:none;font-size:13px"><tbody>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/definitions/models</code></td><td>List all model definitions</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/definitions/models</code></td><td>Create model</td></tr>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/definitions/models/:id/schema</code></td><td>Model schema (fields, types, validation)</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/definitions/models/:id/fields</code></td><td>Add field to model</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/definitions/governance/policies</code></td><td>Set governance policy</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="card">
+      <h3>Datasets & Publishing</h3>
+      <table style="box-shadow:none;font-size:13px"><tbody>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/datasets</code></td><td>List datasets</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/datasets</code></td><td>Create dataset</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/datasets/:id/snapshot</code></td><td>Generate snapshot</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/publish</code></td><td>Publish snapshot</td></tr>
+        <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/rollback</code></td><td>Rollback to previous</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="card">
+      <h3>Integration Example: Deduplication Script</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Example Python script that finds duplicate buildings by name and creates delete proposals:</p>
+      <pre style="font-size:12px">import requests
+
+API = "${baseUrl}"
+
+# 1. Read all buildings
+entities = []
+page = 1
+while True:
+    r = requests.get(f"{API}/entities?type=building&page={page}&pageSize=100")
+    data = r.json()
+    entities.extend(data) # Management API returns array
+    if len(data) < 100:
+        break
+    page += 1
+
+# 2. Find duplicates by name
+from collections import Counter
+names = [e["properties"].get("name") for e in entities if e["properties"].get("name")]
+duplicates = [name for name, count in Counter(names).items() if count > 1]
+
+# 3. For each duplicate group, keep first, delete rest
+for name in duplicates:
+    group = [e for e in entities if e["properties"].get("name") == name]
+    for dup in group[1:]:  # skip first (keep it)
+        requests.post(f"{API}/proposals", json={
+            "entityId": dup["id"],
+            "proposedChange": {
+                "action": "delete",
+                "data": {}
+            },
+            "source": "machine"
+        })
+
+print(f"Created delete proposals for {len(duplicates)} duplicate groups")
+# → Go to Review Queue to approve/reject</pre>
+    </div>`;
 }
 
 // ─── OGC Services Docs ─────────────────────────────
