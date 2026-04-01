@@ -51,10 +51,10 @@ describe("Version snapshot geometry preservation", () => {
     assert.strictEqual(proposal.status, "approved");
 
     // Get the entity ID from a list query
-    const { data: entities } = await apiRequest(
+    const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
-    const entityId = entities[0].id;
+    const entityId = entitiesResult.entities[0].id;
 
     // Check version snapshot has geometry
     const { data: versions } = await apiRequest(
@@ -70,10 +70,10 @@ describe("Version snapshot geometry preservation", () => {
 
   it("should preserve geometry when only status is updated", async () => {
     // Get entity
-    const { data: entities } = await apiRequest(
+    const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
-    const entityId = entities[0].id;
+    const entityId = entitiesResult.entities[0].id;
 
     // Update status only (no geometry in the change)
     const { data: statusProp } = await apiRequest("/proposals", {
@@ -102,10 +102,10 @@ describe("Version snapshot geometry preservation", () => {
   });
 
   it("should preserve geometry when only properties are updated", async () => {
-    const { data: entities } = await apiRequest(
+    const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
-    const entityId = entities[0].id;
+    const entityId = entitiesResult.entities[0].id;
 
     // Update properties only
     const { data: propProp } = await apiRequest("/proposals", {
@@ -133,10 +133,10 @@ describe("Version snapshot geometry preservation", () => {
   });
 
   it("should update geometry in snapshot when geometry is changed", async () => {
-    const { data: entities } = await apiRequest(
+    const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
-    const entityId = entities[0].id;
+    const entityId = entitiesResult.entities[0].id;
 
     // Update geometry
     const { data: geoProp } = await apiRequest("/proposals", {

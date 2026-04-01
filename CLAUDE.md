@@ -21,7 +21,7 @@ Core invariant: **ALL data changes go through proposals. No direct entity writes
 ```bash
 docker compose up -d          # PostGIS + Directus
 npm run dev                   # Express on port 3001
-npm test                      # Run 22 integration tests
+npm test                      # Run 25 integration tests
 ```
 
 ## Project Structure
@@ -67,11 +67,15 @@ tests/
     setup.ts                  # DB cleanup + test model/policy factory
   integration/
     version-geometry.test.ts  # Geometry preserved in version snapshots (regression)
-    proposal-workflow.test.ts # Proposal → approve/reject → entity lifecycle
+    proposal-workflow.test.ts # Proposal → approve/reject → restore/purge lifecycle
     delivery-api.test.ts      # Pagination, bbox, GeoJSON, filter, schema
     ingestion.test.ts         # Validate, import, governed, skipInvalid
 examples/
-  viewer/                     # Independent consumer demo app (Delivery API only)
+  viewer/                     # Consumer demo app (Delivery API + Leaflet map)
+    index.html                # Dataset selector, schema-driven, bbox/near search
+    README.md
+  dedup/                      # Data quality tool (Management API)
+    index.html                # Duplicate detection + merge/delete via proposals
     index.html                # Leaflet map + search + bbox/near search + API log
     README.md                 # How to run, API endpoints used
 ```
@@ -117,8 +121,16 @@ Geometry is stored in PostGIS via raw SQL, outside Prisma transactions. After `u
 ### Error Handling
 Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) replace fragile string matching. Prisma errors are handled by code: P2002 → 409 (duplicate), P2025 → 404 (not found). Auto-approval failures are logged via `console.warn`.
 
+### Entity Soft Delete and Purge
+Delete action archives entities (status → archived). Archived entities are hidden from default views but preserved in the database. Admins can:
+- **Restore** (`POST /entities/:id/restore`) — archived → active
+- **Purge** (`DELETE /entities/:id/purge`) — permanent physical delete (only archived entities). Disconnects proposals (audit trail preserved), deletes versions, removes entity.
+
+### CORS
+All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for external tools (viewer, dedup tool). Configured in `src/app.ts` before route registration.
+
 ### Delivery API vs Management API
-- **Management API** (`/api/v1/entities`, `/proposals`, etc.) — internal use by admin UI
+- **Management API** (`/api/v1/entities`, `/proposals`, etc.) — full read/write, all data including drafts/archived
 - **Delivery API** (`/api/v1/delivery/`) — read-only, external consumers, only published data
 - **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
 
@@ -128,9 +140,17 @@ Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) r
 ## API Endpoints
 
 ### Content
-- `GET /api/v1/entities` — list (supports `?type=` and `?status=` filters)
+- `GET /api/v1/entities` — list with query support:
+  - `?type=building` — filter by model type
+  - `?status=active` — filter by status (default view shows active only)
+  - `?page=1&pageSize=100` — pagination (max 1000)
+  - `?bbox=minLon,minLat,maxLon,maxLat` — bounding box spatial query
+  - `?near=lon,lat&radius=meters` — proximity search
+  - `?sort=createdAt:desc` — sort (createdAt, updatedAt, type, status)
 - `GET /api/v1/entities/:id` — detail with geometry
 - `GET /api/v1/entities/:id/versions` — version history
+- `POST /api/v1/entities/:id/restore` — restore archived entity to active
+- `DELETE /api/v1/entities/:id/purge` — permanently delete archived entity
 
 ### Proposals
 - `POST /api/v1/proposals` — create (actions: create/update/delete)

@@ -166,4 +166,69 @@ describe("Proposal workflow", () => {
       assert.ok(data.approved >= 0);
     }
   });
+
+  it("should restore an archived entity", async () => {
+    // Create and approve an entity
+    const { data: prop } = await apiRequest("/proposals", {
+      method: "POST",
+      body: {
+        proposedChange: {
+          action: "create",
+          data: { type: modelKey, properties: { name: "To Archive" } },
+        },
+      },
+    });
+    // Get entity ID (auto-approved)
+    const { data: list } = await apiRequest(`/entities?type=${modelKey}&pageSize=1`);
+    const entityId = list.entities[0].id;
+
+    // Archive it
+    const { data: delProp } = await apiRequest("/proposals", {
+      method: "POST",
+      body: { entityId, proposedChange: { action: "delete", data: {} } },
+    });
+
+    // Restore it
+    const { status, data } = await apiRequest(`/entities/${entityId}/restore`, { method: "POST" });
+    assert.strictEqual(status, 200);
+    assert.strictEqual(data.status, "active");
+  });
+
+  it("should purge an archived entity permanently", async () => {
+    // Create entity
+    const { data: prop } = await apiRequest("/proposals", {
+      method: "POST",
+      body: {
+        proposedChange: {
+          action: "create",
+          data: { type: modelKey, properties: { name: "To Purge" } },
+        },
+      },
+    });
+    const { data: list } = await apiRequest(`/entities?type=${modelKey}&status=active&pageSize=1&sort=createdAt:desc`);
+    const entityId = list.entities[0].id;
+
+    // Archive first
+    await apiRequest("/proposals", {
+      method: "POST",
+      body: { entityId, proposedChange: { action: "delete", data: {} } },
+    });
+
+    // Purge
+    const { status, data } = await apiRequest(`/entities/${entityId}/purge`, { method: "DELETE" });
+    assert.strictEqual(status, 200);
+    assert.strictEqual(data.purged, true);
+
+    // Verify gone
+    const { status: getStatus } = await apiRequest(`/entities/${entityId}`);
+    assert.strictEqual(getStatus, 404);
+  });
+
+  it("should reject purge of active entity", async () => {
+    const { data: list } = await apiRequest(`/entities?type=${modelKey}&status=active&pageSize=1`);
+    if (list.entities.length) {
+      const { status } = await apiRequest(`/entities/${list.entities[0].id}/purge`, { method: "DELETE" });
+      assert.strictEqual(status, 400);
+    }
+  });
 });
