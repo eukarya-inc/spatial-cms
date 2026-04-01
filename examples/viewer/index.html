@@ -359,24 +359,30 @@ async function loadMapData() {
 
 async function loadMapDataCustom(spatialParam) {
   const search = document.getElementById('search').value.trim();
-  let path = `/delivery/datasets/${DATASET_ID}/entities?${spatialParam}&pageSize=500&format=geojson`;
-  if (activeFilter && enumField) path += `&filter[${enumField.key}]=${encodeURIComponent(activeFilter)}`;
+  let filterParam = '';
+  if (activeFilter && enumField) filterParam = `&filter[${enumField.key}]=${encodeURIComponent(activeFilter)}`;
 
   try {
-    const fc = await apiGet(path);
-    let features = fc.features || [];
+    // Load spatial data for map (with bbox/near, geojson format)
+    const mapPath = `/delivery/datasets/${DATASET_ID}/entities?${spatialParam}&pageSize=500&format=geojson${filterParam}`;
+    const fc = await apiGet(mapPath);
+    let mapFeatures = fc.features || [];
+
+    // Also load list data WITHOUT spatial constraint (includes entities without geometry)
+    const listPath = `/delivery/datasets/${DATASET_ID}/entities?pageSize=200${filterParam}`;
+    const listResult = await apiGet(listPath);
+    let listEntities = listResult.entities || [];
 
     // Client-side name search
     if (search && titleField) {
       const q = search.toLowerCase();
-      features = features.filter(f => (f.properties?.[titleField.key] || '').toLowerCase().includes(q));
+      mapFeatures = mapFeatures.filter(f => (f.properties?.[titleField.key] || '').toLowerCase().includes(q));
+      listEntities = listEntities.filter(e => (e.properties?.[titleField.key] || '').toLowerCase().includes(q));
     }
 
-    // Render map
+    // Render map (only features with geometry)
     if (geoJsonLayer) map.removeLayer(geoJsonLayer);
-    const isPoint = geometryType === 'POINT';
-
-    geoJsonLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+    geoJsonLayer = L.geoJSON({ type: 'FeatureCollection', features: mapFeatures }, {
       pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
         radius: feature.id === selectedId ? 8 : 5,
         color: feature.id === selectedId ? '#ef4444' : '#3b82f6',
@@ -393,8 +399,19 @@ async function loadMapDataCustom(spatialParam) {
       onEachFeature: (feature, layer) => { layer.on('click', () => selectFeature(feature)); },
     }).addTo(map);
 
-    renderList(features);
-    document.getElementById('count-badge').textContent = `${fc.metadata?.total ?? features.length} in view`;
+    // Merge: map features (as list items) + non-geo entities from list query
+    const mapIds = new Set(mapFeatures.map(f => f.id));
+    const nonGeoEntities = listEntities.filter(e => !mapIds.has(e.id) && !e.geometry);
+    const allListItems = [
+      ...mapFeatures.map(f => ({ id: f.id, properties: f.properties || {}, geometry: f.geometry, version: f.properties?._version })),
+      ...nonGeoEntities.map(e => ({ ...e, _noGeo: true })),
+    ];
+
+    renderList(allListItems);
+
+    const geoCount = mapFeatures.length;
+    const noGeoCount = nonGeoEntities.length;
+    document.getElementById('count-badge').textContent = `${geoCount} on map` + (noGeoCount ? ` + ${noGeoCount} no geo` : '');
   } catch (err) {
     document.getElementById('list').innerHTML = `<div class="loading" style="color:#f87171">${err.message}</div>`;
   }
@@ -402,22 +419,26 @@ async function loadMapDataCustom(spatialParam) {
 
 function renderList(features) {
   const el = document.getElementById('list');
-  const items = features.slice(0, 150);
+  const items = features.slice(0, 200);
   el.innerHTML = items.map(f => {
-    const title = titleField ? (f.properties?.[titleField.key] || 'Untitled') : (f.properties?.name || f.id?.substring(0, 8));
+    const props = f.properties || {};
+    const title = titleField ? (props[titleField.key] || 'Untitled') : (props.name || f.id?.substring(0, 8));
+    const noGeo = f._noGeo || !f.geometry;
     const metas = subtitleFields.map(sf => {
-      const v = f.properties?.[sf.key];
+      const v = props[sf.key];
       if (v === undefined || v === null) return '';
       if (sf.fieldType === 'enum_') return `<span class="li-type">${v}</span>`;
-      if (sf.fieldType === 'number') return `${v}${sf.label.includes('m') || sf.label.includes('eight') ? 'm' : ''}`;
+      if (sf.fieldType === 'number') return `${v}`;
       return String(v).substring(0, 20);
-    }).filter(Boolean).join(' · ');
+    }).filter(Boolean);
+    if (noGeo) metas.push('<span style="color:#f59e0b;font-size:10px">no geometry</span>');
+    if (props._type) metas.unshift(`<span class="li-type">${props._type}</span>`);
 
     return `<div class="list-item${selectedId === f.id ? ' active' : ''}" data-id="${f.id}">
       <div class="li-name">${title}</div>
-      ${metas ? `<div class="li-meta">${metas}</div>` : ''}
+      ${metas.length ? `<div class="li-meta">${metas.join(' · ')}</div>` : ''}
     </div>`;
-  }).join('') + (features.length > 150 ? `<div class="loading">${features.length - 150} more — zoom in</div>` : '');
+  }).join('') + (features.length > 200 ? `<div class="loading">${features.length - 200} more</div>` : '');
 
   el.querySelectorAll('.list-item').forEach(item => {
     item.onclick = () => { const f = features.find(x => x.id === item.dataset.id); if (f) selectFeature(f); };
