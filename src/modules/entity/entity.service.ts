@@ -2,23 +2,75 @@ import prisma from "../../db/client.js";
 import {
   getEntityWithGeometry,
   setEntityGeometry,
+  findEntitiesInBBox,
+  findEntitiesNearPoint,
 } from "../../shared/geometry.js";
 import { findModelDefinitionByKey } from "../../shared/dynamic-validation.js";
 
-export async function listEntities(filters?: {
+interface ListOptions {
   type?: string;
   status?: string;
   modelDefinitionId?: string;
-}) {
-  const where: Record<string, unknown> = {};
-  if (filters?.type) where.type = filters.type;
-  if (filters?.status) where.status = filters.status;
-  if (filters?.modelDefinitionId) where.modelDefinitionId = filters.modelDefinitionId;
+  page?: number;
+  pageSize?: number;
+  bbox?: [number, number, number, number];
+  near?: { lon: number; lat: number; radius: number };
+  sort?: { field: string; order: "asc" | "desc" };
+}
 
-  return prisma.entity.findMany({
+export async function listEntities(options: ListOptions = {}) {
+  const where: Record<string, unknown> = {};
+  if (options.type) where.type = options.type;
+  if (options.status) where.status = options.status;
+  if (options.modelDefinitionId) where.modelDefinitionId = options.modelDefinitionId;
+
+  // Spatial filtering: get matching IDs first
+  if (options.bbox || options.near) {
+    let spatialIds: string[];
+    if (options.bbox) {
+      spatialIds = await findEntitiesInBBox(options.bbox);
+    } else {
+      spatialIds = await findEntitiesNearPoint(
+        options.near!.lon,
+        options.near!.lat,
+        options.near!.radius,
+      );
+    }
+    if (!spatialIds.length) {
+      return { entities: [], pagination: { total: 0, page: 1, pageSize: options.pageSize || 100, totalPages: 0 } };
+    }
+    where.id = { in: spatialIds };
+  }
+
+  // Count total
+  const total = await prisma.entity.count({ where });
+
+  // Pagination
+  const pageSize = Math.min(Math.max(options.pageSize || 100, 1), 1000);
+  const page = Math.max(options.page || 1, 1);
+  const totalPages = Math.ceil(total / pageSize);
+
+  // Sort
+  let orderBy: Record<string, string> = { createdAt: "desc" };
+  if (options.sort) {
+    // Sort by property requires fetching all then sorting in-memory
+    // For now, support createdAt and updatedAt as DB-level sorts
+    if (["createdAt", "updatedAt", "type", "status"].includes(options.sort.field)) {
+      orderBy = { [options.sort.field]: options.sort.order };
+    }
+  }
+
+  const entities = await prisma.entity.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy,
+    skip: (page - 1) * pageSize,
+    take: pageSize,
   });
+
+  return {
+    entities,
+    pagination: { total, page, pageSize, totalPages },
+  };
 }
 
 export async function getEntity(id: string) {

@@ -337,7 +337,7 @@ async function viewDashboard(main) {
   // Fetch all data in parallel
   const [models, entities, proposals, datasets, publications] = await Promise.all([
     api('/definitions/models').catch(() => []),
-    api('/entities').catch(() => []),
+    api('/entities?pageSize=1000').then(r => r.entities || r).catch(() => []),
     api('/proposals').catch(() => []),
     api('/datasets').catch(() => []),
     api('/publications').catch(() => []),
@@ -427,7 +427,8 @@ async function viewDashboard(main) {
 async function viewContentAll(main) {
   setBreadcrumb(['Manage'], ['Records']);
   setActiveNav('manage/records');
-  const entities = await api('/entities');
+  const result = await api('/entities?pageSize=1000');
+  const entities = result.entities || result;
   main.innerHTML = '';
 
   if (modelCache.length === 0) {
@@ -492,7 +493,8 @@ function filterRecords() {
 async function viewContentByModel(main, modelKey) {
   setBreadcrumb(['Manage'], ['Records', `nav('manage/records')`], [modelKey]);
   setActiveNav(`manage/records/${modelKey}`);
-  const entities = await api(`/entities?type=${modelKey}`);
+  const result = await api(`/entities?type=${modelKey}&pageSize=1000`);
+  const entities = result.entities || result;
   const model = modelCache.find(m => m.key === modelKey);
   const modelName = model?.name || modelKey;
 
@@ -2119,12 +2121,25 @@ async function viewManagementApi(main) {
 
     <div class="card">
       <h3>Entities</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Read entities. To create or modify, use Proposals.</p>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Read entities (including unpublished). To create or modify, use Proposals.</p>
       <table style="box-shadow:none;font-size:13px"><tbody>
-        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities</code></td><td>List entities. Filter: <code>?type=</code> <code>?status=</code></td></tr>
+        <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities</code></td><td>List entities with query support (see below)</td></tr>
         <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities/:id</code></td><td>Single entity with geometry (GeoJSON)</td></tr>
         <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities/:id/versions</code></td><td>Version history (all snapshots)</td></tr>
       </tbody></table>
+      <div style="margin-top:12px;font-size:13px">
+        <div style="font-weight:600;color:var(--muted);font-size:12px;margin-bottom:6px">Query parameters for <code>/entities</code>:</div>
+        <table style="box-shadow:none;font-size:12px"><tbody>
+          <tr><td><code>type</code></td><td><code>building</code></td><td>Filter by model type</td></tr>
+          <tr><td><code>status</code></td><td><code>active</code></td><td>Filter by status (draft/active/archived)</td></tr>
+          <tr><td><code>page</code></td><td><code>1</code></td><td>Page number (default: 1)</td></tr>
+          <tr><td><code>pageSize</code></td><td><code>100</code></td><td>Items per page (default: 100, max: 1000)</td></tr>
+          <tr><td><code>bbox</code></td><td><code>139,35,140,36</code></td><td>Bounding box spatial query</td></tr>
+          <tr><td><code>near</code></td><td><code>139.7,35.6</code></td><td>Center point for radius search</td></tr>
+          <tr><td><code>radius</code></td><td><code>1000</code></td><td>Radius in meters (with <code>near</code>)</td></tr>
+          <tr><td><code>sort</code></td><td><code>createdAt:desc</code></td><td>Sort (createdAt, updatedAt, type, status)</td></tr>
+        </tbody></table>
+      </div>
     </div>
 
     <div class="card">
