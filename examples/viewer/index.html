@@ -399,19 +399,23 @@ async function loadMapDataCustom(spatialParam) {
       onEachFeature: (feature, layer) => { layer.on('click', () => selectFeature(feature)); },
     }).addTo(map);
 
-    // Merge: map features (as list items) + non-geo entities from list query
+    // Merge: map features + all list entities (deduplicated)
     const mapIds = new Set(mapFeatures.map(f => f.id));
-    const nonGeoEntities = listEntities.filter(e => !mapIds.has(e.id) && !e.geometry);
     const allListItems = [
       ...mapFeatures.map(f => ({ id: f.id, properties: f.properties || {}, geometry: f.geometry, version: f.properties?._version })),
-      ...nonGeoEntities.map(e => ({ ...e, _noGeo: true })),
+      ...listEntities.filter(e => !mapIds.has(e.id)).map(e => ({ ...e, _noGeo: !e.geometry })),
     ];
 
     renderList(allListItems);
 
     const geoCount = mapFeatures.length;
-    const noGeoCount = nonGeoEntities.length;
-    document.getElementById('count-badge').textContent = `${geoCount} on map` + (noGeoCount ? ` + ${noGeoCount} no geo` : '');
+    const totalList = allListItems.length;
+    const noGeoCount = totalList - geoCount;
+    if (geoCount > 0) {
+      document.getElementById('count-badge').textContent = `${geoCount} on map` + (noGeoCount ? ` + ${noGeoCount} list only` : '');
+    } else {
+      document.getElementById('count-badge').textContent = `${totalList} records (no geometry)`;
+    }
   } catch (err) {
     document.getElementById('list').innerHTML = `<div class="loading" style="color:#f87171">${err.message}</div>`;
   }
