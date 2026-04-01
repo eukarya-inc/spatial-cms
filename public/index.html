@@ -892,15 +892,30 @@ async function viewProposals(main) {
     </table>
     ` : '<div class="card"><div class="empty"><h4>No pending proposals</h4><p>All proposals have been reviewed.</p></div></div>'}
 
-    ${history.length ? `<h3 style="margin:24px 0 12px;font-size:16px;color:var(--muted)">History</h3>
-    <table><thead><tr><th>Action</th><th>Model</th><th>Status</th><th>Source</th><th>Created</th></tr></thead>
-      <tbody>${history.slice(0, 20).map(p => `<tr>
-        <td>${p.proposedChange.action}</td>
-        <td><code>${p.proposedChange.data?.type || '—'}</code></td>
-        <td>${badge(p.status)}</td>
-        <td style="color:var(--muted)">${p.source}</td>
-        <td style="color:var(--muted)">${new Date(p.createdAt).toLocaleDateString()}</td>
-      </tr>`).join('')}</tbody></table>` : ''}`;
+    ${history.length ? `<h3 style="margin:24px 0 12px;font-size:16px;color:var(--muted)">Recent Activity <span style="font-size:13px;font-weight:400">(${history.length} total)</span></h3>
+    <div id="rq-history">
+      ${history.slice(0, 30).map(p => {
+        const name = p.proposedChange.data?.properties?.name || '';
+        const type = p.proposedChange.data?.type || '—';
+        const action = p.proposedChange.action;
+        const isApproved = p.status === 'approved';
+        const isRejected = p.status === 'rejected';
+        const borderColor = isApproved ? '#22c55e' : isRejected ? '#ef4444' : '#e5e7eb';
+        const entityLink = isApproved && p.entityId ? `onclick="nav('manage/records/${type}/${p.entityId}')" style="cursor:pointer"` : '';
+        const time = new Date(p.createdAt).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        return `<div ${entityLink} style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-left:3px solid ${borderColor};border-bottom:1px solid var(--border);transition:background 0.1s${entityLink ? ';cursor:pointer' : ''}" ${entityLink ? 'onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'\'"' : ''}>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px">
+              ${badge(p.status)}
+              <span style="font-weight:500">${action}</span>
+              <code style="font-size:11px;color:var(--muted)">${type}</code>
+              ${name ? `<span style="color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</span>` : ''}
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${p.source} · ${time}${isApproved && p.entityId ? ' · click to view entity' : ''}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}`;
 
   if (!pending.length) return;
 
