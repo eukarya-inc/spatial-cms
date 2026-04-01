@@ -56,6 +56,28 @@ entityRouter.get("/:id/versions", async (req, res, next) => {
   }
 });
 
+// POST /api/v1/entities/:id/restore
+entityRouter.post("/:id/restore", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const entity = await entityService.restoreEntity(id);
+    res.json(entity);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/v1/entities/:id/purge
+entityRouter.delete("/:id/purge", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const result = await entityService.purgeEntity(id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/entities/:id
 entityRouter.get("/:id", async (req, res, next) => {
   try {

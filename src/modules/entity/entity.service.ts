@@ -6,6 +6,7 @@ import {
   findEntitiesNearPoint,
 } from "../../shared/geometry.js";
 import { findModelDefinitionByKey } from "../../shared/dynamic-validation.js";
+import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
 interface ListOptions {
   type?: string;
@@ -82,6 +83,29 @@ export async function getEntityVersions(id: string) {
     where: { entityId: id },
     orderBy: { versionNumber: "desc" },
   });
+}
+
+/** Restore an archived entity back to active */
+export async function restoreEntity(id: string) {
+  const entity = await prisma.entity.findUnique({ where: { id } });
+  if (!entity) throw new NotFoundError("Entity");
+  if (entity.status !== "archived") throw new BusinessError("Only archived entities can be restored");
+  return prisma.entity.update({ where: { id }, data: { status: "active" } });
+}
+
+/** Permanently delete an archived entity (cannot be undone) */
+export async function purgeEntity(id: string) {
+  const entity = await prisma.entity.findUnique({ where: { id } });
+  if (!entity) throw new NotFoundError("Entity");
+  if (entity.status !== "archived") throw new BusinessError("Only archived entities can be purged");
+
+  // Disconnect proposals (keep audit trail but remove FK)
+  await prisma.proposal.updateMany({ where: { entityId: id }, data: { entityId: null } });
+  // Delete versions
+  await prisma.entityVersion.deleteMany({ where: { entityId: id } });
+  // Delete entity (raw SQL because of Unsupported geometry column)
+  await prisma.$executeRaw`DELETE FROM entity WHERE id = ${id}::uuid`;
+  return { purged: true, id };
 }
 
 // Direct entity creation is intentionally NOT exposed.

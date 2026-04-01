@@ -485,14 +485,51 @@ function filterRecords() {
   });
   const container = $('rec-table');
   if (!entities.length) { container.innerHTML = '<div class="empty" style="padding:24px"><p>No matching records.</p></div>'; return; }
-  container.innerHTML = `<table><thead><tr><th>Name</th><th>Model</th><th>Status</th><th>Created</th><th></th></tr></thead>
+  const isArchived = ($('rec-filter-status')?.value === 'archived');
+
+  let html = '';
+  if (isArchived && entities.length) {
+    html += `<div style="display:flex;gap:8px;margin-bottom:12px;padding:10px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:var(--radius)">
+      <span style="font-size:13px;color:var(--muted);flex:1">${entities.length} archived records</span>
+      <button class="btn btn-outline btn-sm" onclick="restoreAll()">Restore All</button>
+      <button class="btn btn-danger btn-sm" onclick="purgeAll()">Purge All</button>
+    </div>`;
+  }
+
+  html += `<table><thead><tr><th>Name</th><th>Model</th><th>Status</th><th>Created</th><th></th></tr></thead>
     <tbody>${entities.map(e => `<tr>
       <td>${e.properties?.name || '<em style="color:var(--muted)">Untitled</em>'}</td>
       <td><code style="font-size:12px">${e.type}</code></td>
       <td>${badge(e.status)}</td>
       <td style="color:var(--muted)">${new Date(e.createdAt).toLocaleDateString()}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="nav('manage/records/${e.type}/${e.id}')">View</button></td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sm" onclick="nav('manage/records/${e.type}/${e.id}')">View</button>
+        ${e.status === 'archived' ? `<button class="btn btn-ghost btn-sm" style="color:var(--success)" onclick="restoreOne('${e.id}')">Restore</button><button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="purgeOne('${e.id}','${(e.properties?.name||'').replace(/'/g,'\\&#39;')}')">Purge</button>` : ''}
+      </td>
     </tr>`).join('')}</tbody></table>`;
+  container.innerHTML = html;
+}
+
+async function restoreOne(id) {
+  try { await api(`/entities/${id}/restore`, { method: 'POST' }); toast('Restored'); reloadRecords(); } catch (err) { toast(err.message, 'error'); }
+}
+async function purgeOne(id, name) {
+  if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone. The entity and all its versions will be removed from the database.`)) return;
+  try { await api(`/entities/${id}/purge`, { method: 'DELETE' }); toast('Permanently deleted'); reloadRecords(); } catch (err) { toast(err.message, 'error'); }
+}
+async function restoreAll() {
+  const entities = window._allEntities || [];
+  if (!confirm(`Restore ${entities.length} archived records to active?`)) return;
+  let done = 0;
+  for (const e of entities) { try { await api(`/entities/${e.id}/restore`, { method: 'POST' }); done++; } catch {} }
+  toast(`${done} restored`); reloadRecords();
+}
+async function purgeAll() {
+  const entities = window._allEntities || [];
+  if (!confirm(`PERMANENTLY DELETE ${entities.length} archived records?\n\nThis cannot be undone. All entity data, versions, and geometry will be removed from the database.`)) return;
+  let done = 0;
+  for (const e of entities) { try { await api(`/entities/${e.id}/purge`, { method: 'DELETE' }); done++; } catch {} }
+  toast(`${done} permanently deleted`); reloadRecords();
 }
 
 // ─── Content: By Model ─────────────────────────────
@@ -563,7 +600,7 @@ async function viewEntityDetail(main, entityId) {
   } else if (e.status === 'draft') {
     statusActions = `<button class="btn btn-success btn-sm" id="entity-activate">Activate</button> <button class="btn btn-danger btn-sm" id="entity-archive">Archive</button>`;
   } else if (e.status === 'archived') {
-    statusActions = `<button class="btn btn-success btn-sm" id="entity-activate">Re-activate</button>`;
+    statusActions = `<button class="btn btn-success btn-sm" id="entity-activate">Restore</button> <button class="btn btn-danger btn-sm" id="entity-purge">Purge</button>`;
   }
 
   main.innerHTML = `<div class="detail-grid">
@@ -644,8 +681,17 @@ async function viewEntityDetail(main, entityId) {
   }
   const activateBtn = $('entity-activate');
   const archiveBtn = $('entity-archive');
-  if (activateBtn) activateBtn.onclick = () => changeStatus('active');
+  const purgeBtn = $('entity-purge');
+  if (activateBtn) activateBtn.onclick = async () => {
+    if (e.status === 'archived') {
+      try { await api(`/entities/${entityId}/restore`, { method: 'POST' }); toast('Restored'); reload(); } catch (err) { toast(err.message, 'error'); }
+    } else { changeStatus('active'); }
+  };
   if (archiveBtn) archiveBtn.onclick = () => changeStatus('archived');
+  if (purgeBtn) purgeBtn.onclick = async () => {
+    if (!confirm(`Permanently delete "${e.properties?.name || 'this entity'}"?\n\nThis cannot be undone.`)) return;
+    try { await api(`/entities/${entityId}/purge`, { method: 'DELETE' }); toast('Permanently deleted'); nav(`manage/records/${e.type}`); } catch (err) { toast(err.message, 'error'); }
+  };
 
   // ── Version History ──
   try {
