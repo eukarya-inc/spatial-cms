@@ -174,7 +174,8 @@
 
     <div class="sidebar-spacer"></div>
     <div class="sidebar-section" data-section="integrate">Integrate</div>
-    <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/ingestion')" data-nav="integrate/ingestion"><span>Import API</span></div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/import')" data-nav="integrate/import"><span>Import Data</span></div>
+    <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/api')" data-nav="integrate/api"><span>Import API</span></div>
 
     <div class="sidebar-section" data-section="integrate" style="opacity:0.5;font-size:9px">Dev Only</div>
     <div class="sidebar-item" data-section="integrate" onclick="nav('dev/api')" data-nav="dev/api" style="opacity:0.5"><span>API Explorer</span></div>
@@ -311,7 +312,9 @@ async function router() {
     else if (route === 'publish/history') await viewPublications(main);
     else if (route === 'publish/delivery') await viewDeliveryDocs(main);
     else if (route === 'publish/ogc') await viewOgcDocs(main);
-    else if (route === 'integrate/ingestion') await viewIngestionDocs(main);
+    else if (route === 'integrate/import') await viewImportData(main);
+    else if (route === 'integrate/api') await viewImportApi(main);
+    else if (route === 'integrate/ingestion') await viewImportData(main); // legacy redirect
     else if (route === 'dev/api') await viewApiPlayground(main);
     else if (route === 'dev/console') await viewPublishConsole(main);
     else await viewContentAll(main);
@@ -1320,32 +1323,84 @@ function deliveryCopyUrl(dsId) {
   }
 }
 
-// ─── Ingestion API Docs ────────────────────────────
-async function viewIngestionDocs(main) {
-  setBreadcrumb(['Integrate'], ['Ingestion API']);
-  setActiveNav('integrate/ingestion');
+// ─── Import Data (for admins) ──────────────────────
+async function viewImportData(main) {
+  setBreadcrumb(['Integrate'], ['Import Data']);
+  setActiveNav('integrate/import');
+  const models = modelCache;
+
+  main.innerHTML = `
+    <div class="page-header"><div><h2>Import Data</h2><div class="sub">Import spatial data from files into the system</div></div></div>
+
+    <div class="card">
+      <h3>File Import</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Drag and drop a GeoJSON or CSV file. The system will parse it, let you map fields, validate, and import.</p>
+
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="form-group" style="flex:1">
+          <label>Model</label>
+          <select id="fi-model">${models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('')}</select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Import Mode</label>
+          <select id="fi-mode">
+            <option value="governed">Auto-governed (recommended)</option>
+            <option value="proposal">Proposal Batch (requires review)</option>
+            <option value="import">Direct Import (trusted sources)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="fi-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;cursor:pointer;transition:border-color 0.15s;margin-bottom:12px">
+        <div style="font-size:24px;margin-bottom:8px">&#128194;</div>
+        <div style="font-size:14px;color:var(--text)">Drop GeoJSON or CSV file here</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">or <span style="color:var(--primary);text-decoration:underline">click to browse</span></div>
+        <input type="file" id="fi-file" accept=".geojson,.json,.csv" style="display:none">
+      </div>
+      <div id="fi-results"></div>
+    </div>
+
+    <div class="card" style="background:var(--bg);border:1px dashed var(--border)">
+      <h3 style="color:var(--muted)">CLI Import (coming soon)</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:8px">For large files and automation, use the command-line tool:</p>
+      <pre style="font-size:12px;background:var(--surface)">npx spatial-cms import buildings.geojson --model building
+npx spatial-cms import data.csv --model building --lat latitude --lon longitude
+npx spatial-cms import data.geojson --model building --mode governed</pre>
+    </div>`;
+
+  // File import event handlers
+  setupFileImport(models);
+}
+
+// ─── Import API (for developers) ───────────────────
+async function viewImportApi(main) {
+  setBreadcrumb(['Integrate'], ['Import API']);
+  setActiveNav('integrate/api');
   const models = modelCache;
   const baseUrl = window.location.origin + '/api/v1';
 
   main.innerHTML = `
-    <div class="page-header"><div><h2>Ingestion API</h2><div class="sub">Batch data import for pipelines, ETL scripts, and external systems</div></div></div>
+    <div class="page-header"><div><h2>Import API</h2><div class="sub">API endpoints for data pipelines and external system integration</div></div></div>
 
     <div class="card">
       <h3>Overview</h3>
-      <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
-        The Ingestion API enables automated data pipelines to load data into Spatial CMS at scale.
-        Two modes are available depending on trust level:
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:14px">
-        <div style="padding:16px;background:var(--bg);border-radius:var(--radius)">
-          <div style="font-weight:600;margin-bottom:4px">Direct Import</div>
-          <div style="color:var(--muted);font-size:13px;margin-bottom:8px">For trusted sources (migrations, authoritative datasets). Entities are created directly as <code>active</code> with an audit proposal.</div>
-          <code style="font-size:12px">POST /api/v1/ingestion/import</code>
+      <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">Four endpoints for different import scenarios:</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:var(--success);margin-bottom:2px">POST /ingestion/validate</div>
+          <div style="color:var(--muted)">Dry-run validation. No data written.</div>
         </div>
-        <div style="padding:16px;background:var(--bg);border-radius:var(--radius)">
-          <div style="font-weight:600;margin-bottom:4px">Proposal Batch</div>
-          <div style="color:var(--muted);font-size:13px;margin-bottom:8px">For untrusted/external sources. Creates pending proposals that require human review before data enters the system.</div>
-          <code style="font-size:12px">POST /api/v1/ingestion/proposal-set</code>
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:var(--primary);margin-bottom:2px">POST /ingestion/governed</div>
+          <div style="color:var(--muted)">Recommended. Respects governance policy.</div>
+        </div>
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:#1e40af;margin-bottom:2px">POST /ingestion/proposal-set</div>
+          <div style="color:var(--muted)">All records require manual review.</div>
+        </div>
+        <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
+          <div style="font-weight:600;color:var(--warning);margin-bottom:2px">POST /ingestion/import</div>
+          <div style="color:var(--muted)">Direct write. Trusted sources only.</div>
         </div>
       </div>
     </div>
@@ -1398,37 +1453,6 @@ async function viewIngestionDocs(main) {
   "source": "machine"
 }</pre>
       </div>
-    </div>
-
-    <div class="card">
-      <h3>File Import</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Drag and drop a GeoJSON or CSV file to import data.</p>
-
-      <!-- Step 1: File + Model -->
-      <div class="form-row" style="margin-bottom:12px">
-        <div class="form-group" style="flex:1">
-          <label>Model</label>
-          <select id="fi-model">${models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('')}</select>
-        </div>
-        <div class="form-group" style="flex:1">
-          <label>Import Mode</label>
-          <select id="fi-mode">
-            <option value="governed">Auto-governed (recommended)</option>
-            <option value="proposal">Proposal Batch</option>
-            <option value="import">Direct Import (trusted)</option>
-          </select>
-        </div>
-      </div>
-
-      <div id="fi-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;cursor:pointer;transition:border-color 0.15s;margin-bottom:12px">
-        <div style="font-size:24px;margin-bottom:8px">&#128194;</div>
-        <div style="font-size:14px;color:var(--text)">Drop GeoJSON or CSV file here</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">or <span style="color:var(--primary);text-decoration:underline">click to browse</span></div>
-        <input type="file" id="fi-file" accept=".geojson,.json,.csv" style="display:none">
-      </div>
-
-      <!-- Step 2-5: Results area -->
-      <div id="fi-results"></div>
     </div>
 
     <div class="card">
@@ -1677,9 +1701,12 @@ cat buildings.geojson | jq '{
     }
   };
 
-  // ── File Import ──
+}
+
+function setupFileImport(models) {
   const dropzone = $('fi-dropzone');
   const fileInput = $('fi-file');
+  if (!dropzone || !fileInput) return;
 
   dropzone.onclick = () => fileInput.click();
   dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--primary)'; dropzone.style.background = 'rgba(99,102,241,0.03)'; };
