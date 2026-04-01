@@ -21,6 +21,7 @@ Core invariant: **ALL data changes go through proposals. No direct entity writes
 ```bash
 docker compose up -d          # PostGIS + Directus
 npm run dev                   # Express on port 3001
+npm test                      # Run 22 integration tests
 ```
 
 ## Project Structure
@@ -28,7 +29,8 @@ npm run dev                   # Express on port 3001
 ```
 prisma/schema.prisma          # All 12 models, 12 enums
 src/
-  index.ts                    # Express app, route mounting, error handler
+  app.ts                      # Express app creation + routes + error handler (exportable)
+  index.ts                    # Server startup (imports app.ts, calls listen)
   db/client.ts                # Prisma singleton
   shared/
     geometry.ts               # PostGIS helpers (ST_AsGeoJSON, ST_GeomFromGeoJSON)
@@ -56,7 +58,22 @@ public/index.html             # Single-page admin UI (sidebar nav, hash router)
                               #   API Playground: interactive endpoint explorer
 scripts/
   seed.ts                     # Sample data
+  seed-taito.ts               # Real data: 1000 buildings from OSM (Tokyo Taito-ku)
   migrate-entity-types.ts     # One-time entity.type → modelDefinitionId migration
+tests/
+  README.md                   # Test documentation + template
+  helpers/
+    api.ts                    # Test server on random port + HTTP request helper
+    setup.ts                  # DB cleanup + test model/policy factory
+  integration/
+    version-geometry.test.ts  # Geometry preserved in version snapshots (regression)
+    proposal-workflow.test.ts # Proposal → approve/reject → entity lifecycle
+    delivery-api.test.ts      # Pagination, bbox, GeoJSON, filter, schema
+    ingestion.test.ts         # Validate, import, governed, skipInvalid
+examples/
+  viewer/                     # Independent consumer demo app (Delivery API only)
+    index.html                # Leaflet map + search + bbox/near search + API log
+    README.md                 # How to run, API endpoints used
 ```
 
 ## Key Patterns
@@ -94,6 +111,9 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 ### Properties Merge on Update
 Entity updates merge new properties with existing ones (not replace). Orphaned properties (from deleted field definitions) are preserved. The edit form also preserves orphaned fields when submitting update proposals.
 
+### Version Snapshot Geometry Patch
+Geometry is stored in PostGIS via raw SQL, outside Prisma transactions. After `updateEntityInternal` completes, it patches the latest version snapshot with actual geometry from PostGIS. This prevents snapshots from losing geometry on status-only or properties-only updates.
+
 ### Error Handling
 Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) replace fragile string matching. Prisma errors are handled by code: P2002 → 409 (duplicate), P2025 → 404 (not found). Auto-approval failures are logged via `console.warn`.
 
@@ -101,6 +121,9 @@ Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) r
 - **Management API** (`/api/v1/entities`, `/proposals`, etc.) — internal use by admin UI
 - **Delivery API** (`/api/v1/delivery/`) — read-only, external consumers, only published data
 - **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
+
+### App Architecture (src/app.ts vs src/index.ts)
+`src/app.ts` creates and exports the Express app (routes, middleware, error handler) without calling `listen()`. `src/index.ts` imports app and starts the server. This separation allows tests to import the app without starting a server.
 
 ## API Endpoints
 
@@ -177,11 +200,12 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish + publication history |
 | `#publish/delivery` | Publish | Delivery API docs + inline preview |
 | `#publish/ogc` | Publish | OGC Services docs + QGIS connection guide |
-| `#integrate/ingestion` | Integrate | Import API docs + test data generator + validate/import |
+| `#integrate/import` | Integrate | File import (drag-drop GeoJSON/CSV + field mapping) |
+| `#integrate/api` | Integrate | Import API docs + test data generator + validate/import |
 | `#dev/api` | Dev Only | Interactive API endpoint explorer |
 | `#dev/console` | Dev Only | One-page publish workflow testing |
 
-Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `#api-playground`, `#publish-console`) auto-redirect to new paths.
+Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `#api-playground`, `#publish-console`, `#integrate/ingestion`) auto-redirect to new paths.
 
 ## Ports
 
