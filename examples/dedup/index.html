@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dedup Tool — Spatial CMS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }
+
+    .app { display: grid; grid-template-columns: 300px 1fr 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+    .topbar { grid-column: 1 / -1; background: #0f172a; display: flex; align-items: center; padding: 0 16px; gap: 12px; border-bottom: 1px solid #1e293b; }
+    .topbar h1 { font-size: 15px; font-weight: 600; }
+    .topbar select { padding: 5px 8px; border: 1px solid #334155; border-radius: 6px; font-size: 12px; background: #1e293b; color: #e2e8f0; outline: none; }
+    .topbar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+    .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; background: rgba(59,130,246,0.15); color: #60a5fa; }
+
+    .sidebar { background: #1e293b; overflow-y: auto; padding: 16px; border-right: 1px solid #334155; }
+    .sidebar h3 { font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .sidebar label { display: block; font-size: 13px; padding: 6px 0; cursor: pointer; color: #cbd5e1; }
+    .sidebar label:hover { color: #f1f5f9; }
+    .sidebar input[type="radio"] { margin-right: 8px; }
+    .sidebar .group { margin-bottom: 16px; }
+    .sidebar .field-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+    .sidebar input[type="number"], .sidebar input[type="range"], .sidebar select { width: 100%; padding: 6px 8px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: #e2e8f0; font-size: 13px; margin-bottom: 8px; }
+    .sidebar .stats { margin-top: 16px; padding-top: 16px; border-top: 1px solid #334155; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+    .stat-label { color: #64748b; }
+    .stat-value { color: #e2e8f0; font-weight: 600; }
+
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+    .btn:hover { opacity: 0.85; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .results { overflow-y: auto; padding: 16px; }
+    .group-card { background: #1e293b; border-radius: 8px; padding: 14px; margin-bottom: 12px; border: 1px solid #334155; }
+    .group-card.selected { border-color: #3b82f6; }
+    .group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .group-title { font-size: 14px; font-weight: 600; }
+    .group-count { font-size: 11px; color: #64748b; }
+    .dup-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-size: 13px; margin-bottom: 4px; cursor: pointer; }
+    .dup-row:hover { background: #334155; }
+    .dup-row.keep { background: rgba(34,197,94,0.1); border-left: 3px solid #22c55e; }
+    .dup-row.delete { background: rgba(239,68,68,0.05); color: #94a3b8; }
+    .dup-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dup-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+    .tag-keep { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .tag-delete { background: rgba(239,68,68,0.2); color: #f87171; }
+
+    .detail { overflow-y: auto; padding: 16px; border-left: 1px solid #334155; }
+    .diff-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .diff-table th, .diff-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    .diff-table th { color: #64748b; font-size: 11px; text-transform: uppercase; }
+    .diff-same { color: #64748b; }
+    .diff-diff { color: #f59e0b; font-weight: 600; }
+
+    .loading { padding: 40px; text-align: center; color: #64748b; }
+    .empty { padding: 40px; text-align: center; color: #64748b; }
+    .empty h4 { color: #e2e8f0; margin-bottom: 8px; }
+
+    @media (max-width: 1024px) {
+      .app { grid-template-columns: 250px 1fr; }
+      .detail { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Dedup Tool</h1>
+    <select id="model-select"><option value="">Loading models...</option></select>
+    <select id="field-select" style="display:none"><option value="">Select field...</option></select>
+    <div class="right">
+      <span class="badge" id="status-badge"></span>
+      <span class="badge" style="background:rgba(34,197,94,0.15);color:#4ade80">Management API</span>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <h3>Strategy</h3>
+    <div class="group">
+      <label><input type="radio" name="strategy" value="exact" checked> Exact field match</label>
+      <label><input type="radio" name="strategy" value="fuzzy"> Fuzzy name match</label>
+      <label><input type="radio" name="strategy" value="spatial"> Near location</label>
+      <label><input type="radio" name="strategy" value="combined"> Combined (name + location)</label>
+    </div>
+
+    <div class="group" id="fuzzy-options" style="display:none">
+      <div class="field-label">Similarity threshold</div>
+      <input type="range" id="threshold" min="0.5" max="1" step="0.05" value="0.8">
+      <div style="font-size:12px;color:#94a3b8;text-align:center" id="threshold-val">0.80</div>
+    </div>
+
+    <div class="group" id="spatial-options" style="display:none">
+      <div class="field-label">Max distance (meters)</div>
+      <input type="number" id="distance" value="10" min="1" max="1000">
+    </div>
+
+    <button class="btn btn-primary" id="run-btn" style="width:100%;margin-bottom:12px" disabled>Run Analysis</button>
+
+    <div class="stats" id="stats"></div>
+
+    <div style="margin-top:16px" id="actions" style="display:none">
+      <button class="btn btn-outline" id="auto-resolve-btn" style="width:100%;margin-bottom:8px" disabled>Auto-resolve All</button>
+      <button class="btn btn-success" id="create-proposals-btn" style="width:100%;margin-bottom:8px" disabled>Create Proposals</button>
+    </div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="empty"><h4>Select a model and run analysis</h4><p>Choose a strategy and click "Run Analysis" to find duplicates.</p></div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="empty"><h4>Select a group</h4><p>Click a duplicate group to compare records.</p></div>
+  </div>
+</div>
+
+<script>
+const CMS_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001/api/v1'
+  : `http://${window.location.hostname}:3001/api/v1`;
+
+let allEntities = [];
+let duplicateGroups = [];
+let selectedGroupIdx = null;
+let modelFields = [];
+
+async function apiGet(path) { const r = await fetch(`${CMS_URL}${path}`); return r.json(); }
+async function apiPost(path, body) { const r = await fetch(`${CMS_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r.json(); }
+
+// ─── Init ───
+async function init() {
+  const models = await apiGet('/definitions/models');
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '<option value="">Select model...</option>' + models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key}) — ${m._count?.entities ?? '?'} records</option>`).join('');
+  sel.onchange = onModelChange;
+
+  // Strategy radio change
+  document.querySelectorAll('input[name="strategy"]').forEach(r => {
+    r.onchange = () => {
+      document.getElementById('fuzzy-options').style.display = ['fuzzy', 'combined'].includes(r.value) ? '' : 'none';
+      document.getElementById('spatial-options').style.display = ['spatial', 'combined'].includes(r.value) ? '' : 'none';
+    };
+  });
+  document.getElementById('threshold').oninput = (e) => { document.getElementById('threshold-val').textContent = parseFloat(e.target.value).toFixed(2); };
+  document.getElementById('run-btn').onclick = runAnalysis;
+  document.getElementById('auto-resolve-btn').onclick = autoResolve;
+  document.getElementById('create-proposals-btn').onclick = createProposals;
+}
+
+async function onModelChange() {
+  const modelKey = document.getElementById('model-select').value;
+  if (!modelKey) return;
+  const modelId = document.getElementById('model-select').selectedOptions[0]?.dataset.id;
+
+  // Load schema for field selection
+  const schema = await apiGet(`/definitions/models/${modelId}/schema`);
+  modelFields = schema.fields || [];
+  const fieldSel = document.getElementById('field-select');
+  fieldSel.style.display = '';
+  fieldSel.innerHTML = modelFields.filter(f => f.fieldType === 'string').map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('');
+
+  // Load entities
+  document.getElementById('status-badge').textContent = 'Loading...';
+  allEntities = [];
+  let page = 1;
+  while (true) {
+    const r = await apiGet(`/entities?type=${modelKey}&status=active&page=${page}&pageSize=500`);
+    allEntities.push(...r.entities);
+    if (allEntities.length >= r.pagination.total) break;
+    page++;
+  }
+  document.getElementById('status-badge').textContent = `${allEntities.length} loaded`;
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('stats').innerHTML = `<div class="stat-row"><span class="stat-label">Entities</span><span class="stat-value">${allEntities.length}</span></div>`;
+}
+
+// ─── Analysis ───
+function runAnalysis() {
+  const strategy = document.querySelector('input[name="strategy"]:checked').value;
+  const matchField = document.getElementById('field-select').value || 'name';
+  const threshold = parseFloat(document.getElementById('threshold').value);
+  const maxDistance = parseInt(document.getElementById('distance').value);
+
+  duplicateGroups = [];
+
+  if (strategy === 'exact') {
+    duplicateGroups = findExactDuplicates(matchField);
+  } else if (strategy === 'fuzzy') {
+    duplicateGroups = findFuzzyDuplicates(matchField, threshold);
+  } else if (strategy === 'spatial') {
+    duplicateGroups = findSpatialDuplicates(maxDistance);
+  } else if (strategy === 'combined') {
+    duplicateGroups = findCombinedDuplicates(matchField, threshold, maxDistance);
+  }
+
+  // Mark first in each group as "keep" by default
+  duplicateGroups.forEach(g => { g.forEach((e, i) => { e._action = i === 0 ? 'keep' : 'delete'; }); });
+
+  renderResults();
+  renderStats();
+}
+
+function findExactDuplicates(field) {
+  const groups = {};
+  allEntities.forEach(e => {
+    const val = String(e.properties?.[field] || '').trim();
+    if (!val) return;
+    if (!groups[val]) groups[val] = [];
+    groups[val].push({ ...e });
+  });
+  return Object.values(groups).filter(g => g.length > 1);
+}
+
+function findFuzzyDuplicates(field, threshold) {
+  const items = allEntities.filter(e => e.properties?.[field]).map(e => ({
+    ...e,
+    _normalized: normalize(String(e.properties[field])),
+  }));
+  const used = new Set();
+  const groups = [];
+  for (let i = 0; i < items.length; i++) {
+    if (used.has(i)) continue;
+    const group = [items[i]];
+    used.add(i);
+    for (let j = i + 1; j < items.length; j++) {
+      if (used.has(j)) continue;
+      if (similarity(items[i]._normalized, items[j]._normalized) >= threshold) {
+        group.push(items[j]);
+        used.add(j);
+      }
+    }
+    if (group.length > 1) groups.push(group);
+  }
+  return groups;
+}
+
+function findSpatialDuplicates(maxDistance) {
+  const items = allEntities.filter(e => e.geometry).map(e => ({
+    ...e,
+    _coords: getCoords(e.geometry),
+  })).filter(e => e._coords);
+  const used = new Set();
+  const groups = [];
+  for (let i = 0; i < items.length; i++) {
+    if (used.has(i)) continue;
+    const group = [items[i]];
+    used.add(i);
+    for (let j = i + 1; j < items.length; j++) {
+      if (used.has(j)) continue;
+      if (haversine(items[i]._coords, items[j]._coords) <= maxDistance) {
+        group.push(items[j]);
+        used.add(j);
+      }
+    }
+    if (group.length > 1) groups.push(group);
+  }
+  return groups;
+}
+
+function findCombinedDuplicates(field, threshold, maxDistance) {
+  const items = allEntities.filter(e => e.properties?.[field] && e.geometry).map(e => ({
+    ...e,
+    _normalized: normalize(String(e.properties[field])),
+    _coords: getCoords(e.geometry),
+  })).filter(e => e._coords);
+  const used = new Set();
+  const groups = [];
+  for (let i = 0; i < items.length; i++) {
+    if (used.has(i)) continue;
+    const group = [items[i]];
+    used.add(i);
+    for (let j = i + 1; j < items.length; j++) {
+      if (used.has(j)) continue;
+      if (similarity(items[i]._normalized, items[j]._normalized) >= threshold &&
+          haversine(items[i]._coords, items[j]._coords) <= maxDistance) {
+        group.push(items[j]);
+        used.add(j);
+      }
+    }
+    if (group.length > 1) groups.push(group);
+  }
+  return groups;
+}
+
+// ─── Helpers ───
+function normalize(s) { return s.toLowerCase().replace(/[\s\-_.,()（）、。「」]/g, '').trim(); }
+
+function similarity(a, b) {
+  if (a === b) return 1;
+  const len = Math.max(a.length, b.length);
+  if (!len) return 0;
+  return (len - levenshtein(a, b)) / len;
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      d[i][j] = a[i-1] === b[j-1] ? d[i-1][j-1] : 1 + Math.min(d[i-1][j], d[i][j-1], d[i-1][j-1]);
+    }
+  }
+  return d[m][n];
+}
+
+function getCoords(geometry) {
+  if (!geometry) return null;
+  if (geometry.type === 'Point') return geometry.coordinates;
+  if (geometry.coordinates?.[0]?.[0]) {
+    const ring = geometry.coordinates[0];
+    const lon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+    return [lon, lat];
+  }
+  return null;
+}
+
+function haversine([lon1, lat1], [lon2, lat2]) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ─── Render ───
+function renderResults() {
+  const el = document.getElementById('results');
+  if (!duplicateGroups.length) {
+    el.innerHTML = '<div class="empty"><h4>No duplicates found</h4><p>Try a different strategy or lower the threshold.</p></div>';
+    return;
+  }
+  const titleKey = document.getElementById('field-select').value || 'name';
+  el.innerHTML = duplicateGroups.map((group, gi) => `
+    <div class="group-card${selectedGroupIdx === gi ? ' selected' : ''}" data-group="${gi}" onclick="selectGroup(${gi})">
+      <div class="group-header">
+        <span class="group-title">Group ${gi + 1}</span>
+        <span class="group-count">${group.length} records</span>
+      </div>
+      ${group.map((e, ei) => `
+        <div class="dup-row ${e._action}" onclick="event.stopPropagation(); toggleAction(${gi},${ei})">
+          <span class="dup-tag ${e._action === 'keep' ? 'tag-keep' : 'tag-delete'}">${e._action === 'keep' ? 'KEEP' : 'DEL'}</span>
+          <span class="dup-name">${e.properties?.[titleKey] || e.id?.substring(0,12)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function renderStats() {
+  const totalDups = duplicateGroups.reduce((s, g) => s + g.length - 1, 0);
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-row"><span class="stat-label">Entities</span><span class="stat-value">${allEntities.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Duplicate groups</span><span class="stat-value">${duplicateGroups.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value" style="color:#f87171">${totalDups}</span></div>
+    <div class="stat-row"><span class="stat-label">To keep</span><span class="stat-value" style="color:#4ade80">${duplicateGroups.length}</span></div>
+    <div class="stat-row"><span class="stat-label">To delete</span><span class="stat-value" style="color:#f87171">${totalDups}</span></div>`;
+  document.getElementById('auto-resolve-btn').disabled = !duplicateGroups.length;
+  document.getElementById('create-proposals-btn').disabled = !duplicateGroups.length;
+}
+
+function selectGroup(gi) {
+  selectedGroupIdx = gi;
+  renderResults();
+  renderDetail(gi);
+}
+
+function toggleAction(gi, ei) {
+  const group = duplicateGroups[gi];
+  if (group[ei]._action === 'keep') {
+    // Can't un-keep if it's the only keep
+    const keeps = group.filter(e => e._action === 'keep').length;
+    if (keeps <= 1) return;
+    group[ei]._action = 'delete';
+  } else {
+    group[ei]._action = 'keep';
+  }
+  renderResults();
+  renderStats();
+  if (selectedGroupIdx === gi) renderDetail(gi);
+}
+
+function renderDetail(gi) {
+  const group = duplicateGroups[gi];
+  const el = document.getElementById('detail');
+  const keep = group.find(e => e._action === 'keep');
+  const dels = group.filter(e => e._action === 'delete');
+  const allKeys = [...new Set(group.flatMap(e => Object.keys(e.properties || {})))];
+
+  el.innerHTML = `
+    <h3 style="font-size:15px;margin-bottom:12px">Group ${gi + 1} — Comparison</h3>
+    <table class="diff-table">
+      <thead><tr><th>Field</th><th style="color:#4ade80">Keep</th>${dels.map((_, i) => `<th style="color:#f87171">Delete ${i+1}</th>`).join('')}</tr></thead>
+      <tbody>${allKeys.map(k => {
+        const keepVal = keep?.properties?.[k];
+        return `<tr>
+          <td style="color:#94a3b8">${k}</td>
+          <td>${keepVal ?? '<span style="color:#475569">—</span>'}</td>
+          ${dels.map(d => {
+            const delVal = d.properties?.[k];
+            const same = String(keepVal) === String(delVal);
+            return `<td class="${same ? 'diff-same' : 'diff-diff'}">${delVal ?? '<span style="color:#475569">—</span>'}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    <div style="margin-top:12px;font-size:12px;color:#64748b">
+      <div>Keep: ${keep?.id?.substring(0,12)}...</div>
+      ${dels.map(d => `<div>Delete: ${d.id?.substring(0,12)}...</div>`).join('')}
+    </div>`;
+}
+
+// ─── Actions ───
+function autoResolve() {
+  // For each group, keep the one with most non-null properties
+  duplicateGroups.forEach(group => {
+    group.forEach(e => e._action = 'delete');
+    const best = group.reduce((a, b) => {
+      const aCount = Object.values(a.properties || {}).filter(v => v != null && v !== '').length;
+      const bCount = Object.values(b.properties || {}).filter(v => v != null && v !== '').length;
+      return bCount > aCount ? b : a;
+    });
+    best._action = 'keep';
+  });
+  renderResults();
+  renderStats();
+  if (selectedGroupIdx !== null) renderDetail(selectedGroupIdx);
+}
+
+async function createProposals() {
+  const btn = document.getElementById('create-proposals-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  let created = 0, failed = 0;
+  for (const group of duplicateGroups) {
+    const keep = group.find(e => e._action === 'keep');
+    const dels = group.filter(e => e._action === 'delete');
+
+    // Merge: collect non-null fields from deleted records into keep record
+    const mergedProps = { ...(keep.properties || {}) };
+    dels.forEach(d => {
+      Object.entries(d.properties || {}).forEach(([k, v]) => {
+        if ((mergedProps[k] === null || mergedProps[k] === undefined || mergedProps[k] === '') && v != null && v !== '') {
+          mergedProps[k] = v;
+        }
+      });
+    });
+
+    // Update keep record if properties changed
+    const changed = JSON.stringify(mergedProps) !== JSON.stringify(keep.properties);
+    if (changed) {
+      try {
+        await apiPost('/proposals', { entityId: keep.id, proposedChange: { action: 'update', data: { properties: mergedProps } }, source: 'machine' });
+        created++;
+      } catch { failed++; }
+    }
+
+    // Delete duplicates
+    for (const d of dels) {
+      try {
+        await apiPost('/proposals', { entityId: d.id, proposedChange: { action: 'delete', data: {} }, source: 'machine' });
+        created++;
+      } catch { failed++; }
+    }
+  }
+
+  btn.textContent = `Done: ${created} proposals`;
+  document.getElementById('stats').innerHTML += `
+    <div style="margin-top:12px;padding:10px;background:rgba(34,197,94,0.1);border-radius:6px;font-size:13px">
+      <strong style="color:#4ade80">${created} proposals created</strong>
+      ${failed ? `<span style="color:#f87171;margin-left:8px">${failed} failed</span>` : ''}
+      <div style="margin-top:6px;color:#94a3b8"><a href="${CMS_URL.replace('/api/v1','')}/#manage/review" target="_blank" style="color:#60a5fa">Go to Review Queue →</a></div>
+    </div>`;
+}
+
+init().catch(err => {
+  document.getElementById('results').innerHTML = `<div class="empty" style="color:#f87171">${err.message}<br><br>CMS: ${CMS_URL}</div>`;
+});
+</script>
+</body>
+</html>
