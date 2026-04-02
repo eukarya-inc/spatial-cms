@@ -1358,28 +1358,32 @@ async function viewDatasetDetail(main, datasetId) {
       </div>
     </div>
 
-    <div class="card"><h3>Metadata</h3>
+    <div class="card"><h3>Dataset Metadata <span style="font-size:11px;font-weight:400;color:var(--muted)">(DCAT compatible)</span></h3>
       <div class="form-row">
-        <div class="form-group" style="flex:2"><label>Description</label><textarea id="ds-description" rows="2" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;resize:vertical">${d.description || ''}</textarea></div>
+        <div class="form-group" style="flex:2"><label>Description</label><textarea id="ds-description" rows="2" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;resize:vertical">${d.description || ''}</textarea><div style="font-size:11px;color:var(--muted);margin-top:2px">Brief description of the dataset content, coverage, and purpose.</div></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>License</label><select id="ds-license" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+        <div class="form-group"><label>License</label><select id="ds-license" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px" onchange="if(this.value==='_other'){this.style.display='none';document.getElementById('ds-license-custom').style.display=''}">
           <option value="">None</option>
-          <option value="CC-BY-4.0" ${d.license==='CC-BY-4.0'?'selected':''}>CC BY 4.0</option>
-          <option value="CC-BY-SA-4.0" ${d.license==='CC-BY-SA-4.0'?'selected':''}>CC BY-SA 4.0</option>
-          <option value="CC0-1.0" ${d.license==='CC0-1.0'?'selected':''}>CC0 (Public Domain)</option>
-          <option value="ODbL-1.0" ${d.license==='ODbL-1.0'?'selected':''}>ODbL 1.0</option>
-        </select></div>
-        <div class="form-group"><label>Source</label><input id="ds-source" value="${d.source || ''}" placeholder="e.g. OpenStreetMap, PLATEAU"></div>
+          <option value="CC-BY-4.0" ${d.license==='CC-BY-4.0'?'selected':''}>CC BY 4.0 (Attribution)</option>
+          <option value="CC-BY-SA-4.0" ${d.license==='CC-BY-SA-4.0'?'selected':''}>CC BY-SA 4.0 (Attribution ShareAlike)</option>
+          <option value="CC0-1.0" ${d.license==='CC0-1.0'?'selected':''}>CC0 1.0 (Public Domain)</option>
+          <option value="ODbL-1.0" ${d.license==='ODbL-1.0'?'selected':''}>ODbL 1.0 (Open Database)</option>
+          <option value="_other" ${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0'].includes(d.license)?'selected':''}>Other (custom)</option>
+        </select><input id="ds-license-custom" value="${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? d.license : ''}" placeholder="SPDX identifier or URL" style="display:${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? '' : 'none'};width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;margin-top:4px"><div style="font-size:11px;color:var(--muted);margin-top:2px">Usage terms for consumers. SPDX identifier recommended.</div></div>
+        <div class="form-group"><label>Source / Provider</label><input id="ds-source" value="${d.source || ''}" placeholder="e.g. OpenStreetMap, PLATEAU"><div style="font-size:11px;color:var(--muted);margin-top:2px">Where the original data comes from.</div></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Contact Name</label><input id="ds-contact-name" value="${d.contactName || ''}"></div>
-        <div class="form-group"><label>Contact Email</label><input id="ds-contact-email" value="${d.contactEmail || ''}" type="email"></div>
+        <div class="form-group"><label>Contact Name</label><input id="ds-contact-name" value="${d.contactName || ''}" placeholder="Organization or person"><div style="font-size:11px;color:var(--muted);margin-top:2px">Who maintains this dataset.</div></div>
+        <div class="form-group"><label>Contact Email</label><input id="ds-contact-email" value="${d.contactEmail || ''}" type="email" placeholder="admin@example.com"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Keywords</label><input id="ds-keywords" value="${(d.keywords || []).join(', ')}" placeholder="comma separated"></div>
+        <div class="form-group"><label>Keywords</label><input id="ds-keywords" value="${(d.keywords || []).join(', ')}" placeholder="building, tokyo, spatial, 3d"><div style="font-size:11px;color:var(--muted);margin-top:2px">Comma-separated. Used by data catalogs for search and discovery.</div></div>
       </div>
-      <button class="btn btn-outline btn-sm" id="ds-save-meta">Save Metadata</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" id="ds-save-meta">Save Metadata</button>
+        <a href="#" id="ds-preview-dcat" style="font-size:12px;color:var(--primary)">Preview DCAT JSON-LD</a>
+      </div>
     </div>
 
     <div class="card"><h3>Model Bindings</h3>
@@ -1411,12 +1415,15 @@ async function viewDatasetDetail(main, datasetId) {
   $('gen-snap-btn').onclick = async () => { try { await api(`/datasets/${datasetId}/snapshot`, { method: 'POST' }); toast('Snapshot generated'); nav(`publish/datasets/${datasetId}`); } catch (err) { toast(err.message, 'error'); } };
   $('pub-delivery').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToDelivery: e.target.checked }) }); toast(e.target.checked ? 'Delivery API enabled' : 'Delivery API disabled'); } catch (err) { toast(err.message, 'error'); } };
   $('pub-ogc').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToOgc: e.target.checked }) }); toast(e.target.checked ? 'OGC Services enabled' : 'OGC Services disabled'); } catch (err) { toast(err.message, 'error'); } };
+  $('ds-preview-dcat').onclick = (e) => { e.preventDefault(); window.open(`${API}/delivery/datasets/${datasetId}/metadata`, '_blank'); };
   $('ds-save-meta').onclick = async () => {
     const kw = $('ds-keywords').value.split(',').map(s => s.trim()).filter(Boolean);
+    const licSel = $('ds-license').value;
+    const license = licSel === '_other' ? ($('ds-license-custom').value || null) : (licSel || null);
     try {
       await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({
         description: $('ds-description').value || null,
-        license: $('ds-license').value || null,
+        license,
         source: $('ds-source').value || null,
         contactName: $('ds-contact-name').value || null,
         contactEmail: $('ds-contact-email').value || null,
@@ -1619,7 +1626,27 @@ async function viewDeliveryDocs(main) {
           <span style="font-size:12px;font-weight:700;color:var(--success);background:#dcfce7;padding:2px 8px;border-radius:4px">GET</span>
           <code style="font-size:14px">/api/v1/delivery/datasets/:id/metadata</code>
         </div>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:8px">DCAT JSON-LD metadata. Standard format for data catalogs (CKAN, Google Dataset Search). Includes title, description, license, publisher, keywords, distribution links.</p>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:8px">DCAT JSON-LD metadata. Standard format for data catalogs (CKAN, Google Dataset Search).</p>
+        <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--primary)">Example response</summary>
+        <pre style="font-size:11px;margin-top:8px">{
+  "@context": "https://www.w3.org/ns/dcat#",
+  "@type": "Dataset",
+  "identifier": "dataset-uuid",
+  "title": "Taito-ku Buildings",
+  "description": "Building footprints and heights...",
+  "license": "CC-BY-4.0",
+  "publisher": { "@type": "Organization", "name": "Admin" },
+  "keyword": ["tokyo", "buildings"],
+  "issued": "2026-04-01T00:00:00.000Z",
+  "modified": "2026-04-02T00:00:00.000Z",
+  "landingPage": "http://host/#publish/datasets/uuid",
+  "conformsTo": ["https://www.w3.org/TR/vocab-dcat-2/"],
+  "spatial": { "@type": "Location", "crs": "EPSG:4326" },
+  "distribution": [
+    { "@type": "Distribution", "title": "Delivery API (JSON)", "format": "application/json", "accessURL": "..." },
+    { "@type": "Distribution", "title": "Delivery API (GeoJSON)", "format": "application/geo+json", "accessURL": "..." }
+  ]
+}</pre></details>
       </div>
 
       <div style="margin-bottom:24px">

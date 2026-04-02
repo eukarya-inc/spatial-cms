@@ -163,9 +163,11 @@ deliveryRouter.get("/datasets/:id/metadata", async (req, res, next) => {
       }
     }
 
+    const host = `${req.protocol}://${req.get("host")}`;
     res.json({
       "@context": "https://www.w3.org/ns/dcat#",
       "@type": "Dataset",
+      "identifier": id,
       "title": dataset.name,
       "description": dataset.description || "",
       "license": dataset.license || "",
@@ -173,6 +175,12 @@ deliveryRouter.get("/datasets/:id/metadata", async (req, res, next) => {
       "source": dataset.source || undefined,
       "keyword": dataset.keywords || [],
       "issued": dataset.snapshot.publishedAt,
+      "modified": dataset.snapshot.publishedAt,
+      "landingPage": `${host}/#publish/datasets/${id}`,
+      "conformsTo": [
+        "https://www.w3.org/TR/vocab-dcat-2/",
+        ...(ogcEnabled ? ["http://www.opengis.net/spec/ogcapi-features-1/1.0"] : []),
+      ],
       "spatial": models?.[0] ? { "@type": "Location", "crs": `EPSG:${models[0].srid}` } : undefined,
       "distribution": distributions,
     });

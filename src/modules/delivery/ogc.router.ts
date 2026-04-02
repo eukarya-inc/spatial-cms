@@ -83,6 +83,7 @@ ogcRouter.get("/collections", async (req, res, next) => {
             spatial: { bbox: [[-180, -90, 180, 90]] },
           },
           storageCrs: `http://www.opengis.net/def/crs/EPSG/0/${b.modelDefinition.srid}`,
+          ...(d.license ? { license: d.license } : {}),
         });
       }
     }
