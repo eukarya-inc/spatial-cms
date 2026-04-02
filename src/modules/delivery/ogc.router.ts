@@ -9,12 +9,11 @@ function baseUrl(req: Request) {
   return `${req.protocol}://${req.get("host")}/api/v1/ogc`;
 }
 
-/** Parse collection ID "datasetId.modelKey" (dot-separated) */
+/** Parse collection ID "datasetId_modelKey" (underscore after UUID) */
 function parseCollectionId(collectionId: string) {
-  // UUID is 36 chars, then dot, then model key
-  const sep = collectionId.indexOf(".", 36);
-  if (sep === -1) return null;
-  return { datasetId: collectionId.substring(0, sep), modelKey: collectionId.substring(sep + 1) };
+  // UUID is 36 chars (8-4-4-4-12), then underscore, then model key
+  if (collectionId.length < 38 || collectionId[36] !== '_') return null;
+  return { datasetId: collectionId.substring(0, 36), modelKey: collectionId.substring(37) };
 }
 
 // GET /api/v1/ogc/
@@ -24,10 +23,24 @@ ogcRouter.get("/", async (req, res) => {
     title: "Spatial CMS OGC API",
     description: "OGC API - Features for published spatial data",
     links: [
-      { rel: "self", href: `${base}/`, type: "application/json" },
-      { rel: "conformance", href: `${base}/conformance`, type: "application/json" },
-      { rel: "data", href: `${base}/collections`, type: "application/json" },
+      { rel: "self", href: `${base}`, type: "application/json", title: "This document" },
+      { rel: "conformance", href: `${base}/conformance`, type: "application/json", title: "Conformance declaration" },
+      { rel: "data", href: `${base}/collections`, type: "application/json", title: "Collections" },
+      { rel: "service-desc", href: `${base}/api`, type: "application/vnd.oai.openapi+json;version=3.0", title: "API description" },
     ],
+  });
+});
+
+// GET /api/v1/ogc/api (minimal OpenAPI stub for QGIS discovery)
+ogcRouter.get("/api", async (req, res) => {
+  const base = baseUrl(req);
+  res.json({
+    openapi: "3.0.0",
+    info: { title: "Spatial CMS OGC API", version: "1.0.0" },
+    paths: {
+      "/collections": { get: { summary: "List collections" } },
+      "/collections/{collectionId}/items": { get: { summary: "Get features" } },
+    },
   });
 });
 
@@ -55,7 +68,7 @@ ogcRouter.get("/collections", async (req, res, next) => {
         include: { modelDefinition: true },
       });
       for (const b of bindings) {
-        const collectionId = `${d.id}.${b.modelDefinition.key}`;
+        const collectionId = `${d.id}_${b.modelDefinition.key}`;
         // Count entities of this type in the manifest
         const manifest = d.snapshot as any;
         collections.push({
