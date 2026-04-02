@@ -140,7 +140,7 @@ All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for 
 - **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
 
 ### App Architecture (src/app.ts vs src/index.ts)
-`src/app.ts` creates and exports the Express app (routes, middleware, error handler) without calling `listen()`. `src/index.ts` imports app and starts the server. This separation allows tests to import the app without starting a server.
+`src/app.ts` creates and exports the Express app (routes, middleware, error handler) without calling `listen()`. `src/index.ts` imports app and starts the server. This separation allows tests to import the app without starting a server. JSON body limit is 10MB (for large geometry imports).
 
 ## API Endpoints
 
@@ -148,7 +148,7 @@ All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for 
 - `GET /api/v1/entities` — list with query support:
   - `?type=building` — filter by model type
   - `?status=active` — filter by status (default view shows active only)
-  - `?page=1&pageSize=100` — pagination (max 1000)
+  - `?page=1&pageSize=100` — pagination (max 100000)
   - `?bbox=minLon,minLat,maxLon,maxLat` — bounding box spatial query
   - `?near=lon,lat&radius=meters` — proximity search
   - `?sort=createdAt:desc` — sort (createdAt, updatedAt, type, status)
@@ -189,7 +189,7 @@ All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for 
 - `GET /api/v1/delivery/datasets/:id` — published dataset metadata
 - `GET /api/v1/delivery/datasets/:id/schema` — model schemas (fields, types, constraints)
 - `GET /api/v1/delivery/datasets/:id/entities` — entities with query support:
-  - `?page=1&pageSize=100` — pagination (max 1000)
+  - `?page=1&pageSize=100` — pagination (max 100000)
   - `?bbox=minLon,minLat,maxLon,maxLat` — bounding box spatial query
   - `?near=lon,lat&radius=meters` — proximity search
   - `?filter[field]=value` or `?filter[field][$gte]=100` — property filtering
