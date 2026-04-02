@@ -63,8 +63,6 @@
     .view-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
     .view-toggle button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 
-    .map-tool-btn { position: absolute; z-index: 2; background: #fff; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 13px; font-weight: 600; }
-
     .api-log { grid-column: 1 / -1; background: #0f172a; border-top: 1px solid #1e293b; display: flex; flex-direction: column; position: relative; }
     .api-log-resize { height: 5px; cursor: ns-resize; position: absolute; top: -3px; left: 0; right: 0; z-index: 10; }
     .api-log-resize:hover { background: rgba(59,130,246,0.3); }
@@ -122,7 +120,14 @@
       <div class="panel-body" id="stats-body"></div>
     </div>
   </div>
-  <div id="map"></div>
+  <div style="position:relative">
+    <div id="map" style="position:absolute;inset:0"></div>
+    <div id="map-tools" style="position:absolute;top:10px;right:10px;z-index:10;display:flex;flex-direction:column;gap:6px">
+      <button id="draw-bbox-btn" style="background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;color:#3b82f6">&#x25A1; Bbox</button>
+      <button id="near-search-btn" style="background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;color:#8b5cf6">&#x25CE; Near</button>
+      <button id="clear-search-btn" style="display:none;background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:4px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;color:#ef4444">&#x2715; Clear</button>
+    </div>
+  </div>
   <div class="api-log">
     <div class="api-log-resize" id="log-resize"></div>
     <div class="api-log-header"><span>API Log</span><span id="log-clear" style="cursor:pointer;color:#475569">clear</span></div>
@@ -314,32 +319,22 @@ let drawingBox = false, drawStart = null;
 let nearMode = false;
 let hasSearchOverlay = false;
 
-// Add tool buttons after map loads
-map.on('load', () => {
-  const toolDiv = document.createElement('div');
-  toolDiv.style.cssText = 'position:absolute;top:10px;right:10px;z-index:10;display:flex;flex-direction:column;gap:4px;pointer-events:auto';
-  toolDiv.innerHTML = `
-    <button id="draw-bbox-btn" class="map-tool-btn" style="color:#3b82f6">&#x25A1; Bbox</button>
-    <button id="near-search-btn" class="map-tool-btn" style="color:#8b5cf6">&#x25CE; Near</button>
-    <button id="clear-search-btn" class="map-tool-btn" style="color:#ef4444;display:none">&#x2715; Clear</button>`;
-  document.getElementById('map').appendChild(toolDiv);
-
-  document.getElementById('draw-bbox-btn').onclick = () => {
-    drawingBox = true; nearMode = false;
-    map.getCanvas().style.cursor = 'crosshair';
-    map.dragPan.disable();
-  };
-  document.getElementById('near-search-btn').onclick = () => {
-    nearMode = true; drawingBox = false;
-    map.getCanvas().style.cursor = 'crosshair';
-  };
-  document.getElementById('clear-search-btn').onclick = () => {
-    map.getSource('search-overlay')?.setData({ type: 'FeatureCollection', features: [] });
-    hasSearchOverlay = false;
-    document.getElementById('clear-search-btn').style.display = 'none';
-    loadMapData();
-  };
-});
+// Tool button handlers
+document.getElementById('draw-bbox-btn').onclick = () => {
+  drawingBox = true; nearMode = false;
+  map.getCanvas().style.cursor = 'crosshair';
+  map.dragPan.disable();
+};
+document.getElementById('near-search-btn').onclick = () => {
+  nearMode = true; drawingBox = false;
+  map.getCanvas().style.cursor = 'crosshair';
+};
+document.getElementById('clear-search-btn').onclick = () => {
+  if (mapReady) map.getSource('search-overlay')?.setData({ type: 'FeatureCollection', features: [] });
+  hasSearchOverlay = false;
+  document.getElementById('clear-search-btn').style.display = 'none';
+  loadMapData();
+};
 
 // Bbox draw + Near search — use canvas events for reliable draw
 const canvas = map.getCanvasContainer();
