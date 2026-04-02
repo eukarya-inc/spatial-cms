@@ -212,6 +212,18 @@ function toast(msg, type = 'success') {
   el.textContent = msg; el.className = `toast ${type}`; el.style.display = 'block';
   setTimeout(() => el.style.display = 'none', 3500);
 }
+function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard')).catch(() => copyFallback(text));
+  } else { copyFallback(text); }
+}
+function copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('Copied to clipboard'); } catch { toast('Copy failed', 'error'); }
+  document.body.removeChild(ta);
+}
 function $(id) { return document.getElementById(id); }
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -1708,11 +1720,7 @@ entities.forEach(entity => {
 
 function deliveryCopyUrl(dsId) {
   const url = `${window.location.origin}/api/v1/delivery/datasets/${dsId}/entities`;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(url).then(() => toast('URL copied to clipboard')).catch(() => prompt('Copy this URL:', url));
-  } else {
-    prompt('Copy this URL:', url);
-  }
+  copyText(url);
 }
 
 // ─── Import Data (for admins) ──────────────────────
@@ -2595,9 +2603,8 @@ async function viewOgcDocs(main) {
         <p><strong>2.</strong> Click "New" to create a new connection</p>
         <p><strong>3.</strong> Enter the URL (click to copy):</p>
         <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
-          <pre id="ogc-url" style="font-size:13px;flex:1;cursor:pointer;margin:0" onclick="navigator.clipboard.writeText(this.textContent);document.getElementById('ogc-copy-msg').style.display='inline'">${baseUrl}/</pre>
-          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('ogc-url').textContent);document.getElementById('ogc-copy-msg').style.display='inline'">Copy</button>
-          <span id="ogc-copy-msg" style="display:none;color:var(--success);font-size:12px">Copied!</span>
+          <pre id="ogc-url" style="font-size:13px;flex:1;cursor:pointer;margin:0" onclick="copyText(this.textContent)">${baseUrl}/</pre>
+          <button class="btn btn-outline btn-sm" onclick="copyText(document.getElementById('ogc-url').textContent)">Copy</button>
         </div>
         <p><strong>4.</strong> Click "Connect" &rarr; select a collection &rarr; "Add"</p>
         <p>The data will appear as a vector layer in QGIS with full geometry and attributes.</p>
