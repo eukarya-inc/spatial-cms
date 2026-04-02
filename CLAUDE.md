@@ -139,6 +139,17 @@ All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for 
 - **Delivery API** (`/api/v1/delivery/`) — read-only, external consumers, only published data
 - **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
 
+### Dataset Metadata (DCAT)
+Dataset-level metadata for external consumers: description, license (SPDX), source, contactName, contactEmail, keywords. Managed in Publish → Dataset detail page. Exposed via:
+- Delivery API `/datasets/:id` — metadata fields in response
+- `/datasets/:id/metadata` — DCAT JSON-LD format (for CKAN, Google Dataset Search)
+- OGC collections — include description and license
+
+### Publish Channels
+Each dataset controls which APIs expose its data:
+- `publishToDelivery` (default true) — Delivery API
+- `publishToOgc` (default false) — OGC API Features (for GIS tools, public)
+
 ### App Architecture (src/app.ts vs src/index.ts)
 `src/app.ts` creates and exports the Express app (routes, middleware, error handler) without calling `listen()`. `src/index.ts` imports app and starts the server. This separation allows tests to import the app without starting a server. JSON body limit is 10MB (for large geometry imports).
 
