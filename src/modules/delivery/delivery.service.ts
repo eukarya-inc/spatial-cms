@@ -22,11 +22,17 @@ interface QueryOptions {
   filter?: Record<string, Record<string, string> | string>;
   sort?: { field: string; order: "asc" | "desc" };
   format?: "json" | "geojson";
+  modelKey?: string;
 }
 
-/** List all datasets that have an active published release */
-export async function listPublishedDatasets() {
+/** List all datasets that have an active published release, filtered by channel */
+export async function listPublishedDatasets(channel?: 'delivery' | 'ogc') {
+  const where: Record<string, unknown> = {};
+  if (channel === 'delivery') where.datasetDefinition = { publishToDelivery: true };
+  if (channel === 'ogc') where.datasetDefinition = { publishToOgc: true };
+
   const releases = await prisma.activeReleaseState.findMany({
+    where,
     include: {
       datasetDefinition: true,
       activeSnapshot: true,
@@ -96,10 +102,16 @@ export async function getPublishedEntities(
     filter,
     sort,
     format = "json",
+    modelKey,
   } = options;
   const clampedPageSize = Math.min(Math.max(pageSize, 1), 100000);
 
   let manifest = release.activeSnapshot.manifest as ManifestItem[];
+
+  // Filter by model type if specified
+  if (modelKey) {
+    manifest = manifest.filter((item) => item.type === modelKey);
+  }
 
   // Resolve SRID from dataset's bound models (use first model's SRID)
   const bindings = await prisma.datasetModelBinding.findMany({
@@ -261,6 +273,60 @@ export async function getPublishedEntity(
     properties: (item.snapshot?.properties ?? {}) as Record<string, unknown>,
     geometry,
   };
+}
+
+/** List models bound to a published dataset */
+export async function listPublishedDatasetModels(datasetDefinitionId: string) {
+  const release = await prisma.activeReleaseState.findUnique({
+    where: { datasetDefinitionId },
+    include: { datasetDefinition: true },
+  });
+  if (!release) return null;
+
+  const bindings = await prisma.datasetModelBinding.findMany({
+    where: { datasetDefinitionId },
+    include: { modelDefinition: true },
+  });
+
+  return bindings.map((b) => ({
+    key: b.modelDefinition.key,
+    name: b.modelDefinition.name,
+    geometryType: b.modelDefinition.geometryType,
+    is3D: b.modelDefinition.is3D,
+    srid: b.modelDefinition.srid,
+    crs: `EPSG:${b.modelDefinition.srid}`,
+    hasProjection: !!(b.projectionJson as any)?.fields?.length,
+  }));
+}
+
+/** Get schema for a single model in a published dataset */
+export async function getPublishedModelSchema(datasetDefinitionId: string, modelKey: string) {
+  const release = await prisma.activeReleaseState.findUnique({
+    where: { datasetDefinitionId },
+  });
+  if (!release) return null;
+
+  const bindings = await prisma.datasetModelBinding.findMany({
+    where: { datasetDefinitionId },
+    include: { modelDefinition: true },
+  });
+  const binding = bindings.find((b) => b.modelDefinition.key === modelKey);
+  if (!binding) return null;
+
+  const schema = await getModelSchema(binding.modelDefinitionId);
+  if (!schema) return null;
+
+  // Apply field projection
+  const projection = binding.projectionJson as { mode: string; fields: string[] } | null;
+  if (projection?.fields?.length && schema.fields) {
+    if (projection.mode === "include") {
+      schema.fields = schema.fields.filter((f: any) => projection.fields.includes(f.key));
+    } else {
+      schema.fields = schema.fields.filter((f: any) => !projection.fields.includes(f.key));
+    }
+  }
+
+  return { ...schema, crs: `EPSG:${binding.modelDefinition.srid}` };
 }
 
 /** Get schema for all models bound to a published dataset */

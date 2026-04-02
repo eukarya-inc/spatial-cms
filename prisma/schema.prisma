@@ -147,6 +147,8 @@ model DatasetDefinition {
   filterRule          Json?    @map("filter_rule")
   projectionRule      Json?    @map("projection_rule")
   primaryGeometryRule Json?    @map("primary_geometry_rule")
+  publishToDelivery   Boolean  @default(true)  @map("publish_to_delivery")
+  publishToOgc        Boolean  @default(false) @map("publish_to_ogc")
   createdAt           DateTime @default(now()) @map("created_at")
 
   snapshots          DatasetSnapshot[]

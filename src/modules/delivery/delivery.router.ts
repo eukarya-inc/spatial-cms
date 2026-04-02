@@ -55,7 +55,7 @@ function parseQueryOptions(query: Record<string, unknown>) {
 // GET /api/v1/delivery/datasets
 deliveryRouter.get("/datasets", async (_req, res, next) => {
   try {
-    const datasets = await deliveryService.listPublishedDatasets();
+    const datasets = await deliveryService.listPublishedDatasets('delivery');
     res.json(datasets);
   } catch (err) {
     next(err);
@@ -90,6 +90,39 @@ deliveryRouter.get("/datasets/:id/schema", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/v1/delivery/datasets/:id/models
+deliveryRouter.get("/datasets/:id/models", async (req, res, next) => {
+  try {
+    const { id } = uuidParam.parse(req.params);
+    const models = await deliveryService.listPublishedDatasetModels(id);
+    if (!models) return res.status(404).json({ error: "Dataset not published or not found" });
+    res.json(models);
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/delivery/datasets/:id/models/:key/schema
+deliveryRouter.get("/datasets/:id/models/:key/schema", async (req, res, next) => {
+  try {
+    const { id } = uuidParam.parse(req.params);
+    const key = req.params.key;
+    const schema = await deliveryService.getPublishedModelSchema(id, key);
+    if (!schema) return res.status(404).json({ error: "Model not found in this dataset" });
+    res.json(schema);
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/delivery/datasets/:id/models/:key/entities
+deliveryRouter.get("/datasets/:id/models/:key/entities", async (req, res, next) => {
+  try {
+    const { id } = uuidParam.parse(req.params);
+    const options = parseQueryOptions(req.query as Record<string, unknown>);
+    options.modelKey = req.params.key;
+    const result = await deliveryService.getPublishedEntities(id, options);
+    if (!result) return res.status(404).json({ error: "Dataset not published or not found" });
+    res.json(result);
+  } catch (err) { next(err); }
 });
 
 // GET /api/v1/delivery/datasets/:id/entities

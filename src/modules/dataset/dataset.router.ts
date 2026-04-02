@@ -41,6 +41,17 @@ datasetRouter.post("/", async (req, res, next) => {
   }
 });
 
+// PUT /api/v1/datasets/:id
+datasetRouter.put("/:id", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const dataset = await datasetService.updateDatasetDefinition(id, req.body);
+    res.json(dataset);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/v1/datasets/:id
 datasetRouter.delete("/:id", async (req, res, next) => {
   try {

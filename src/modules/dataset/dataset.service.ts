@@ -33,6 +33,16 @@ export async function createDatasetDefinition(data: {
   });
 }
 
+export async function updateDatasetDefinition(id: string, data: { name?: string; publishToDelivery?: boolean; publishToOgc?: boolean }) {
+  const dataset = await prisma.datasetDefinition.findUnique({ where: { id } });
+  if (!dataset) throw new NotFoundError("Dataset definition");
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.publishToDelivery !== undefined) updateData.publishToDelivery = data.publishToDelivery;
+  if (data.publishToOgc !== undefined) updateData.publishToOgc = data.publishToOgc;
+  return prisma.datasetDefinition.update({ where: { id }, data: updateData });
+}
+
 export async function deleteDatasetDefinition(id: string) {
   const dataset = await prisma.datasetDefinition.findUnique({ where: { id } });
   if (!dataset) throw new NotFoundError("Dataset definition");

@@ -1339,6 +1339,13 @@ async function viewDatasetDetail(main, datasetId) {
   main.innerHTML = `<div class="page-header"><div><h2>${d.name}</h2></div>
     <div style="display:flex;gap:8px"><button class="btn btn-primary" id="gen-snap-btn">Generate Snapshot</button><button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-ds-btn">Delete Dataset</button></div></div>
 
+    <div class="card"><h3>Publish Channels</h3>
+      <div style="display:flex;gap:24px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pub-delivery" ${d.publishToDelivery !== false ? 'checked' : ''}> Delivery API <span style="color:var(--muted);font-size:11px">— for application developers</span></label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pub-ogc" ${d.publishToOgc ? 'checked' : ''}> OGC Services <span style="color:var(--muted);font-size:11px">— for GIS tools (public)</span></label>
+      </div>
+    </div>
+
     <div class="card"><h3>Model Bindings</h3>
       ${bindings.length ? bindings.map(b => {
         const proj = b.projectionJson;
@@ -1366,6 +1373,8 @@ async function viewDatasetDetail(main, datasetId) {
     <div class="card"><h3>Publication History</h3><div id="ds-pub-history" style="color:var(--muted)">Loading...</div></div>`;
 
   $('gen-snap-btn').onclick = async () => { try { await api(`/datasets/${datasetId}/snapshot`, { method: 'POST' }); toast('Snapshot generated'); nav(`publish/datasets/${datasetId}`); } catch (err) { toast(err.message, 'error'); } };
+  $('pub-delivery').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToDelivery: e.target.checked }) }); toast(e.target.checked ? 'Delivery API enabled' : 'Delivery API disabled'); } catch (err) { toast(err.message, 'error'); } };
+  $('pub-ogc').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToOgc: e.target.checked }) }); toast(e.target.checked ? 'OGC Services enabled' : 'OGC Services disabled'); } catch (err) { toast(err.message, 'error'); } };
   $('del-ds-btn').onclick = async () => {
     const hasRelease = d.snapshots?.some(s => s.status === 'published');
     const msg = hasRelease
