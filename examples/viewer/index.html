@@ -493,7 +493,11 @@ function selectFeature(feature) {
     }
     if (center) popup.setLatLng(center).openOn(map);
   }
-  loadMapData();
+
+  // Highlight selected in list (no API call)
+  document.querySelectorAll('.list-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === selectedId);
+  });
 }
 
 // ─── Stats ───
