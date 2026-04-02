@@ -2602,16 +2602,7 @@ async function viewOgcDocs(main) {
 
     <div class="card">
       <h3>Published Collections</h3>
-      ${datasets.length ? datasets.map(d => `
-        <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <strong>${d.name}</strong>
-            <span style="font-size:12px;color:var(--muted);margin-left:8px">v${d.snapshot.version} &middot; ${d.snapshot.entityCount} features</span>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-outline btn-sm" onclick="window.open('${baseUrl}/collections/${d.id}/items?limit=10','_blank')">Preview</button>
-          </div>
-        </div>`).join('') : '<p style="color:var(--muted)">No published collections. Publish a dataset first.</p>'}
+      <div id="ogc-collections"><span style="color:var(--muted)">Loading...</span></div>
     </div>
 
     <div class="card">
@@ -2631,6 +2622,27 @@ curl "${baseUrl}/collections/{COLLECTION_ID}/items?bbox=139,35,140,36"
 # Single feature
 curl ${baseUrl}/collections/{COLLECTION_ID}/items/{FEATURE_ID}</pre>
     </div>`;
+
+  // Load actual OGC collections
+  try {
+    const ogcData = await api('/ogc/collections');
+    const colEl = $('ogc-collections');
+    if (ogcData.collections?.length) {
+      colEl.innerHTML = ogcData.collections.map(c => `
+        <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <strong>${c.title}</strong>
+            <code style="font-size:11px;color:var(--muted);margin-left:8px">${c.id}</code>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="window.open('${baseUrl}/collections/${c.id}/items?limit=10','_blank')">Preview</button>
+            <button class="btn btn-outline btn-sm" onclick="window.open('${baseUrl}/collections/${c.id}/schema','_blank')">Schema</button>
+          </div>
+        </div>`).join('');
+    } else {
+      colEl.innerHTML = '<p style="color:var(--muted)">No OGC collections. Enable OGC on a dataset first.</p>';
+    }
+  } catch { $('ogc-collections').innerHTML = '<p style="color:var(--muted)">Could not load collections.</p>'; }
 }
 
 // ─── Publish Console ───────────────────────────────
