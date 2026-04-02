@@ -2593,10 +2593,15 @@ async function viewOgcDocs(main) {
       <div style="color:var(--muted);font-size:14px;line-height:1.8">
         <p><strong>1.</strong> Open QGIS &rarr; Layer &rarr; Add Layer &rarr; Add WFS / OGC API - Features Layer</p>
         <p><strong>2.</strong> Click "New" to create a new connection</p>
-        <p><strong>3.</strong> Enter the URL:</p>
-        <pre style="font-size:13px;margin:8px 0">${baseUrl}/</pre>
+        <p><strong>3.</strong> Enter the URL (click to copy):</p>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+          <pre id="ogc-url" style="font-size:13px;flex:1;cursor:pointer;margin:0" onclick="navigator.clipboard.writeText(this.textContent);document.getElementById('ogc-copy-msg').style.display='inline'">${baseUrl}/</pre>
+          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('ogc-url').textContent);document.getElementById('ogc-copy-msg').style.display='inline'">Copy</button>
+          <span id="ogc-copy-msg" style="display:none;color:var(--success);font-size:12px">Copied!</span>
+        </div>
         <p><strong>4.</strong> Click "Connect" &rarr; select a collection &rarr; "Add"</p>
         <p>The data will appear as a vector layer in QGIS with full geometry and attributes.</p>
+        <p style="margin-top:8px;font-size:12px;color:var(--muted)">Note: Make sure OGC Services is enabled on your dataset (Datasets &rarr; dataset detail &rarr; Publish Channels).</p>
       </div>
     </div>
 
