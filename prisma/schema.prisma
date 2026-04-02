@@ -95,7 +95,7 @@ model Entity {
   type              String
   modelDefinitionId String?           @map("model_definition_id") @db.Uuid
   properties        Json              @default("{}")
-  geometry          Unsupported("geometry(Geometry, 4326)")?
+  geometry          Unsupported("geometry(GeometryZ, 4326)")?
   status            EntityStatus      @default(draft)
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")

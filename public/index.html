@@ -1696,7 +1696,7 @@ async function viewImportData(main) {
 
     <div class="card">
       <h3>File Import</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Drag and drop a GeoJSON or CSV file. The system will parse it, let you map fields, validate, and import.</p>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Drag and drop a GeoJSON, CSV, or CityJSON file. The system will parse it, let you map fields, validate, and import.</p>
 
       <div class="form-row" style="margin-bottom:12px">
         <div class="form-group" style="flex:1">
@@ -1715,9 +1715,9 @@ async function viewImportData(main) {
 
       <div id="fi-dropzone" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;cursor:pointer;transition:border-color 0.15s;margin-bottom:12px">
         <div style="font-size:24px;margin-bottom:8px">&#128194;</div>
-        <div style="font-size:14px;color:var(--text)">Drop GeoJSON or CSV file here</div>
+        <div style="font-size:14px;color:var(--text)">Drop GeoJSON, CSV, or CityJSON file here</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">or <span style="color:var(--primary);text-decoration:underline">click to browse</span></div>
-        <input type="file" id="fi-file" accept=".geojson,.json,.csv" style="display:none">
+        <input type="file" id="fi-file" accept=".geojson,.json,.csv,.cityjson" style="display:none">
       </div>
       <div id="fi-results"></div>
     </div>
@@ -2065,6 +2065,88 @@ cat buildings.geojson | jq '{
 
 }
 
+// ─── CityJSON → entity records parser ──────────────
+function parseCityJSON(cj) {
+  const verts = cj.vertices;
+  const scale = cj.transform?.scale || [1,1,1];
+  const translate = cj.transform?.translate || [0,0,0];
+
+  // Resolve vertex index to real [lon, lat, alt] coordinate
+  function coord(idx) {
+    const v = verts[idx];
+    return [
+      v[0] * scale[0] + translate[0],
+      v[1] * scale[1] + translate[1],
+      v[2] * scale[2] + translate[2],
+    ];
+  }
+
+  // Convert CityJSON boundaries to GeoJSON MultiPolygon rings
+  function boundariesToMultiPolygon(boundaries, geomType) {
+    const polygons = [];
+    if (geomType === 'Solid') {
+      // Solid: boundaries = [ shell[ face[ ring[ idx ] ] ] ]
+      const shell = boundaries[0] || [];
+      shell.forEach(face => {
+        face.forEach(ring => {
+          const coords = ring.map(idx => coord(idx));
+          coords.push(coords[0]); // close ring
+          polygons.push([coords]);
+        });
+      });
+    } else if (geomType === 'MultiSurface' || geomType === 'CompositeSurface') {
+      // MultiSurface: boundaries = [ face[ ring[ idx ] ] ]
+      boundaries.forEach(face => {
+        face.forEach(ring => {
+          const coords = ring.map(idx => coord(idx));
+          coords.push(coords[0]);
+          polygons.push([coords]);
+        });
+      });
+    } else if (geomType === 'MultiSolid') {
+      // MultiSolid: boundaries = [ solid[ shell[ face[ ring[ idx ] ] ] ] ]
+      boundaries.forEach(solid => {
+        const shell = solid[0] || [];
+        shell.forEach(face => {
+          face.forEach(ring => {
+            const coords = ring.map(idx => coord(idx));
+            coords.push(coords[0]);
+            polygons.push([coords]);
+          });
+        });
+      });
+    }
+    return polygons;
+  }
+
+  const records = [];
+  for (const [id, obj] of Object.entries(cj.CityObjects)) {
+    // Pick highest LoD geometry
+    const geoms = obj.geometry || [];
+    const best = geoms.reduce((a, b) => (parseFloat(b.lod||'0') > parseFloat(a.lod||'0') ? b : a), geoms[0]);
+
+    let geometry = null;
+    if (best) {
+      const polygons = boundariesToMultiPolygon(best.boundaries, best.type);
+      if (polygons.length === 1) {
+        geometry = { type: 'Polygon', coordinates: polygons[0] };
+      } else if (polygons.length > 1) {
+        geometry = { type: 'MultiPolygon', coordinates: polygons };
+      }
+    }
+
+    const attrs = obj.attributes || {};
+    records.push({
+      ...attrs,
+      _cityjson_id: id,
+      _cityjson_type: obj.type,
+      _lod: best?.lod || '0',
+      _geometry: geometry,
+    });
+  }
+  return records;
+}
+
 function setupFileImport(models) {
   const dropzone = $('fi-dropzone');
   const fileInput = $('fi-file');
@@ -2100,15 +2182,22 @@ function setupFileImport(models) {
         });
         dropzone.innerHTML = `<div style="color:var(--success)">&#10003; ${file.name}</div><div style="font-size:12px;color:var(--muted)">${records.length} rows, ${headers.length} columns (CSV)</div>`;
       } else {
-        // Parse GeoJSON
         const data = JSON.parse(text);
-        const features = data.type === 'FeatureCollection' ? data.features : data.elements ? data.elements : Array.isArray(data) ? data : [data];
-        records = features.map(f => {
-          if (f.type === 'Feature') return { ...f.properties, _geometry: f.geometry };
-          if (f.geometry && f.tags) return { ...f.tags, _geometry: { type: 'Polygon', coordinates: [f.geometry.map(n => [n.lon, n.lat])] } }; // OSM
-          return f.properties ? { ...f.properties, _geometry: f.geometry } : f;
-        });
-        dropzone.innerHTML = `<div style="color:var(--success)">&#10003; ${file.name}</div><div style="font-size:12px;color:var(--muted)">${records.length} features (GeoJSON)</div>`;
+
+        // Detect CityJSON
+        if (data.type === 'CityJSON' && data.vertices && data.CityObjects) {
+          records = parseCityJSON(data);
+          dropzone.innerHTML = `<div style="color:var(--success)">&#10003; ${file.name}</div><div style="font-size:12px;color:var(--muted)">${records.length} city objects (CityJSON ${data.version || ''})</div>`;
+        } else {
+          // Parse GeoJSON
+          const features = data.type === 'FeatureCollection' ? data.features : data.elements ? data.elements : Array.isArray(data) ? data : [data];
+          records = features.map(f => {
+            if (f.type === 'Feature') return { ...f.properties, _geometry: f.geometry };
+            if (f.geometry && f.tags) return { ...f.tags, _geometry: { type: 'Polygon', coordinates: [f.geometry.map(n => [n.lon, n.lat])] } }; // OSM
+            return f.properties ? { ...f.properties, _geometry: f.geometry } : f;
+          });
+          dropzone.innerHTML = `<div style="color:var(--success)">&#10003; ${file.name}</div><div style="font-size:12px;color:var(--muted)">${records.length} features (GeoJSON)</div>`;
+        }
       }
 
       if (!records.length) throw new Error('No records found in file');

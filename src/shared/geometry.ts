@@ -7,14 +7,14 @@ interface GeoJsonGeometry {
   coordinates: unknown;
 }
 
-/** Set geometry on an entity from GeoJSON */
+/** Set geometry on an entity from GeoJSON (supports both 2D and 3D) */
 export async function setEntityGeometry(
   entityId: string,
   geojson: GeoJsonGeometry,
 ): Promise<void> {
   await prisma.$executeRaw`
     UPDATE entity
-    SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), 4326)
+    SET geometry = ST_Force3D(ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), 4326))
     WHERE id = ${entityId}::uuid
   `;
 }
@@ -73,7 +73,7 @@ export async function findEntitiesInBBox(
   const [minLon, minLat, maxLon, maxLat] = bbox;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM entity
-    WHERE geometry && ST_MakeEnvelope(${minLon}, ${minLat}, ${maxLon}, ${maxLat}, 4326)
+    WHERE ST_Force2D(geometry) && ST_MakeEnvelope(${minLon}, ${minLat}, ${maxLon}, ${maxLat}, 4326)
   `;
   return rows.map((r) => r.id);
 }
