@@ -1520,6 +1520,15 @@ async function viewDeliveryDocs(main) {
     </div>
 
     <div class="card">
+      <h3>Coordinate Reference System</h3>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6">
+        Responses include a <code>crs</code> field (e.g. <code>"EPSG:4326"</code>) indicating the coordinate system of geometry data.
+        CRS is defined per model — most use WGS84, some use local projections (e.g. EPSG:6677 for Japan).
+        <strong>Coordinates are stored as-is. No transformation is applied by the API.</strong>
+      </p>
+    </div>
+
+    <div class="card">
       <h3>Endpoints</h3>
 
       <div style="margin-bottom:24px">
@@ -1713,7 +1722,8 @@ async function viewImportData(main) {
       <div class="form-row" style="margin-bottom:12px">
         <div class="form-group" style="flex:1">
           <label>Model</label>
-          <select id="fi-model">${models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('')}</select>
+          <select id="fi-model" onchange="updateCrsHint()">${models.map(m => `<option value="${m.key}" data-id="${m.id}" data-srid="${m.srid || 4326}">${m.name} (${m.key})</option>`).join('')}</select>
+          <div id="fi-crs-hint"></div>
         </div>
         <div class="form-group" style="flex:1">
           <label>Import Mode</label>
@@ -1744,6 +1754,7 @@ npx spatial-cms import data.geojson --model building --mode governed</pre>
 
   // File import event handlers
   setupFileImport(models);
+  updateCrsHint();
 }
 
 // ─── Import API (for developers) ───────────────────
@@ -2157,6 +2168,18 @@ function parseCityJSON(cj) {
     });
   }
   return records;
+}
+
+function updateCrsHint() {
+  const sel = document.getElementById('fi-model');
+  const hint = document.getElementById('fi-crs-hint');
+  if (!sel || !hint) return;
+  const srid = parseInt(sel.selectedOptions[0]?.dataset.srid || '4326');
+  if (srid !== 4326) {
+    hint.innerHTML = `<div style="margin-top:6px;padding:6px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;font-size:12px;color:var(--warning)">This model uses <strong>EPSG:${srid}</strong>. Make sure your import data uses the same coordinate system.</div>`;
+  } else {
+    hint.innerHTML = '';
+  }
 }
 
 function setupFileImport(models) {
@@ -3026,7 +3049,15 @@ async function viewModels(main) {
 
   const form = h('div', { id: 'md-create', className: 'card', style: { display: 'none' } });
   form.innerHTML = `<h3>New Model</h3>
-    <div class="form-row"><div class="form-group"><label>Key</label><input id="md-key" placeholder="e.g. restaurant"></div><div class="form-group"><label>Name</label><input id="md-name" placeholder="e.g. Restaurant"></div><div class="form-group"><label>Geometry Type</label><select id="md-geom"><option value="NONE">NONE</option><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div><div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="md-is3d"> Yes</label></div></div><div class="form-group"><label>CRS (SRID)</label><select id="md-srid"><option value="4326">EPSG:4326 (WGS84)</option><option value="6677">EPSG:6677 (JGD2011 Zone 9)</option><option value="6668">EPSG:6668 (JGD2011)</option><option value="3857">EPSG:3857 (Web Mercator)</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label>Key</label><input id="md-key" placeholder="e.g. restaurant"></div><div class="form-group"><label>Name</label><input id="md-name" placeholder="e.g. Restaurant"></div><div class="form-group"><label>Geometry Type</label><select id="md-geom"><option value="NONE">NONE</option><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div></div>
+    <details style="margin:8px 0">
+      <summary style="cursor:pointer;font-size:13px;color:var(--primary);font-weight:500">Advanced options</summary>
+      <div class="form-row" style="margin-top:8px">
+        <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="md-is3d"> Yes</label></div></div>
+        <div class="form-group"><label>Coordinate Reference System</label><select id="md-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Japan Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Most GeoJSON data uses WGS84. Change only if your source data uses a different CRS.</div>
+    </details>
     <div style="display:flex;gap:8px"><button class="btn btn-primary" id="md-create-btn">Create</button><button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='none'">Cancel</button></div>`;
   main.append(form);
 
@@ -3054,7 +3085,7 @@ async function viewModels(main) {
         const publish = pol ? pol.publishMode : 'manual';
         return `<tr>
           <td><code>${m.key}</code></td><td>${m.name}</td>
-          <td><span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span> <span style="font-size:10px;color:var(--muted)">EPSG:${m.srid || 4326}</span></td>
+          <td><span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span>${(m.srid || 4326) !== 4326 ? ` <span style="font-size:10px;color:var(--warning)">EPSG:${m.srid}</span>` : ''}</td>
           <td>${m.fields.length}</td><td>${m._count?.entities ?? 0}</td>
           <td><span style="font-size:12px;color:${approval === 'auto' ? 'var(--success)' : 'var(--muted)'}">${approval}</span></td>
           <td><span style="font-size:12px;color:${publish === 'auto' ? 'var(--success)' : 'var(--muted)'}">${publish}</span></td>
@@ -3084,7 +3115,7 @@ async function viewModelDetail(main, modelId) {
 
   main.innerHTML = `
     <div class="page-header">
-      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; Geometry: <span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span> &middot; CRS: EPSG:${m.srid || 4326} &middot; ${m.fields.length} fields</div></div>
+      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; <span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span> &middot; ${(m.srid || 4326) === 4326 ? 'WGS84' : 'EPSG:' + (m.srid || 4326)} &middot; ${m.fields.length} fields</div></div>
     </div>
 
     <div class="card">
