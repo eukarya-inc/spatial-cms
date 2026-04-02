@@ -4,12 +4,17 @@
 
 Integration tests that verify the core governance workflow end-to-end. Tests run against a real database (not mocked), calling the actual Express API via HTTP.
 
+Tests use a **separate database** (`spatial_cms_test`) so dev data is never affected.
+
 ## Prerequisites
 
 - Docker running (`docker compose up -d`) with PostGIS on port 5434
-- Database migrated (`npx prisma migrate dev`)
-
-**Warning:** Tests clean the database before each test suite. Do NOT run against production data.
+- Test database created and migrated:
+  ```bash
+  docker compose exec db psql -U spatial_cms -c "CREATE DATABASE spatial_cms_test;"
+  docker compose exec db psql -U spatial_cms -d spatial_cms_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+  npm run db:migrate:test
+  ```
 
 ## Running Tests
 

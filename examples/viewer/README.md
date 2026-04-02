@@ -7,11 +7,13 @@ Demonstrates how external developers would build applications on top of publishe
 
 This is **NOT** part of the CMS. It is an independent application that uses only the read-only Delivery API (`/api/v1/delivery/`). It demonstrates:
 
-- Map visualization (Leaflet + GeoJSON)
+- 2D/3D map visualization (MapLibre GL JS)
+- Dataset selection and schema discovery
 - Search and filtering by properties
-- Spatial browsing (map viewport query)
+- Spatial queries (bbox draw, near-point search)
+- 3D building extrusion (height-based)
 - Data analysis (type distribution, height statistics)
-- Schema discovery
+- API request logging (Chrome DevTools style)
 
 ## How to Run
 
@@ -29,30 +31,39 @@ This is **NOT** part of the CMS. It is an independent application that uses only
 
 3. Open the viewer:
    ```bash
-   # Option A: Use any static server
    cd examples/viewer
-   npx serve .
-
-   # Option B: Open directly in browser
-   open examples/viewer/index.html
+   python3 -m http.server 8090
+   # or: npx serve .
    ```
 
-4. If the CMS is on a different host, edit the `CMS_URL` variable in `index.html`.
+4. If the CMS is on a different host, the viewer auto-detects the hostname.
+
+## Features
+
+- **Dataset selector** — switch between any published dataset
+- **Load button** — manually fetch data (no auto-refresh on pan)
+- **2D/3D toggle** — smooth animated transition (pitch 0 ↔ 60°)
+- **3D extrusion** — buildings extruded by height property or Z coordinate
+- **Bbox draw** — draw rectangle on map to spatial query
+- **Near search** — click point to search within 300m radius
+- **Filter chips** — auto-generated from schema enum fields
+- **Schema panel** — shows all models and fields
+- **API Log** — resizable panel showing all Delivery API requests + responses
 
 ## API Endpoints Used
-
-This viewer only uses these read-only endpoints:
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /delivery/datasets` | Discover available datasets |
 | `GET /delivery/datasets/:id/schema` | Understand data structure |
-| `GET /delivery/datasets/:id/entities?page=&pageSize=` | Load entity data |
+| `GET /delivery/datasets/:id/entities?bbox=&pageSize=&format=geojson` | Load spatial data |
+| `GET /delivery/datasets/:id/entities?near=&radius=` | Proximity search |
+| `GET /delivery/datasets/:id/entities?page=&pageSize=` | Paginated list |
 
 No authentication required. No write operations.
 
 ## Tech Stack
 
-- Leaflet (map rendering)
+- MapLibre GL JS (2D/3D map rendering)
 - Vanilla HTML + JS (no build tools)
 - Spatial CMS Delivery API (data source)

@@ -71,19 +71,21 @@ tests/
     delivery-api.test.ts      # Pagination, bbox, GeoJSON, filter, schema
     ingestion.test.ts         # Validate, import, governed, skipInvalid
 examples/
-  viewer/                     # Consumer demo app (Delivery API + Leaflet map)
-    index.html                # Dataset selector, schema-driven, bbox/near search
+  viewer/                     # Consumer demo app (Delivery API + MapLibre GL JS)
+    index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
     README.md
   dedup/                      # Data quality tool (Management API)
     index.html                # Duplicate detection + merge/delete via proposals
-    index.html                # Leaflet map + search + bbox/near search + API log
     README.md                 # How to run, API endpoints used
 ```
 
 ## Key Patterns
 
 ### Prisma + PostGIS
-Geometry uses `Unsupported("geometry(Geometry, 4326)")` (nullable). All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`. Entity model has a manually-created GiST index.
+Geometry column is unconstrained `geometry` type (accepts both 2D and 3D, SRID 4326 enforced via CHECK). All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
+
+### 3D Geometry Support
+`ModelDefinition.is3D` flag controls whether a model expects 2D or 3D geometry. 2D stores `[lon,lat]`, 3D stores `[lon,lat,z]`. No forced conversion — data stored as-is. CityJSON files can be imported via the Import Data page (frontend converts CityJSON boundaries to GeoJSON MultiPolygon with Z coordinates).
 
 ### Prisma Migrations with Directus
 Directus creates its own tables in the same schema, causing Prisma drift detection. Use this workflow:
@@ -97,6 +99,9 @@ Both exist. `type` is a denormalized string (always = `modelDefinition.key`). `m
 
 ### Dataset Snapshot Dual-Path
 `generateSnapshot()` checks for `DatasetModelBinding` records first. If found, queries by `modelDefinitionId`. If not, falls back to the legacy `entityTypes` JSON array.
+
+### Field Projection on Bindings
+`DatasetModelBinding.projectionJson` controls which fields are exposed per dataset. Format: `{ mode: "include", fields: ["name","height"] }` or `{ mode: "exclude", fields: ["owner"] }`. Applied during snapshot generation (properties filtered before storing in manifest) and in Delivery schema endpoint. Allows same model to publish different field sets to different datasets (e.g. internal vs open data).
 
 ### Proposal Auto-Approval
 When `GovernancePolicy.approvalMode = "auto"` exists for a model, `createProposal()` automatically calls `approveProposal()` after validation passes. This applies to all proposal types (create, update, delete) — the model is resolved from `proposedChange.data.type` or from the entity's `modelDefinitionId` via `entityId`.
@@ -217,11 +222,12 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#manage/review` | Manage | Review queue + batch approve + history |
 | `#manage/review/{id}` | Manage | Proposal detail + diff view + approve/reject |
 | `#publish/datasets` | Publish | Dataset list + create |
-| `#publish/datasets/{id}` | Publish | Bindings + snapshots + publish + publication history |
+| `#publish/datasets/{id}` | Publish | Bindings + field projection + snapshots + publish + history |
 | `#publish/delivery` | Publish | Delivery API docs + inline preview |
 | `#publish/ogc` | Publish | OGC Services docs + QGIS connection guide |
-| `#integrate/import` | Integrate | File import (drag-drop GeoJSON/CSV + field mapping) |
+| `#integrate/import` | Integrate | File import (GeoJSON/CSV/CityJSON + field mapping) |
 | `#integrate/api` | Integrate | Import API docs + test data generator + validate/import |
+| `#integrate/management` | Integrate | Management API docs + integration examples |
 | `#dev/api` | Dev Only | Interactive API endpoint explorer |
 | `#dev/console` | Dev Only | One-page publish workflow testing |
 
