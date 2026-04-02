@@ -9,11 +9,12 @@ function baseUrl(req: Request) {
   return `${req.protocol}://${req.get("host")}/api/v1/ogc`;
 }
 
-/** Parse collection ID "datasetId--modelKey" */
+/** Parse collection ID "datasetId.modelKey" (dot-separated) */
 function parseCollectionId(collectionId: string) {
-  const sep = collectionId.indexOf("--");
+  // UUID is 36 chars, then dot, then model key
+  const sep = collectionId.indexOf(".", 36);
   if (sep === -1) return null;
-  return { datasetId: collectionId.substring(0, sep), modelKey: collectionId.substring(sep + 2) };
+  return { datasetId: collectionId.substring(0, sep), modelKey: collectionId.substring(sep + 1) };
 }
 
 // GET /api/v1/ogc/
@@ -54,7 +55,7 @@ ogcRouter.get("/collections", async (req, res, next) => {
         include: { modelDefinition: true },
       });
       for (const b of bindings) {
-        const collectionId = `${d.id}--${b.modelDefinition.key}`;
+        const collectionId = `${d.id}.${b.modelDefinition.key}`;
         // Count entities of this type in the manifest
         const manifest = d.snapshot as any;
         collections.push({
