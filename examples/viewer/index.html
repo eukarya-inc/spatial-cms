@@ -224,9 +224,9 @@ const map = new maplibregl.Map({
     sources: {
       'osm': {
         type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tiles: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'],
         tileSize: 256,
-        attribution: '&copy; OpenStreetMap',
+        attribution: '&copy; OSM &copy; CARTO',
       }
     },
     layers: [{ id: 'basemap', type: 'raster', source: 'osm' }],
@@ -341,48 +341,53 @@ map.on('load', () => {
   };
 });
 
-// Bbox draw handlers
-map.on('mousedown', (e) => { if (drawingBox) { drawStart = e.lngLat; } });
-map.on('mousemove', (e) => {
-  if (drawingBox && drawStart) {
-    const bbox = [
-      [Math.min(drawStart.lng, e.lngLat.lng), Math.min(drawStart.lat, e.lngLat.lat)],
-      [Math.max(drawStart.lng, e.lngLat.lng), Math.max(drawStart.lat, e.lngLat.lat)],
-    ];
+// Bbox draw + Near search — use canvas events for reliable draw
+const canvas = map.getCanvasContainer();
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!drawingBox) return;
+  e.preventDefault();
+  drawStart = map.unproject([e.offsetX, e.offsetY]);
+
+  function onMove(e) {
+    const cur = map.unproject([e.offsetX, e.offsetY]);
+    const w = Math.min(drawStart.lng, cur.lng), s = Math.min(drawStart.lat, cur.lat);
+    const ea = Math.max(drawStart.lng, cur.lng), n = Math.max(drawStart.lat, cur.lat);
     map.getSource('search-overlay')?.setData({
       type: 'FeatureCollection',
-      features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[
-        [bbox[0][0],bbox[0][1]], [bbox[1][0],bbox[0][1]], [bbox[1][0],bbox[1][1]], [bbox[0][0],bbox[1][1]], [bbox[0][0],bbox[0][1]]
-      ]] } }]
+      features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[w,s],[ea,s],[ea,n],[w,n],[w,s]]] } }]
     });
   }
-});
-map.on('mouseup', (e) => {
-  if (drawingBox && drawStart) {
+  function onUp(e) {
+    canvas.removeEventListener('mousemove', onMove);
+    canvas.removeEventListener('mouseup', onUp);
     drawingBox = false;
     map.dragPan.enable();
     map.getCanvas().style.cursor = '';
-    const w = Math.min(drawStart.lng, e.lngLat.lng), s = Math.min(drawStart.lat, e.lngLat.lat);
-    const ea = Math.max(drawStart.lng, e.lngLat.lng), n = Math.max(drawStart.lat, e.lngLat.lat);
+
+    const cur = map.unproject([e.offsetX, e.offsetY]);
+    const w = Math.min(drawStart.lng, cur.lng), s = Math.min(drawStart.lat, cur.lat);
+    const ea = Math.max(drawStart.lng, cur.lng), n = Math.max(drawStart.lat, cur.lat);
     drawStart = null;
+    if (Math.abs(ea - w) < 0.0001 && Math.abs(n - s) < 0.0001) return; // too small
     hasSearchOverlay = true;
     document.getElementById('clear-search-btn').style.display = 'block';
     loadMapDataCustom(`bbox=${w.toFixed(5)},${s.toFixed(5)},${ea.toFixed(5)},${n.toFixed(5)}`);
   }
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseup', onUp);
 });
+
 map.on('click', (e) => {
   if (nearMode) {
     nearMode = false;
     map.getCanvas().style.cursor = '';
     const radius = 300;
     const lng = e.lngLat.lng, lat = e.lngLat.lat;
-    // Approximate circle as polygon
     const pts = [];
     for (let i = 0; i <= 64; i++) {
       const a = (i / 64) * Math.PI * 2;
-      const dx = radius * Math.cos(a) / (111320 * Math.cos(lat * Math.PI / 180));
-      const dy = radius * Math.sin(a) / 110540;
-      pts.push([lng + dx, lat + dy]);
+      pts.push([lng + radius * Math.cos(a) / (111320 * Math.cos(lat * Math.PI/180)), lat + radius * Math.sin(a) / 110540]);
     }
     map.getSource('search-overlay')?.setData({
       type: 'FeatureCollection',
