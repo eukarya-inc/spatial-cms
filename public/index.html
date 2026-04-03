@@ -54,17 +54,8 @@
     .sidebar-item:hover { background: var(--sidebar-hover); }
     .sidebar-item.active { color: var(--sidebar-active); border-left-color: var(--accent); background: var(--sidebar-hover); }
     .sidebar-item .badge { margin-left: auto; background: var(--danger); color: #fff; font-size: 11px; padding: 1px 7px; border-radius: 10px; font-weight: 600; }
-    .sidebar-sub { padding-left: 16px; max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
-    .sidebar-sub::-webkit-scrollbar { width: 4px; }
-    .sidebar-sub::-webkit-scrollbar-track { background: transparent; }
-    .sidebar-sub::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
-    .sidebar-sub::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+    .sidebar-sub { padding-left: 16px; }
     .sidebar-sub .sidebar-item { font-size: 13px; padding: 7px 20px; }
-    .sidebar-sub-wrap { position: relative; }
-    .sidebar-sub-wrap::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px; background: linear-gradient(transparent, #1a1f2e); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
-    .sidebar-sub-wrap.overflow::after { opacity: 1; }
-    .sidebar-sub .sidebar-filter { width: calc(100% - 16px); margin: 4px 8px; padding: 4px 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; font-size: 12px; outline: none; }
-    .sidebar-sub .sidebar-filter::placeholder { color: rgba(255,255,255,0.3); }
     .sidebar-spacer { flex: 1; }
 
     /* Main */
@@ -180,7 +171,7 @@
     <div class="sidebar-section" data-section="manage">Manage</div>
     <div class="sidebar-item" data-section="manage" onclick="nav('dashboard')" data-nav="dashboard"><span>Dashboard</span></div>
     <div class="sidebar-item" data-section="manage" onclick="nav('manage/records')" data-nav="manage/records"><span>All Records</span></div>
-    <div class="sidebar-sub-wrap"><div id="sidebar-models" class="sidebar-sub"></div></div>
+    <div id="sidebar-models" class="sidebar-sub"></div>
     <div class="sidebar-item" data-section="manage" onclick="nav('manage/review')" data-nav="manage/review">
       <span>Review Queue</span>
       <span class="badge" id="pending-badge" style="display:none">0</span>
@@ -271,33 +262,10 @@ async function refreshModels() {
   try {
     modelCache = await api('/definitions/models');
     const sub = $('sidebar-models');
-    let html = '';
-    if (modelCache.length >= 10) {
-      html += '<input class="sidebar-filter" type="text" placeholder="Filter models..." oninput="filterSidebarModels(this.value)">';
-    }
-    html += modelCache.map(m =>
+    sub.innerHTML = modelCache.map(m =>
       `<div class="sidebar-item" data-section="manage" onclick="nav('manage/records/${m.key}')" data-nav="manage/records/${m.key}"><span>${m.name}</span></div>`
     ).join('');
-    sub.innerHTML = html;
-
-    // Overflow detection for fade gradient
-    const wrap = sub.closest('.sidebar-sub-wrap');
-    if (wrap) {
-      const update = () => {
-        const hasOverflow = sub.scrollHeight > sub.clientHeight;
-        const atBottom = sub.scrollTop + sub.clientHeight >= sub.scrollHeight - 4;
-        wrap.classList.toggle('overflow', hasOverflow && !atBottom);
-      };
-      update();
-      sub.onscroll = update;
-    }
   } catch {}
-}
-function filterSidebarModels(q) {
-  const lq = q.toLowerCase();
-  document.querySelectorAll('#sidebar-models .sidebar-item').forEach(el => {
-    el.style.display = el.textContent.toLowerCase().includes(lq) ? '' : 'none';
-  });
 }
 async function refreshPendingCount() {
   try {
