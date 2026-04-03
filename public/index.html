@@ -207,13 +207,59 @@
   <div class="main" id="main"></div>
 </div>
 <div id="toast" class="toast"></div>
+<div id="auth-overlay" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--surface);padding:32px;border-radius:12px;box-shadow:var(--shadow);max-width:400px;width:100%;text-align:center">
+    <h2 style="margin-bottom:4px">Spatial CMS</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:24px">Enter your API Key to continue</p>
+    <input id="auth-key-input" type="password" placeholder="scms_..." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-bottom:12px;outline:none">
+    <div id="auth-error" style="color:var(--danger);font-size:12px;margin-bottom:12px;display:none"></div>
+    <button id="auth-submit" class="btn btn-primary" style="width:100%;padding:10px">Sign In</button>
+    <p style="color:var(--muted);font-size:11px;margin-top:16px">Get a key from your administrator</p>
+  </div>
+</div>
 
 <script>
 const API = '/api/v1';
 
+// ─── Auth ─────────────────────────────────────────
+function getApiKey() { return sessionStorage.getItem('spatial_cms_key') || ''; }
+function setApiKey(key) { sessionStorage.setItem('spatial_cms_key', key); }
+
+(function initAuth() {
+  const overlay = document.getElementById('auth-overlay');
+  const saved = getApiKey();
+  if (saved) { overlay.style.display = 'none'; return; }
+
+  document.getElementById('auth-submit').onclick = async () => {
+    const key = document.getElementById('auth-key-input').value.trim();
+    if (!key) return;
+    const errEl = document.getElementById('auth-error');
+    try {
+      const res = await fetch(`${API}/definitions/models`, { headers: { 'X-API-Key': key } });
+      if (res.ok) {
+        setApiKey(key);
+        overlay.style.display = 'none';
+        location.reload();
+      } else {
+        errEl.textContent = res.status === 403 ? 'Insufficient permissions. Need manage or admin key.' : 'Invalid API key.';
+        errEl.style.display = '';
+      }
+    } catch { errEl.textContent = 'Cannot connect to server.'; errEl.style.display = ''; }
+  };
+  document.getElementById('auth-key-input').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('auth-submit').click(); };
+})();
+
 // ─── API + Utils ───────────────────────────────────
 async function api(path, opts = {}) {
-  const res = await fetch(`${API}${path}`, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const headers = { 'Content-Type': 'application/json' };
+  const key = getApiKey();
+  if (key) headers['X-API-Key'] = key;
+  const res = await fetch(`${API}${path}`, { headers, ...opts });
+  if (res.status === 401 || res.status === 403) {
+    sessionStorage.removeItem('spatial_cms_key');
+    document.getElementById('auth-overlay').style.display = 'flex';
+    throw new Error('Authentication required');
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || JSON.stringify(data.details) || 'Request failed');
   return data;
@@ -2687,9 +2733,10 @@ async function viewApiKeys(main) {
   function renderKeys() {
     const el = $('keys-table');
     if (!keys.length) { el.innerHTML = '<p style="color:var(--muted)">No API keys yet.</p>'; return; }
-    el.innerHTML = `<table><thead><tr><th>Name</th><th>Key Prefix</th><th>Created</th><th>Status</th><th></th></tr></thead>
+    el.innerHTML = `<table><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th>Status</th><th></th></tr></thead>
       <tbody>${keys.map(k => `<tr>
         <td>${k.name}</td>
+        <td>${badge(k.scope)}</td>
         <td><code style="font-size:12px">${k.keyPrefix}...</code></td>
         <td style="color:var(--muted)">${new Date(k.createdAt).toLocaleDateString()}</td>
         <td>${k.revokedAt ? `<span style="color:var(--danger);font-size:12px">Revoked ${new Date(k.revokedAt).toLocaleDateString()}</span>` : badge('active')}</td>
@@ -2713,8 +2760,10 @@ async function viewApiKeys(main) {
   $('gen-key-btn').onclick = async () => {
     const name = prompt('Key name (e.g. "CKAN Portal", "ETL Pipeline"):');
     if (!name) return;
+    const scope = prompt('Scope (delivery / manage / admin):', 'delivery');
+    if (!scope) return;
     try {
-      const result = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
+      const result = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name, scope }) });
       $('key-created-area').innerHTML = `
         <div class="card" style="border:2px solid var(--success);background:#f0fdf4">
           <h3 style="color:var(--success);margin-bottom:8px">Key Generated</h3>
@@ -2723,7 +2772,7 @@ async function viewApiKeys(main) {
             <code id="new-key-value" style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:14px;word-break:break-all">${result.key}</code>
             <button class="btn btn-primary btn-sm" onclick="copyText(document.getElementById('new-key-value').textContent)">Copy</button>
           </div>
-          <div style="margin-top:8px;font-size:12px;color:var(--muted)">Name: ${result.name} &middot; Prefix: ${result.keyPrefix}...</div>
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">Name: ${result.name} &middot; Scope: ${result.scope} &middot; Prefix: ${result.keyPrefix}...</div>
         </div>`;
       keys.unshift({ id: result.id, name: result.name, keyPrefix: result.keyPrefix, createdAt: result.createdAt, revokedAt: null });
       renderKeys();

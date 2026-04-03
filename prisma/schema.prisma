@@ -295,6 +295,7 @@ model ApiKey {
   name      String
   keyHash   String    @unique @map("key_hash")
   keyPrefix String    @map("key_prefix")
+  scope     String    @default("delivery")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
 

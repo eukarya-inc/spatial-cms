@@ -9,6 +9,7 @@ apiKeyRouter.get("/status", async (_req, res) => {
   res.json({ required: apiKeyService.isRequired() });
 });
 
+
 // GET /api/v1/api-keys
 apiKeyRouter.get("/", async (_req, res, next) => {
   try {
@@ -22,8 +23,8 @@ apiKeyRouter.get("/", async (_req, res, next) => {
 // POST /api/v1/api-keys
 apiKeyRouter.post("/", async (req, res, next) => {
   try {
-    const { name } = z.object({ name: z.string().min(1) }).parse(req.body);
-    const result = await apiKeyService.generateKey(name);
+    const { name, scope } = z.object({ name: z.string().min(1), scope: z.string().optional() }).parse(req.body);
+    const result = await apiKeyService.generateKey(name, scope);
     res.status(201).json(result);
   } catch (err) {
     next(err);

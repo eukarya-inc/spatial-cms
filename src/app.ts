@@ -43,16 +43,25 @@ app.use("/api/v1", (
   next();
 });
 
-// API routes
-app.use("/api/v1/entities", entityRouter);
-app.use("/api/v1/proposals", proposalRouter);
-app.use("/api/v1/datasets", datasetRouter);
-app.use("/api/v1/publications", publicationRouter);
-app.use("/api/v1/ingestion", ingestionRouter);
-app.use("/api/v1/definitions", definitionRouter);
+// Bootstrap route (no auth, only works when no keys exist)
+import { bootstrapKey } from "./modules/api-keys/api-key.service.js";
+app.post("/api/v1/api-keys/bootstrap", async (req, res, next) => {
+  try {
+    const result = await bootstrapKey();
+    if (!result) { res.status(403).json({ error: "Bootstrap not available. Keys already exist." }); return; }
+    res.status(201).json(result);
+  } catch (err) { next(err); }
+});
 
-app.use("/api/v1/api-keys", apiKeyRouter);
-app.use("/api/v1/delivery", requireApiKey, deliveryRouter);
+// API routes (protected by scope-based API Key)
+app.use("/api/v1/entities", requireApiKey("manage"), entityRouter);
+app.use("/api/v1/proposals", requireApiKey("manage"), proposalRouter);
+app.use("/api/v1/datasets", requireApiKey("manage"), datasetRouter);
+app.use("/api/v1/publications", requireApiKey("manage"), publicationRouter);
+app.use("/api/v1/ingestion", requireApiKey("manage"), ingestionRouter);
+app.use("/api/v1/definitions", requireApiKey("admin"), definitionRouter);
+app.use("/api/v1/api-keys", requireApiKey("admin"), apiKeyRouter);
+app.use("/api/v1/delivery", requireApiKey("delivery"), deliveryRouter);
 app.use("/api/v1/ogc", ogcRouter);
 
 // Global error handler
