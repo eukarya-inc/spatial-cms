@@ -135,6 +135,16 @@
 
     pre { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; font-family: "JetBrains Mono", Consolas, monospace; }
 
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+    .modal-card { background: var(--surface); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); max-width: 440px; width: 90%; padding: 24px; }
+    .modal-card h3 { font-size: 16px; margin-bottom: 8px; }
+    .modal-card p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 16px; white-space: pre-line; }
+    .modal-card .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-card input, .modal-card select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; margin-bottom: 12px; outline: none; }
+    .modal-card input:focus, .modal-card select:focus { border-color: var(--primary); }
+    .modal-card label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
     .sidebar-section[data-section="define"] { color: rgba(139,92,246,0.5); }
     .sidebar-section[data-section="manage"] { color: rgba(59,130,246,0.5); }
     .sidebar-section[data-section="publish"] { color: rgba(34,197,94,0.5); }
@@ -347,6 +357,65 @@ function copyFallback(text) {
   try { document.execCommand('copy'); toast('Copied to clipboard'); } catch { toast('Copy failed', 'error'); }
   document.body.removeChild(ta);
 }
+// ─── Modal dialogs (replace native confirm/prompt) ──
+function modalConfirm(title, message, opts = {}) {
+  const { confirmText = 'Confirm', danger = false } = opts;
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-card">
+      <h3>${title}</h3>
+      <p>${message}</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="_mc_cancel">Cancel</button>
+        <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="_mc_ok">${confirmText}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { document.body.removeChild(overlay); resolve(val); };
+    overlay.querySelector('#_mc_cancel').onclick = () => close(false);
+    overlay.querySelector('#_mc_ok').onclick = () => close(true);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(false); } });
+    overlay.querySelector('#_mc_ok').focus();
+  });
+}
+
+function modalPrompt(title, fields) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const fieldsHtml = fields.map(f => {
+      if (f.type === 'select') {
+        return `<div><label>${f.label}</label><select id="_mp_${f.key}">${f.options.map(o => `<option value="${o.value}"${o.value === f.value ? ' selected' : ''}>${o.label}</option>`).join('')}</select></div>`;
+      }
+      return `<div><label>${f.label}</label><input id="_mp_${f.key}" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${f.value || ''}"></div>`;
+    }).join('');
+    overlay.innerHTML = `<div class="modal-card">
+      <h3>${title}</h3>
+      ${fieldsHtml}
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="_mp_cancel">Cancel</button>
+        <button class="btn btn-primary" id="_mp_ok">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { document.body.removeChild(overlay); resolve(val); };
+    overlay.querySelector('#_mp_cancel').onclick = () => close(null);
+    overlay.querySelector('#_mp_ok').onclick = () => {
+      const result = {};
+      fields.forEach(f => { result[f.key] = overlay.querySelector(`#_mp_${f.key}`).value; });
+      close(result);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(null); } });
+    const firstInput = overlay.querySelector('input, select');
+    if (firstInput) firstInput.focus();
+    // Enter key submits
+    overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_mp_ok').click(); }; });
+  });
+}
+
 function $(id) { return document.getElementById(id); }
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -658,19 +727,19 @@ async function restoreOne(id) {
   try { await api(`/entities/${id}/restore`, { method: 'POST' }); toast('Restored'); reloadRecords(); } catch (err) { toast(err.message, 'error'); }
 }
 async function purgeOne(id, name) {
-  if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone. The entity and all its versions will be removed from the database.`)) return;
+  if (!await modalConfirm('Delete', `"${name}"?\n\nThis cannot be undone. The entity and all its versions will be removed from the database.`, {danger:true, confirmText:'Delete'})) return;
   try { await api(`/entities/${id}/purge`, { method: 'DELETE' }); toast('Permanently deleted'); reloadRecords(); } catch (err) { toast(err.message, 'error'); }
 }
 async function restoreAll() {
   const entities = window._allEntities || [];
-  if (!confirm(`Restore ${entities.length} archived records to active?`)) return;
+  if (!await modalConfirm('Restore', `${entities.length} archived records to active?`, {confirmText:'Restore'})) return;
   let done = 0;
   for (const e of entities) { try { await api(`/entities/${e.id}/restore`, { method: 'POST' }); done++; } catch {} }
   toast(`${done} restored`); reloadRecords();
 }
 async function purgeAll() {
   const entities = window._allEntities || [];
-  if (!confirm(`PERMANENTLY DELETE ${entities.length} archived records?\n\nThis cannot be undone. All entity data, versions, and geometry will be removed from the database.`)) return;
+  if (!await modalConfirm('Permanent Delete', `${entities.length} archived records?\n\nThis cannot be undone. All entity data, versions, and geometry will be removed from the database.`, {danger:true, confirmText:'Purge All'})) return;
   let done = 0;
   for (const e of entities) { try { await api(`/entities/${e.id}/purge`, { method: 'DELETE' }); done++; } catch {} }
   toast(`${done} permanently deleted`); reloadRecords();
@@ -679,19 +748,19 @@ async function restoreOneModel(id, modelKey) {
   try { await api(`/entities/${id}/restore`, { method: 'POST' }); toast('Restored'); reloadModelRecords(modelKey); } catch (err) { toast(err.message, 'error'); }
 }
 async function purgeOneModel(id, modelKey, name) {
-  if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone.`)) return;
+  if (!await modalConfirm('Delete', `"${name}"?\n\nThis cannot be undone.`, {danger:true, confirmText:'Delete'})) return;
   try { await api(`/entities/${id}/purge`, { method: 'DELETE' }); toast('Permanently deleted'); reloadModelRecords(modelKey); } catch (err) { toast(err.message, 'error'); }
 }
 async function restoreAllModel(modelKey) {
   const entities = (window._modelEntities || []).filter(e => e.status === 'archived');
-  if (!confirm(`Restore ${entities.length} archived records to active?`)) return;
+  if (!await modalConfirm('Restore', `${entities.length} archived records to active?`, {confirmText:'Restore'})) return;
   let done = 0;
   for (const e of entities) { try { await api(`/entities/${e.id}/restore`, { method: 'POST' }); done++; } catch {} }
   toast(`${done} restored`); reloadModelRecords(modelKey);
 }
 async function purgeAllModel(modelKey) {
   const entities = (window._modelEntities || []).filter(e => e.status === 'archived');
-  if (!confirm(`PERMANENTLY DELETE ${entities.length} archived records?\n\nThis cannot be undone.`)) return;
+  if (!await modalConfirm('Permanent Delete', `${entities.length} archived records?\n\nThis cannot be undone.`, {danger:true, confirmText:'Purge All'})) return;
   let done = 0;
   for (const e of entities) { try { await api(`/entities/${e.id}/purge`, { method: 'DELETE' }); done++; } catch {} }
   toast(`${done} permanently deleted`); reloadModelRecords(modelKey);
@@ -881,7 +950,7 @@ async function viewEntityDetail(main, entityId) {
   };
   if (archiveBtn) archiveBtn.onclick = () => changeStatus('archived');
   if (purgeBtn) purgeBtn.onclick = async () => {
-    if (!confirm(`Permanently delete "${e.properties?.name || 'this entity'}"?\n\nThis cannot be undone.`)) return;
+    if (!await modalConfirm('Delete', `"${e.properties?.name || 'this entity'}"?\n\nThis cannot be undone.`, {danger:true, confirmText:'Delete'})) return;
     try { await api(`/entities/${entityId}/purge`, { method: 'DELETE' }); toast('Permanently deleted'); nav(`manage/records/${e.type}`); } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -1294,7 +1363,7 @@ async function viewProposals(main) {
   $('rq-approve-sel').onclick = async () => {
     const ids = getSelectedIds();
     if (!ids.length) return;
-    if (!confirm(`Approve ${ids.length} proposal${ids.length > 1 ? 's' : ''}?`)) return;
+    if (!await modalConfirm('Approve', `${ids.length} proposal${ids.length > 1 ? 's' : ''}?`, {confirmText:'Approve'})) return;
     const resultEl = $('rq-result');
     resultEl.innerHTML = '<span style="color:var(--muted)">Approving...</span>';
     try {
@@ -1312,7 +1381,7 @@ async function viewProposals(main) {
   $('rq-reject-sel').onclick = async () => {
     const ids = getSelectedIds();
     if (!ids.length) return;
-    if (!confirm(`Reject ${ids.length} proposal${ids.length > 1 ? 's' : ''}?`)) return;
+    if (!await modalConfirm('Reject', `${ids.length} proposal${ids.length > 1 ? 's' : ''}?`, {danger:true, confirmText:'Reject'})) return;
     const resultEl = $('rq-result');
     resultEl.innerHTML = '<span style="color:var(--muted)">Rejecting...</span>';
     let rejected = 0, failed = 0;
@@ -1457,7 +1526,7 @@ async function viewDatasets(main) {
         const msg = published
           ? `Delete "${name}"?\n\nThis dataset is currently PUBLISHED. External consumers using the Delivery API will lose access.\n\nAll snapshots, publications, and bindings will be permanently deleted.`
           : `Delete "${name}"?\n\nAll snapshots, publications, and bindings will be permanently deleted.`;
-        if (!confirm(msg)) return;
+        if (!await modalConfirm('Confirm', msg)) return;
         try {
           await api(`/datasets/${dsId}`, { method: 'DELETE' });
           toast('Dataset deleted');
@@ -1564,7 +1633,7 @@ async function viewDatasetDetail(main, datasetId) {
     const msg = hasRelease
       ? `Delete "${d.name}"?\n\nThis dataset has published snapshots. External consumers will lose access via Delivery API.\n\nAll snapshots, publications, and bindings will be permanently deleted.`
       : `Delete "${d.name}"?\n\nAll snapshots and bindings will be permanently deleted.`;
-    if (!confirm(msg)) return;
+    if (!await modalConfirm('Confirm', msg)) return;
     try { await api(`/datasets/${datasetId}`, { method: 'DELETE' }); toast('Dataset deleted'); nav('publish/datasets'); } catch (err) { toast(err.message, 'error'); }
   };
   $('bind-btn').onclick = async () => { try { const mid = $('bind-select').value; if (!mid) return; await api(`/definitions/datasets/${datasetId}/bindings`, { method: 'POST', body: JSON.stringify({ modelDefinitionId: mid }) }); toast('Model bound'); nav(`publish/datasets/${datasetId}`); } catch (err) { toast(err.message, 'error'); } };
@@ -2875,7 +2944,7 @@ async function viewApiKeys(main) {
     // Revoke handlers
     activeEl.querySelectorAll('[data-revoke]').forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm(`Revoke API key "${btn.dataset.keyName}"?\n\nAny system using this key will lose access.`)) return;
+        if (!await modalConfirm('Revoke', `API key "${btn.dataset.keyName}"?\n\nAny system using this key will lose access.`, {danger:true, confirmText:'Revoke'})) return;
         try {
           await api(`/api-keys/${btn.dataset.revoke}`, { method: 'DELETE' });
           toast('Key revoked');
@@ -2888,10 +2957,16 @@ async function viewApiKeys(main) {
 
   // Generate key
   $('gen-key-btn').onclick = async () => {
-    const name = prompt('Key name (e.g. "CKAN Portal", "ETL Pipeline"):');
-    if (!name) return;
-    const scope = prompt('Scope (delivery / manage / admin):', 'delivery');
-    if (!scope) return;
+    const input = await modalPrompt('Generate API Key', [
+      { key: 'name', label: 'Key Name', placeholder: 'e.g. CKAN Portal, ETL Pipeline' },
+      { key: 'scope', label: 'Scope', type: 'select', value: 'delivery', options: [
+        { value: 'delivery', label: 'delivery — Read-only (Delivery API)' },
+        { value: 'manage', label: 'manage — Read/Write (+ Management, Ingestion)' },
+        { value: 'admin', label: 'admin — Full access (+ Definitions, API Keys)' },
+      ]},
+    ]);
+    if (!input || !input.name) return;
+    const { name, scope } = input;
     try {
       const result = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name, scope }) });
       $('key-created-area').innerHTML = `
@@ -3651,7 +3726,7 @@ async function viewModelDetail(main, modelId) {
     const msg = entityCount > 0
       ? `DELETE "${m.name}" model?\n\n${entityCount} entities will be permanently deleted along with all versions, proposals, field definitions, and dataset bindings.\n\nThis cannot be undone.`
       : `Delete "${m.name}" model?\n\nAll field definitions, relations, and dataset bindings will be removed.`;
-    if (!confirm(msg)) return;
+    if (!await modalConfirm('Confirm', msg)) return;
     try {
       await api(`/definitions/models/${modelId}`, { method: 'DELETE' });
       toast(`Model "${m.name}" deleted`);
@@ -3663,7 +3738,7 @@ async function viewModelDetail(main, modelId) {
   // Delete field handlers
   main.querySelectorAll('[data-del-field]').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Delete field "${btn.dataset.fieldLabel}"?\n\nExisting entity data for this field will be preserved in the database but hidden from the UI and forms.`)) return;
+      if (!await modalConfirm('Delete Field', `Delete field "${btn.dataset.fieldLabel}"?\n\nExisting entity data for this field will be preserved in the database but hidden from the UI and forms.`, {danger:true, confirmText:'Delete'})) return;
       try {
         await api(`/definitions/models/${modelId}/fields/${btn.dataset.delField}`, { method: 'DELETE' });
         toast('Field deleted');
