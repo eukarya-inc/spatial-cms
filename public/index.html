@@ -2001,6 +2001,17 @@ async function viewImportApi(main) {
     <div class="page-header"><div><h2>Import API</h2><div class="sub">API endpoints for data pipelines and external system integration</div></div></div>
 
     <div class="card">
+      <h3>Authentication</h3>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:8px">
+        Import API requires <strong>manage</strong> scope or higher.
+      </p>
+      <table style="box-shadow:none;font-size:12px"><tbody>
+        <tr><td>JWT (human)</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td>editor / reviewer / admin role</td></tr>
+        <tr><td>API Key (machine)</td><td><code>X-API-Key: scms_xxx</code></td><td>manage or admin scope key</td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="card">
       <h3>Overview</h3>
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">Four endpoints for different import scenarios:</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
