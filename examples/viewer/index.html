@@ -109,7 +109,6 @@
       <button id="btn-2d" class="active" onclick="switchView('2d')">2D</button>
       <button id="btn-3d" onclick="switchView('3d')">3D</button>
     </div>
-    <input id="api-key-input" type="password" placeholder="API Key (X-API-Key)" style="padding:4px 8px;border:1px solid #334155;border-radius:4px;font-size:11px;background:#1e293b;color:#e2e8f0;width:140px;outline:none" title="Enter your Delivery API key">
     <div class="right">
       <span class="badge badge-count" id="count-badge"></span>
       <span class="badge badge-api">Delivery API</span>
@@ -147,17 +146,8 @@
 </div>
 
 <script>
-const CMS_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:3001/api/v1'
-  : `http://${window.location.hostname}:3001/api/v1`;
-
-// Restore API key from localStorage
-const savedKey = localStorage.getItem('spatial_cms_api_key') || '';
-document.addEventListener('DOMContentLoaded', () => {
-  const input = document.getElementById('api-key-input');
-  if (input && savedKey) input.value = savedKey;
-  input?.addEventListener('change', () => { localStorage.setItem('spatial_cms_api_key', input.value); })
-});
+// Requests go to own backend (/api/*), which proxies to CMS with API Key
+const CMS_URL = window.location.origin + '/api';
 
 // ─── State ───
 let DATASET_ID = '';
@@ -181,10 +171,7 @@ async function apiGet(path) {
   const shortUrl = path;
   const t0 = performance.now();
   try {
-    const headers = {};
-    const apiKey = document.getElementById('api-key-input')?.value;
-    if (apiKey) headers['X-API-Key'] = apiKey;
-    const res = await fetch(url, { headers });
+    const res = await fetch(url);
     const elapsed = Math.round(performance.now() - t0);
     const data = await res.json();
     const count = data.pagination?.total ?? data.features?.length ?? data.entities?.length ?? (Array.isArray(data) ? data.length : '—');
@@ -415,7 +402,7 @@ map.on('click', (e) => {
 
 // ─── Init ───
 async function init() {
-  const datasets = await apiGet('/delivery/datasets');
+  const datasets = await apiGet('/datasets');
   const select = document.getElementById('dataset-select');
   if (!datasets.length) { select.innerHTML = '<option>No published datasets</option>'; return; }
 
@@ -435,7 +422,7 @@ async function loadDataset(datasetId) {
   document.getElementById('schema-panel').style.display = 'none';
   document.getElementById('stats-panel').style.display = 'none';
 
-  schemaData = await apiGet(`/delivery/datasets/${DATASET_ID}/schema`);
+  schemaData = await apiGet(`/datasets/${DATASET_ID}/schema`);
   const models = schemaData?.models || [];
   const allFields = models.flatMap(m => m.fields || []);
   const fieldMap = {};
@@ -503,7 +490,7 @@ async function loadMapDataCustom(spatialParam) {
 
   try {
     const params = [spatialParam, pageSizeParam, 'format=geojson'].filter(Boolean).join('&');
-    const mapPath = `/delivery/datasets/${DATASET_ID}/entities?${params}${filterParam}`;
+    const mapPath = `/datasets/${DATASET_ID}/entities?${params}${filterParam}`;
     const fc = await apiGet(mapPath);
     lastGeoJsonData = fc;
     let mapFeatures = fc.features || [];
@@ -634,7 +621,7 @@ function selectFeature(feature, lngLat) {
 async function loadStats() {
   let all = [], page = 1;
   while (true) {
-    const r = await apiGet(`/delivery/datasets/${DATASET_ID}/entities?page=${page}&pageSize=500`);
+    const r = await apiGet(`/datasets/${DATASET_ID}/entities?page=${page}&pageSize=500`);
     all.push(...r.entities);
     if (all.length >= r.pagination.total) break;
     page++;

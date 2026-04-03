@@ -1,19 +1,20 @@
 # Spatial CMS Viewer — Example Consumer App
 
 A standalone demo application that consumes the Spatial CMS Delivery API.
-Demonstrates how external developers would build applications on top of published spatial data.
+Demonstrates how a real consumer application should be built: **frontend + backend proxy**.
 
-## What This Is
+## Architecture
 
-This is **NOT** part of the CMS. It is an independent application that uses only the read-only Delivery API (`/api/v1/delivery/`). It demonstrates:
+```
+Browser (index.html)
+  ↓ fetch /api/datasets, /api/entities...  (no API key exposed)
+Viewer Backend (server.js, port 8090)
+  ↓ proxy + inject X-API-Key header (from environment variable)
+Spatial CMS Delivery API (port 3001)
+```
 
-- 2D/3D map visualization (MapLibre GL JS)
-- Dataset selection and schema discovery
-- Search and filtering by properties
-- Spatial queries (bbox draw, near-point search)
-- 3D building extrusion (height-based)
-- Data analysis (type distribution, height statistics)
-- API request logging (Chrome DevTools style)
+**The API Key never reaches the browser.** This is the correct pattern for any
+application consuming a protected API — the key lives in the backend environment.
 
 ## How to Run
 
@@ -24,46 +25,48 @@ This is **NOT** part of the CMS. It is an independent application that uses only
    npm run dev
    ```
 
-2. Ensure data is published (run the seed script if needed):
-   ```bash
-   npx tsx scripts/seed-taito.ts
-   ```
+2. Generate an API Key in the CMS:
+   - Go to `http://localhost:3001/#integrate/api-keys`
+   - Click "Generate New Key", copy the key
 
-3. Open the viewer:
+3. Configure and start the viewer:
    ```bash
    cd examples/viewer
-   python3 -m http.server 8090
-   # or: npx serve .
+   cp .env.example .env
+   # Edit .env and paste your API key
+   node server.js
    ```
 
-4. If the CMS is on a different host, the viewer auto-detects the hostname.
+4. Open `http://localhost:8090`
+
+## Configuration (.env)
+
+```
+CMS_URL=http://localhost:3001/api/v1    # CMS Delivery API base URL
+CMS_API_KEY=scms_your_key_here          # API Key (never exposed to browser)
+PORT=8090                                # Viewer port
+```
 
 ## Features
 
-- **Dataset selector** — switch between any published dataset
-- **Load button** — manually fetch data (no auto-refresh on pan)
-- **2D/3D toggle** — smooth animated transition (pitch 0 ↔ 60°)
-- **3D extrusion** — buildings extruded by height property or Z coordinate
-- **Bbox draw** — draw rectangle on map to spatial query
-- **Near search** — click point to search within 300m radius
-- **Filter chips** — auto-generated from schema enum fields
-- **Schema panel** — shows all models and fields
-- **API Log** — resizable panel showing all Delivery API requests + responses
+- 2D/3D map visualization (MapLibre GL JS)
+- Dataset selection and schema discovery
+- Spatial queries (bbox draw, near-point search)
+- 3D building extrusion (height-based)
+- API request logging
+- Page size control
 
-## API Endpoints Used
+## API Proxy Mapping
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /delivery/datasets` | Discover available datasets |
-| `GET /delivery/datasets/:id/schema` | Understand data structure |
-| `GET /delivery/datasets/:id/entities?bbox=&pageSize=&format=geojson` | Load spatial data |
-| `GET /delivery/datasets/:id/entities?near=&radius=` | Proximity search |
-| `GET /delivery/datasets/:id/entities?page=&pageSize=` | Paginated list |
-
-No authentication required. No write operations.
+| Browser request | Proxied to |
+|----------------|------------|
+| `GET /api/datasets` | `GET /api/v1/delivery/datasets` + X-API-Key |
+| `GET /api/datasets/:id/entities` | `GET /api/v1/delivery/datasets/:id/entities` + X-API-Key |
+| `GET /api/datasets/:id/schema` | `GET /api/v1/delivery/datasets/:id/schema` + X-API-Key |
 
 ## Tech Stack
 
+- Node.js (backend proxy, zero dependencies)
 - MapLibre GL JS (2D/3D map rendering)
-- Vanilla HTML + JS (no build tools)
+- Vanilla HTML + JS (frontend)
 - Spatial CMS Delivery API (data source)
