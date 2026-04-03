@@ -59,8 +59,9 @@ app.use("/api/v1", (
   next();
 });
 
-// Bootstrap route (no auth, only works when no keys exist)
-import { bootstrapKey } from "./modules/api-keys/api-key.service.js";
+// Public routes (no auth)
+import { bootstrapKey, isRequired } from "./modules/api-keys/api-key.service.js";
+app.get("/api/v1/api-keys/status", (_req, res) => { res.json({ required: isRequired() }); });
 app.post("/api/v1/api-keys/bootstrap", async (req, res, next) => {
   try {
     const result = await bootstrapKey();
