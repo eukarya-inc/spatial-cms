@@ -2698,9 +2698,9 @@ async function viewApiKeys(main) {
 
     el.querySelectorAll('[data-revoke]').forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm(\`Revoke API key "\${btn.dataset.keyName}"?\\n\\nAny system using this key will lose access to the Delivery API.\`)) return;
+        if (!confirm(`Revoke API key "${btn.dataset.keyName}"?\n\nAny system using this key will lose access to the Delivery API.`)) return;
         try {
-          await api(\`/api-keys/\${btn.dataset.revoke}\`, { method: 'DELETE' });
+          await api(`/api-keys/${btn.dataset.revoke}`, { method: 'DELETE' });
           toast('Key revoked');
           nav('integrate/api-keys');
         } catch (err) { toast(err.message, 'error'); }
@@ -2715,16 +2715,16 @@ async function viewApiKeys(main) {
     if (!name) return;
     try {
       const result = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
-      $('key-created-area').innerHTML = \`
+      $('key-created-area').innerHTML = `
         <div class="card" style="border:2px solid var(--success);background:#f0fdf4">
           <h3 style="color:var(--success);margin-bottom:8px">Key Generated</h3>
           <p style="font-size:13px;color:var(--danger);margin-bottom:12px;font-weight:600">Copy this key now. It will not be shown again.</p>
           <div style="display:flex;gap:8px;align-items:center">
-            <code id="new-key-value" style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:14px;word-break:break-all">\${result.key}</code>
+            <code id="new-key-value" style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:14px;word-break:break-all">${result.key}</code>
             <button class="btn btn-primary btn-sm" onclick="copyText(document.getElementById('new-key-value').textContent)">Copy</button>
           </div>
-          <div style="margin-top:8px;font-size:12px;color:var(--muted)">Name: \${result.name} &middot; Prefix: \${result.keyPrefix}...</div>
-        </div>\`;
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">Name: ${result.name} &middot; Prefix: ${result.keyPrefix}...</div>
+        </div>`;
       keys.unshift({ id: result.id, name: result.name, keyPrefix: result.keyPrefix, createdAt: result.createdAt, revokedAt: null });
       renderKeys();
     } catch (err) { toast(err.message, 'error'); }
