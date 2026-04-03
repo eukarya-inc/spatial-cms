@@ -250,7 +250,7 @@ async function initKeycloak() {
   // Load Keycloak JS adapter from CDN (Keycloak 26+ no longer bundles it)
   try {
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/keycloak-js@26.0/lib/keycloak.js';
+    script.src = 'https://unpkg.com/keycloak-js@25.0.0/dist/keycloak.js';
     await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; document.head.appendChild(script); });
   } catch {
     document.getElementById('auth-error').textContent = 'Cannot load Keycloak JS adapter.';
