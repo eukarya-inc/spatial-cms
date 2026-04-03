@@ -28,6 +28,16 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
 
+    /* Global scrollbar — thin, minimal for Windows Chrome */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    /* Dark scrollbar for sidebar */
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+    .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
     /* App Shell */
     .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; grid-template-rows: var(--topbar-h) 1fr; grid-template-areas: "sidebar topbar" "sidebar main"; height: 100vh; }
     .topbar { grid-area: topbar; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 12px; }
@@ -44,10 +54,11 @@
     .sidebar-item:hover { background: var(--sidebar-hover); }
     .sidebar-item.active { color: var(--sidebar-active); border-left-color: var(--accent); background: var(--sidebar-hover); }
     .sidebar-item .badge { margin-left: auto; background: var(--danger); color: #fff; font-size: 11px; padding: 1px 7px; border-radius: 10px; font-weight: 600; }
-    .sidebar-sub { padding-left: 16px; max-height: 240px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+    .sidebar-sub { padding-left: 16px; max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
     .sidebar-sub::-webkit-scrollbar { width: 4px; }
     .sidebar-sub::-webkit-scrollbar-track { background: transparent; }
     .sidebar-sub::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    .sidebar-sub::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
     .sidebar-sub .sidebar-item { font-size: 13px; padding: 7px 20px; }
     .sidebar-sub-wrap { position: relative; }
     .sidebar-sub-wrap::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px; background: linear-gradient(transparent, #1a1f2e); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
