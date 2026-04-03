@@ -26,14 +26,14 @@ export async function stopServer(): Promise<void> {
 /** Make an API request to the test server */
 export async function apiRequest(
   path: string,
-  options: { method?: string; body?: object } = {},
+  options: { method?: string; body?: object; headers?: Record<string, string> } = {},
 ) {
   const url = `http://localhost:${port}/api/v1${path}`;
   const res = await fetch(url, {
     method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...options.headers },
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   return { status: res.status, ok: res.ok, data };
 }

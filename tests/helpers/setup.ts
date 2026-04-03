@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 
 /** Clean all business data from the database (preserves schema) */
 export async function cleanDatabase() {
+  await prisma.apiKey.deleteMany();
   await prisma.activeReleaseState.deleteMany();
   await prisma.publication.deleteMany();
   await prisma.datasetSnapshot.deleteMany();
