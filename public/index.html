@@ -2830,26 +2830,52 @@ async function viewApiKeys(main) {
 
     <div class="card">
       <h3>Active Keys</h3>
-      <div id="keys-table"></div>
-    </div>`;
+      <div id="keys-active"></div>
+    </div>
+    <div id="keys-revoked-section"></div>`;
 
-  // Render keys table
+  // Render keys split into active + revoked
   function renderKeys() {
-    const el = $('keys-table');
-    if (!keys.length) { el.innerHTML = '<p style="color:var(--muted)">No API keys yet.</p>'; return; }
-    el.innerHTML = `<table><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th>Status</th><th></th></tr></thead>
-      <tbody>${keys.map(k => `<tr>
-        <td>${k.name}</td>
-        <td>${badge(k.scope)}</td>
-        <td><code style="font-size:12px">${k.keyPrefix}...</code></td>
-        <td style="color:var(--muted)">${new Date(k.createdAt).toLocaleDateString()}</td>
-        <td>${k.revokedAt ? `<span style="color:var(--danger);font-size:12px">Revoked ${new Date(k.revokedAt).toLocaleDateString()}</span>` : badge('active')}</td>
-        <td>${!k.revokedAt ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-revoke="${k.id}" data-key-name="${k.name}">Revoke</button>` : ''}</td>
-      </tr>`).join('')}</tbody></table>`;
+    const active = keys.filter(k => !k.revokedAt);
+    const revoked = keys.filter(k => k.revokedAt);
 
-    el.querySelectorAll('[data-revoke]').forEach(btn => {
+    // Active keys
+    const activeEl = $('keys-active');
+    if (!active.length) {
+      activeEl.innerHTML = '<p style="color:var(--muted)">No active API keys. Generate one above.</p>';
+    } else {
+      activeEl.innerHTML = `<table><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th></th></tr></thead>
+        <tbody>${active.map(k => `<tr>
+          <td>${k.name}</td>
+          <td>${badge(k.scope)}</td>
+          <td><code style="font-size:12px">${k.keyPrefix}...</code></td>
+          <td style="color:var(--muted)">${new Date(k.createdAt).toLocaleDateString()}</td>
+          <td><button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-revoke="${k.id}" data-key-name="${k.name}">Revoke</button></td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+
+    // Revoked keys (collapsed)
+    const revokedEl = $('keys-revoked-section');
+    if (revoked.length) {
+      revokedEl.innerHTML = `<details style="margin-top:16px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0">Revoked Keys (${revoked.length})</summary>
+        <table style="opacity:0.6;margin-top:8px"><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th>Revoked</th></tr></thead>
+          <tbody>${revoked.map(k => `<tr>
+            <td>${k.name}</td>
+            <td>${badge(k.scope)}</td>
+            <td><code style="font-size:12px">${k.keyPrefix}...</code></td>
+            <td style="color:var(--muted)">${new Date(k.createdAt).toLocaleDateString()}</td>
+            <td style="color:var(--danger);font-size:12px">${new Date(k.revokedAt).toLocaleDateString()}</td>
+          </tr>`).join('')}</tbody></table>
+      </details>`;
+    } else {
+      revokedEl.innerHTML = '';
+    }
+
+    // Revoke handlers
+    activeEl.querySelectorAll('[data-revoke]').forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm(`Revoke API key "${btn.dataset.keyName}"?\n\nAny system using this key will lose access to the Delivery API.`)) return;
+        if (!confirm(`Revoke API key "${btn.dataset.keyName}"?\n\nAny system using this key will lose access.`)) return;
         try {
           await api(`/api-keys/${btn.dataset.revoke}`, { method: 'DELETE' });
           toast('Key revoked');
