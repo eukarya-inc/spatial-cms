@@ -281,11 +281,21 @@ async function initKeycloak() {
       startApp();
 
       // Show user info in topbar
-      const userInfo = kc.tokenParsed;
       const userEl = document.getElementById('user-info');
-      if (userEl && userInfo) {
-        const roles = userInfo.realm_access?.roles?.filter(r => ['admin','reviewer','editor','viewer'].includes(r)) || [];
-        userEl.innerHTML = `<span style="font-size:12px;color:var(--muted)">${userInfo.preferred_username} (${roles[0] || 'user'})</span> <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="keycloakInstance.logout()">Logout</button>`;
+      if (userEl) {
+        const tokenInfo = kc.tokenParsed || {};
+        const roles = tokenInfo.realm_access?.roles?.filter(r => ['admin','reviewer','editor','viewer'].includes(r)) || [];
+        let username = tokenInfo.preferred_username || tokenInfo.name || tokenInfo.email;
+
+        // Fallback: load user profile if token doesn't have username
+        if (!username) {
+          try {
+            const profile = await kc.loadUserProfile();
+            username = profile.username || profile.email || 'user';
+          } catch { username = 'user'; }
+        }
+
+        userEl.innerHTML = `<span style="font-size:12px;color:var(--muted)">${username} (${roles[0] || 'user'})</span> <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="keycloakInstance.logout()">Logout</button>`;
         userEl.style.display = 'flex';
       }
     } else {
