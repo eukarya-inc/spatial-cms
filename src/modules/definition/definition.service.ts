@@ -57,7 +57,38 @@ export async function updateModelDefinition(
 }
 
 export async function deleteModelDefinition(id: string) {
-  return prisma.modelDefinition.delete({ where: { id } });
+  const model = await prisma.modelDefinition.findUnique({ where: { id } });
+  if (!model) throw new BusinessError("Model not found");
+
+  // Count affected entities for response
+  const entityCount = await prisma.entity.count({ where: { modelDefinitionId: id } });
+
+  // Cascade: disconnect proposals, delete versions, delete entities
+  if (entityCount > 0) {
+    await prisma.proposal.updateMany({
+      where: { entity: { modelDefinitionId: id } },
+      data: { entityId: null },
+    });
+    await prisma.entityVersion.deleteMany({
+      where: { entity: { modelDefinitionId: id } },
+    });
+    await prisma.$executeRaw`DELETE FROM entity WHERE model_definition_id = ${id}::uuid`;
+  }
+
+  // Delete governance policies (polymorphic, no FK)
+  await prisma.governancePolicy.deleteMany({ where: { targetType: "model", targetId: id } });
+
+  // Delete bindings, fields, relations (Prisma cascade handles some)
+  await prisma.datasetModelBinding.deleteMany({ where: { modelDefinitionId: id } });
+  await prisma.relationDefinition.deleteMany({
+    where: { OR: [{ sourceModelDefinitionId: id }, { targetModelDefinitionId: id }] },
+  });
+  await prisma.fieldDefinition.deleteMany({ where: { modelDefinitionId: id } });
+
+  // Finally delete the model
+  await prisma.modelDefinition.delete({ where: { id } });
+
+  return { deleted: true, key: model.key, entitiesDeleted: entityCount };
 }
 
 // ─── Field Definition ────────────────────────────────

@@ -3255,6 +3255,7 @@ async function viewModelDetail(main, modelId) {
   main.innerHTML = `
     <div class="page-header">
       <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; <span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span> &middot; ${(m.srid || 4326) === 4326 ? 'WGS84' : 'EPSG:' + (m.srid || 4326)} &middot; ${m.fields.length} fields</div></div>
+      <button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-model-btn">Delete Model</button>
     </div>
 
     <div class="card">
@@ -3376,6 +3377,21 @@ async function viewModelDetail(main, modelId) {
       await api(`/definitions/models/${modelId}/fields`, { method: 'POST', body: JSON.stringify(body) });
       toast('Field added');
       reload();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  // Delete model handler
+  $('del-model-btn').onclick = async () => {
+    const entityCount = await api(`/entities?type=${m.key}&pageSize=1`).then(r => r.pagination?.total ?? 0).catch(() => 0);
+    const msg = entityCount > 0
+      ? `DELETE "${m.name}" model?\n\n${entityCount} entities will be permanently deleted along with all versions, proposals, field definitions, and dataset bindings.\n\nThis cannot be undone.`
+      : `Delete "${m.name}" model?\n\nAll field definitions, relations, and dataset bindings will be removed.`;
+    if (!confirm(msg)) return;
+    try {
+      await api(`/definitions/models/${modelId}`, { method: 'DELETE' });
+      toast(`Model "${m.name}" deleted`);
+      refreshModels();
+      nav('define/models');
     } catch (err) { toast(err.message, 'error'); }
   };
 
