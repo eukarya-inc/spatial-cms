@@ -139,6 +139,16 @@ All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for 
 - **Delivery API** (`/api/v1/delivery/`) — read-only, external consumers, only published data
 - **Ingestion API** (`/api/v1/ingestion/`) — data pipelines, supports governed/direct/proposal modes
 
+### Authentication: Dual-Track (JWT + API Key)
+Two auth systems coexist in middleware:
+1. **JWT (Keycloak)** — for human users (admin UI, browser). `Authorization: Bearer <token>`
+2. **API Key** — for machine consumers (ETL, Viewer, CKAN). `X-API-Key: scms_xxx`
+Middleware checks JWT first, then API Key. OGC API requires neither.
+
+API Key scopes: `delivery` (read-only) < `manage` (read/write) < `admin` (full).
+Bootstrap: `POST /api-keys/bootstrap` creates first admin key without auth (only when no keys exist).
+Env: `DELIVERY_API_KEY_REQUIRED=false` disables all auth checks (dev mode).
+
 ### Dataset Metadata (DCAT)
 Dataset-level metadata for external consumers: description, license (SPDX), source, contactName, contactEmail, keywords. Managed in Publish → Dataset detail page. Exposed via:
 - Delivery API `/datasets/:id` — metadata fields in response
