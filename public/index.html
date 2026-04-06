@@ -1977,6 +1977,11 @@ async function viewDeliveryDocs(main) {
     <div class="page-header"><div><h2>Delivery API</h2><div class="sub">Read-only API for external consumers. Only published data is exposed.</div></div></div>
 
     <div class="card">
+      <h3>Authentication</h3>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6">Requires <code>delivery</code> scope API Key or any Keycloak JWT role. <code>X-API-Key: scms_xxx</code> or <code>Authorization: Bearer &lt;token&gt;</code></p>
+    </div>
+
+    <div class="card">
       <h3>Overview</h3>
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
         The Delivery API provides read-only access to published datasets. External applications (maps, mobile apps, analytics)
@@ -2366,6 +2371,19 @@ async function viewImportApi(main) {
   "source": "machine"
 }</pre>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Examples</h3>
+      <pre style="font-size:12px"># Validate entities (dry-run, no writes)
+curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+  ${baseUrl}/ingestion/validate \\
+  -d '{"modelKey":"building","entities":[{"properties":{"name":"Test"}}]}'
+
+# Governed import (respects governance policy)
+curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+  ${baseUrl}/ingestion/governed \\
+  -d '{"entities":[{"type":"building","properties":{"name":"Test"}}],"source":"machine"}'</pre>
     </div>
 
     <div class="card">
@@ -2942,7 +2960,7 @@ async function viewManagementApi(main) {
     </div>
 
     <div class="card">
-      <h3>When to Use Which API</h3>
+      <h3>Overview</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
         <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
           <div style="font-weight:600;color:var(--success);margin-bottom:4px">Delivery API</div>
@@ -3034,6 +3052,20 @@ async function viewManagementApi(main) {
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/publish</code></td><td>Publish snapshot</td></tr>
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/rollback</code></td><td>Rollback to previous</td></tr>
       </tbody></table>
+    </div>
+
+    <div class="card">
+      <h3>Examples</h3>
+      <pre style="font-size:12px"># List entities
+curl -H "X-API-Key: scms_xxx" ${baseUrl}/entities?type=building&pageSize=10
+
+# Create a proposal
+curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+  ${baseUrl}/proposals \\
+  -d '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"New"}}}}'
+
+# Approve a proposal
+curl -X POST -H "X-API-Key: scms_xxx" ${baseUrl}/proposals/{id}/approve</pre>
     </div>
 
     <div class="card">
@@ -3214,7 +3246,12 @@ async function viewOgcDocs(main) {
     <div class="page-header"><div><h2>OGC Services</h2><div class="sub">OGC API - Features compliant endpoints for GIS tools</div></div></div>
 
     <div class="card">
-      <h3>What is OGC API - Features?</h3>
+      <h3>Authentication</h3>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6">Public — no authentication required. OGC API is designed for open access by GIS tools.</p>
+    </div>
+
+    <div class="card">
+      <h3>Overview</h3>
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
         OGC API - Features is the modern standard for serving spatial data over the web, replacing the legacy WFS protocol.
         GIS tools like QGIS, ArcGIS, and MapServer can connect directly to these endpoints without any custom code.
