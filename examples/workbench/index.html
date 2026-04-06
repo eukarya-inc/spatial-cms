@@ -489,11 +489,15 @@ function previewChanges() {
 
 async function commitProposals() {
   const btn = document.getElementById('commit-submit');
+  const countEl = document.getElementById('commit-count');
+  const total = pendingChanges.length;
   btn.disabled = true;
-  btn.textContent = 'Creating...';
+  document.getElementById('commit-preview').disabled = true;
+  document.getElementById('commit-discard').disabled = true;
   let created = 0, failed = 0;
 
-  for (const c of pendingChanges) {
+  for (let i = 0; i < pendingChanges.length; i++) {
+    const c = pendingChanges[i];
     try {
       if (c.action === 'delete') {
         await apiPost('/proposals', { entityId: c.entityId, proposedChange: { action: 'delete', data: {} }, source: 'machine' });
@@ -502,12 +506,19 @@ async function commitProposals() {
       }
       created++;
     } catch { failed++; }
+
+    // Update progress every 5 items + yield to let UI repaint
+    if (i % 5 === 0 || i === pendingChanges.length - 1) {
+      countEl.textContent = `Creating ${i + 1}/${total}...`;
+      btn.textContent = `${Math.round(((i + 1) / total) * 100)}%`;
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 
-  btn.textContent = `Done: ${created} proposals`;
+  countEl.innerHTML = `<span style="color:#4ade80">Done: ${created} created</span>${failed ? `, <span style="color:#f87171">${failed} failed</span>` : ''}`;
+  btn.textContent = 'Create Proposals';
   pendingChanges = [];
-  updateCommitBar();
-  setTimeout(() => { btn.textContent = 'Create Proposals'; }, 3000);
+  setTimeout(() => updateCommitBar(), 5000);
 }
 
 // ─── Start ─────────────────────────────────────────
