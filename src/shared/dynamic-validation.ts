@@ -95,7 +95,7 @@ export async function validateAgainstModel(
         break;
       }
 
-      case "relation":
+      case "reference":
         if (typeof value !== "string")
           errors.push(`Field "${field.key}" must be a UUID string`);
         break;

@@ -63,14 +63,8 @@ enum FieldType {
   date
   json
   enum_
-  relation
+  reference
   geometry
-}
-
-enum RelationType {
-  belongs_to
-  has_many
-  many_to_many
 }
 
 enum GovernanceTargetType {
@@ -219,8 +213,6 @@ model ModelDefinition {
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
   fields          FieldDefinition[]
-  sourceRelations RelationDefinition[] @relation("SourceModel")
-  targetRelations RelationDefinition[] @relation("TargetModel")
   datasetBindings DatasetModelBinding[]
   entities        Entity[]
 
@@ -237,6 +229,7 @@ model FieldDefinition {
   defaultValue      Json?     @map("default_value")
   enumValues        Json?     @map("enum_values")
   validationJson    Json?     @map("validation_json")
+  referenceModelKey String?   @map("reference_model_key")
   orderIndex        Int       @default(0) @map("order_index")
 
   modelDefinition ModelDefinition @relation(fields: [modelDefinitionId], references: [id], onDelete: Cascade)
@@ -244,22 +237,6 @@ model FieldDefinition {
   @@unique([modelDefinitionId, key])
   @@index([modelDefinitionId])
   @@map("field_definition")
-}
-
-model RelationDefinition {
-  id                      String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sourceModelDefinitionId String       @map("source_model_definition_id") @db.Uuid
-  targetModelDefinitionId String       @map("target_model_definition_id") @db.Uuid
-  relationType            RelationType @map("relation_type")
-  key                     String
-  inverseKey              String?      @map("inverse_key")
-  isRequired              Boolean      @default(false) @map("is_required")
-
-  sourceModel ModelDefinition @relation("SourceModel", fields: [sourceModelDefinitionId], references: [id], onDelete: Cascade)
-  targetModel ModelDefinition @relation("TargetModel", fields: [targetModelDefinitionId], references: [id], onDelete: Cascade)
-
-  @@unique([sourceModelDefinitionId, key])
-  @@map("relation_definition")
 }
 
 model DatasetModelBinding {

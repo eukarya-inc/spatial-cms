@@ -1128,7 +1128,7 @@ async function viewEntityDetail(main, entityId) {
             case 'date': formHtml += `<input id="ef-${f.key}" type="date">`; break;
             case 'enum_': formHtml += `<select id="ef-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
             case 'json': formHtml += `<textarea id="ef-${f.key}" rows="3"></textarea>`; break;
-            case 'relation': formHtml += `<input id="ef-${f.key}" type="text" placeholder="Entity UUID">`; break;
+            case 'reference': formHtml += `<input id="ef-${f.key}" type="text" placeholder="Entity UUID${f.referenceModelKey ? ' (' + f.referenceModelKey + ')' : ''}">`; break;
             default: formHtml += `<input id="ef-${f.key}" type="text">`;
           }
           formHtml += '</div>';
@@ -1226,7 +1226,7 @@ async function viewNewRecord(main, modelKey) {
       case 'date': html += `<input id="rf-${f.key}" type="date">`; break;
       case 'enum_': html += `<select id="rf-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
       case 'json': html += `<textarea id="rf-${f.key}" rows="3" placeholder="JSON"></textarea>`; break;
-      case 'relation': html += `<input id="rf-${f.key}" type="text" placeholder="Entity UUID">`; break;
+      case 'reference': html += `<input id="rf-${f.key}" type="text" placeholder="Entity UUID${f.referenceModelKey ? ' (' + f.referenceModelKey + ')' : ''}">`; break;
       default: html += `<input id="rf-${f.key}" type="text">`;
     }
     html += '</div>';
@@ -3696,7 +3696,7 @@ const fieldTypeInfo = {
   date: { icon: 'D', color: '#3b82f6', desc: 'Date value' },
   enum_: { icon: '=', color: '#8b5cf6', desc: 'One of fixed options' },
   json: { icon: '{}', color: '#6b7280', desc: 'JSON object' },
-  relation: { icon: '->', color: '#ec4899', desc: 'Link to another entity' },
+  reference: { icon: '->', color: '#ec4899', desc: 'Reference to another entity' },
   geometry: { icon: 'G', color: '#14b8a6', desc: 'Spatial data' },
 };
 
@@ -3752,7 +3752,6 @@ async function viewModelDetail(main, modelId) {
       </div>
     </div>
 
-    ${m.sourceRelations?.length ? `<div class="card"><h3>Relations</h3>${m.sourceRelations.map(r => `<div class="field-item"><div class="fi-main"><div class="fi-label"><code>${r.key}</code></div><div class="fi-meta">${r.relationType} &rarr; ${r.targetModel.name}</div></div></div>`).join('')}</div>` : ''}
 
     <div class="card">
       <h3>Governance Policy</h3>
@@ -3813,6 +3812,8 @@ async function viewModelDetail(main, modelId) {
     if (!key || !label) { toast('Key and Label are required', 'error'); return; }
     try {
       const body = { key, label, fieldType: $('af-type').value, isRequired: $('af-req').checked };
+      const refModelEl = $('af-ref-model');
+      if (refModelEl?.value) body.referenceModelKey = refModelEl.value;
       const enumsEl = $('af-enums');
       if (enumsEl?.value) body.enumValues = enumsEl.value.split(',').map(s => s.trim()).filter(Boolean);
       const minEl = $('af-min'), maxEl = $('af-max');
@@ -3942,6 +3943,8 @@ function onFieldTypeChange() {
     extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Value</label><input id="af-min" type="number" step="any" placeholder="Optional"></div><div class="form-group"><label>Max Value</label><input id="af-max" type="number" step="any" placeholder="Optional"></div></div>`;
   } else if (type === 'string') {
     extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div><div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div></div>`;
+  } else if (type === 'reference') {
+    extra.innerHTML = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
   } else {
     extra.innerHTML = '';
   }

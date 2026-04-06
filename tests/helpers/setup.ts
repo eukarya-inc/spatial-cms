@@ -14,7 +14,6 @@ export async function cleanDatabase() {
   await prisma.proposal.deleteMany();
   await prisma.entityVersion.deleteMany();
   await prisma.$executeRaw`DELETE FROM entity`;
-  await prisma.relationDefinition.deleteMany();
   await prisma.fieldDefinition.deleteMany();
   await prisma.modelDefinition.deleteMany();
 }

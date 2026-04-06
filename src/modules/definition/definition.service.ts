@@ -39,8 +39,6 @@ export async function getModelDefinition(id: string) {
     where: { id },
     include: {
       fields: { orderBy: { orderIndex: "asc" } },
-      sourceRelations: { include: { targetModel: true } },
-      targetRelations: { include: { sourceModel: true } },
     },
   });
 }
@@ -84,11 +82,8 @@ export async function deleteModelDefinition(id: string) {
   // Delete governance policies (polymorphic, no FK)
   await prisma.governancePolicy.deleteMany({ where: { targetType: "model", targetId: id } });
 
-  // Delete bindings, fields, relations (Prisma cascade handles some)
+  // Delete bindings, fields (Prisma cascade handles some)
   await prisma.datasetModelBinding.deleteMany({ where: { modelDefinitionId: id } });
-  await prisma.relationDefinition.deleteMany({
-    where: { OR: [{ sourceModelDefinitionId: id }, { targetModelDefinitionId: id }] },
-  });
   await prisma.fieldDefinition.deleteMany({ where: { modelDefinitionId: id } });
 
   // Finally delete the model
@@ -109,6 +104,7 @@ export async function addField(
     defaultValue?: unknown;
     enumValues?: string[];
     validationJson?: object;
+    referenceModelKey?: string;
     orderIndex?: number;
   },
 ) {
@@ -122,6 +118,7 @@ export async function addField(
       defaultValue: data.defaultValue !== undefined ? (data.defaultValue as any) : undefined,
       enumValues: data.enumValues ?? undefined,
       validationJson: data.validationJson ?? undefined,
+      referenceModelKey: data.referenceModelKey ?? undefined,
       orderIndex: data.orderIndex ?? 0,
     },
   });
@@ -158,33 +155,6 @@ export async function removeField(fieldId: string) {
   return prisma.fieldDefinition.delete({ where: { id: fieldId } });
 }
 
-// ─── Relation Definition ─────────────────────────────
-
-export async function addRelation(data: {
-  sourceModelDefinitionId: string;
-  targetModelDefinitionId: string;
-  relationType: "belongs_to" | "has_many" | "many_to_many";
-  key: string;
-  inverseKey?: string;
-  isRequired?: boolean;
-}) {
-  return prisma.relationDefinition.create({
-    data: {
-      sourceModelDefinitionId: data.sourceModelDefinitionId,
-      targetModelDefinitionId: data.targetModelDefinitionId,
-      relationType: data.relationType,
-      key: data.key,
-      inverseKey: data.inverseKey,
-      isRequired: data.isRequired ?? false,
-    },
-    include: { sourceModel: true, targetModel: true },
-  });
-}
-
-export async function removeRelation(id: string) {
-  return prisma.relationDefinition.delete({ where: { id } });
-}
-
 // ─── Model Schema (for frontend form generation) ─────
 
 export async function getModelSchema(modelDefinitionId: string) {
@@ -192,7 +162,6 @@ export async function getModelSchema(modelDefinitionId: string) {
     where: { id: modelDefinitionId },
     include: {
       fields: { orderBy: { orderIndex: "asc" } },
-      sourceRelations: { include: { targetModel: true } },
     },
   });
   if (!model) return null;
@@ -210,13 +179,7 @@ export async function getModelSchema(modelDefinitionId: string) {
       defaultValue: f.defaultValue,
       enumValues: f.enumValues,
       validation: f.validationJson,
-    })),
-    relations: model.sourceRelations.map((r) => ({
-      key: r.key,
-      targetModelId: r.targetModelDefinitionId,
-      targetModelKey: r.targetModel.key,
-      relationType: r.relationType,
-      isRequired: r.isRequired,
+      referenceModelKey: f.referenceModelKey,
     })),
   };
 }

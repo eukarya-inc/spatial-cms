@@ -137,7 +137,7 @@ ogcRouter.get("/collections/:collectionId/schema", async (req, res, next) => {
     if (!schema) return res.status(404).json({ error: "Collection not found" });
 
     const properties: Record<string, object> = {};
-    const typeMap: Record<string, string> = { string: "string", number: "number", boolean: "boolean", date: "string", json: "object", enum_: "string", relation: "string" };
+    const typeMap: Record<string, string> = { string: "string", number: "number", boolean: "boolean", date: "string", json: "object", enum_: "string", reference: "string" };
     for (const f of (schema.fields || []) as Array<{ key: string; label: string; fieldType: string; isRequired: boolean }>) {
       properties[f.key] = {
         title: f.label,

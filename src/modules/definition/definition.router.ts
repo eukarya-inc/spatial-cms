@@ -30,22 +30,15 @@ const updateModelSchema = z.object({
 const createFieldSchema = z.object({
   key: z.string().min(1).regex(/^[a-z][a-z0-9_]*$/, "key must be lowercase snake_case"),
   label: z.string().min(1),
-  fieldType: z.enum(["string", "number", "boolean", "date", "json", "enum_", "relation", "geometry"]),
+  fieldType: z.enum(["string", "number", "boolean", "date", "json", "enum_", "reference", "geometry"]),
   isRequired: z.boolean().optional(),
   defaultValue: z.unknown().optional(),
   enumValues: z.array(z.string()).optional(),
   validationJson: z.record(z.unknown()).optional(),
+  referenceModelKey: z.string().optional(),
   orderIndex: z.number().int().optional(),
 });
 
-const createRelationSchema = z.object({
-  sourceModelDefinitionId: z.string().uuid(),
-  targetModelDefinitionId: z.string().uuid(),
-  relationType: z.enum(["belongs_to", "has_many", "many_to_many"]),
-  key: z.string().min(1),
-  inverseKey: z.string().optional(),
-  isRequired: z.boolean().optional(),
-});
 
 const createBindingSchema = z.object({
   modelDefinitionId: z.string().uuid(),
@@ -157,26 +150,6 @@ definitionRouter.delete("/models/:modelId/fields/:fieldId", adminOnly, async (re
   try {
     const { fieldId } = z.object({ fieldId: z.string().uuid() }).parse({ fieldId: req.params.fieldId });
     await defService.removeField(fieldId);
-    res.json({ deleted: true });
-  } catch (err) { next(err); }
-});
-
-// ─── Relation Definition Routes ──────────────────────
-
-// POST /api/v1/definitions/relations
-definitionRouter.post("/relations", adminOnly, async (req, res, next) => {
-  try {
-    const data = createRelationSchema.parse(req.body);
-    const relation = await defService.addRelation(data);
-    res.status(201).json(relation);
-  } catch (err) { next(err); }
-});
-
-// DELETE /api/v1/definitions/relations/:id
-definitionRouter.delete("/relations/:id", adminOnly, async (req, res, next) => {
-  try {
-    const { id } = uuidParam.parse(req.params);
-    await defService.removeRelation(id);
     res.json({ deleted: true });
   } catch (err) { next(err); }
 });

@@ -3,7 +3,7 @@
 ## What is this?
 
 Spatial data governance control plane (NOT a traditional CMS). Dual-kernel architecture:
-- **Definition Kernel** — dynamic model/field/relation schema definitions
+- **Definition Kernel** — dynamic model/field/reference schema definitions
 - **Governance Kernel** — proposal → approval → versioned entity → dataset snapshot → publish
 
 Core invariant: **ALL data changes go through proposals. No direct entity writes.**
@@ -43,7 +43,7 @@ src/
     dataset/                  # Dataset definitions + snapshot generation (dual-path)
     publication/              # Publish/rollback/hook
     ingestion/                # Bulk import + batch proposal creation + validation
-    definition/               # Model/field/relation/binding/governance CRUD
+    definition/               # Model/field/binding/governance CRUD
     delivery/                 # Read-only API for external data consumers + OGC API
 public/index.html             # Single-page admin UI (sidebar nav, hash router)
                               #   Dashboard: stats, records by model, recent activity, pending review
@@ -195,7 +195,6 @@ Each dataset controls which APIs expose its data:
 - `CRUD /api/v1/definitions/models` — model definitions
 - `CRUD /api/v1/definitions/models/:id/fields` — field definitions
 - `GET /api/v1/definitions/models/:id/schema` — JSON schema for frontend
-- `POST /api/v1/definitions/relations` — relation definitions
 - `CRUD /api/v1/definitions/datasets/:id/bindings` — model-dataset bindings
 - `CRUD /api/v1/definitions/governance/policies` — governance policies
 
@@ -246,7 +245,7 @@ Organized by product workflow: **Define → Manage → Publish**
 |-------|---------|------|
 | `#dashboard` | Manage | Dashboard: stats, activity, pending review |
 | `#define/models` | Define | Model Designer list + create + governance columns |
-| `#define/models/{id}` | Define | Fields, relations, governance policy |
+| `#define/models/{id}` | Define | Fields, reference fields, governance policy |
 | `#manage/records` | Manage | All records with search/filter |
 | `#manage/records/{modelKey}` | Manage | Records filtered by model |
 | `#manage/records/{modelKey}/{id}` | Manage | Entity detail + structured props + version history + edit |
