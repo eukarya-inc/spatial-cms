@@ -106,8 +106,17 @@ describe("API Key auth and scopes", () => {
     assert.strictEqual(status, 200);
   });
 
-  it("should reject manage key on definitions API", async () => {
+  it("should allow manage key to read definitions (GET)", async () => {
     const { status } = await apiRequest("/definitions/models", {
+      headers: { "X-API-Key": manageKey },
+    });
+    assert.strictEqual(status, 200);
+  });
+
+  it("should reject manage key on definitions write (POST)", async () => {
+    const { status } = await apiRequest("/definitions/models", {
+      method: "POST",
+      body: { key: "test_scope_fail", name: "Should Fail" },
       headers: { "X-API-Key": manageKey },
     });
     assert.strictEqual(status, 403);

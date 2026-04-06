@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as defService from "./definition.service.js";
+import { requireApiKey } from "../../middleware/apiKeyAuth.js";
 
 export const definitionRouter = Router();
+
+// Write operations require admin scope (applied per-route below)
+const adminOnly = requireApiKey("admin");
 
 // ─── Zod Schemas ─────────────────────────────────────
 
@@ -62,7 +66,7 @@ const uuidParam = z.object({ id: z.string().uuid() });
 // ─── Model Definition Routes ─────────────────────────
 
 // POST /api/v1/definitions/models
-definitionRouter.post("/models", async (req, res, next) => {
+definitionRouter.post("/models", adminOnly, async (req, res, next) => {
   try {
     const data = createModelSchema.parse(req.body);
     const model = await defService.createModelDefinition(data);
@@ -89,7 +93,7 @@ definitionRouter.get("/models/:id", async (req, res, next) => {
 });
 
 // PUT /api/v1/definitions/models/:id
-definitionRouter.put("/models/:id", async (req, res, next) => {
+definitionRouter.put("/models/:id", adminOnly, async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     const data = updateModelSchema.parse(req.body);
@@ -99,7 +103,7 @@ definitionRouter.put("/models/:id", async (req, res, next) => {
 });
 
 // DELETE /api/v1/definitions/models/:id
-definitionRouter.delete("/models/:id", async (req, res, next) => {
+definitionRouter.delete("/models/:id", adminOnly, async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     await defService.deleteModelDefinition(id);
@@ -120,7 +124,7 @@ definitionRouter.get("/models/:id/schema", async (req, res, next) => {
 // ─── Field Definition Routes ─────────────────────────
 
 // POST /api/v1/definitions/models/:id/fields (single object or array)
-definitionRouter.post("/models/:id/fields", async (req, res, next) => {
+definitionRouter.post("/models/:id/fields", adminOnly, async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     if (Array.isArray(req.body)) {
@@ -139,7 +143,7 @@ definitionRouter.post("/models/:id/fields", async (req, res, next) => {
 });
 
 // PUT /api/v1/definitions/models/:modelId/fields/:fieldId
-definitionRouter.put("/models/:modelId/fields/:fieldId", async (req, res, next) => {
+definitionRouter.put("/models/:modelId/fields/:fieldId", adminOnly, async (req, res, next) => {
   try {
     const { fieldId } = z.object({ fieldId: z.string().uuid() }).parse({ fieldId: req.params.fieldId });
     const data = createFieldSchema.partial().parse(req.body);
@@ -149,7 +153,7 @@ definitionRouter.put("/models/:modelId/fields/:fieldId", async (req, res, next) 
 });
 
 // DELETE /api/v1/definitions/models/:modelId/fields/:fieldId
-definitionRouter.delete("/models/:modelId/fields/:fieldId", async (req, res, next) => {
+definitionRouter.delete("/models/:modelId/fields/:fieldId", adminOnly, async (req, res, next) => {
   try {
     const { fieldId } = z.object({ fieldId: z.string().uuid() }).parse({ fieldId: req.params.fieldId });
     await defService.removeField(fieldId);
@@ -160,7 +164,7 @@ definitionRouter.delete("/models/:modelId/fields/:fieldId", async (req, res, nex
 // ─── Relation Definition Routes ──────────────────────
 
 // POST /api/v1/definitions/relations
-definitionRouter.post("/relations", async (req, res, next) => {
+definitionRouter.post("/relations", adminOnly, async (req, res, next) => {
   try {
     const data = createRelationSchema.parse(req.body);
     const relation = await defService.addRelation(data);
@@ -169,7 +173,7 @@ definitionRouter.post("/relations", async (req, res, next) => {
 });
 
 // DELETE /api/v1/definitions/relations/:id
-definitionRouter.delete("/relations/:id", async (req, res, next) => {
+definitionRouter.delete("/relations/:id", adminOnly, async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     await defService.removeRelation(id);
@@ -180,7 +184,7 @@ definitionRouter.delete("/relations/:id", async (req, res, next) => {
 // ─── Dataset Model Binding Routes ────────────────────
 
 // POST /api/v1/definitions/datasets/:datasetId/bindings
-definitionRouter.post("/datasets/:datasetId/bindings", async (req, res, next) => {
+definitionRouter.post("/datasets/:datasetId/bindings", adminOnly, async (req, res, next) => {
   try {
     const datasetId = z.string().uuid().parse(req.params.datasetId);
     const data = createBindingSchema.parse(req.body);
@@ -202,7 +206,7 @@ definitionRouter.get("/datasets/:datasetId/bindings", async (req, res, next) => 
 });
 
 // PUT /api/v1/definitions/datasets/:datasetId/bindings/:bindingId
-definitionRouter.put("/datasets/:datasetId/bindings/:bindingId", async (req, res, next) => {
+definitionRouter.put("/datasets/:datasetId/bindings/:bindingId", adminOnly, async (req, res, next) => {
   try {
     const bindingId = z.string().uuid().parse(req.params.bindingId);
     const binding = await defService.updateBinding(bindingId, req.body);
@@ -211,7 +215,7 @@ definitionRouter.put("/datasets/:datasetId/bindings/:bindingId", async (req, res
 });
 
 // DELETE /api/v1/definitions/datasets/:datasetId/bindings/:bindingId
-definitionRouter.delete("/datasets/:datasetId/bindings/:bindingId", async (req, res, next) => {
+definitionRouter.delete("/datasets/:datasetId/bindings/:bindingId", adminOnly, async (req, res, next) => {
   try {
     const bindingId = z.string().uuid().parse(req.params.bindingId);
     await defService.removeBinding(bindingId);
@@ -222,7 +226,7 @@ definitionRouter.delete("/datasets/:datasetId/bindings/:bindingId", async (req, 
 // ─── Governance Policy Routes ────────────────────────
 
 // POST /api/v1/definitions/governance/policies
-definitionRouter.post("/governance/policies", async (req, res, next) => {
+definitionRouter.post("/governance/policies", adminOnly, async (req, res, next) => {
   try {
     const data = createPolicySchema.parse(req.body);
     const policy = await defService.upsertGovernancePolicy(data);
@@ -242,7 +246,7 @@ definitionRouter.get("/governance/policies/:targetType/:targetId", async (req, r
 });
 
 // DELETE /api/v1/definitions/governance/policies/:id
-definitionRouter.delete("/governance/policies/:id", async (req, res, next) => {
+definitionRouter.delete("/governance/policies/:id", adminOnly, async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     await defService.deleteGovernancePolicy(id);

@@ -76,7 +76,7 @@ app.use("/api/v1/proposals", requireApiKey("manage"), proposalRouter);
 app.use("/api/v1/datasets", requireApiKey("manage"), datasetRouter);
 app.use("/api/v1/publications", requireApiKey("manage"), publicationRouter);
 app.use("/api/v1/ingestion", requireApiKey("manage"), ingestionRouter);
-app.use("/api/v1/definitions", requireApiKey("admin"), definitionRouter);
+app.use("/api/v1/definitions", requireApiKey("manage"), definitionRouter);
 app.use("/api/v1/api-keys", requireApiKey("admin"), apiKeyRouter);
 app.use("/api/v1/delivery", requireApiKey("delivery"), deliveryRouter);
 app.use("/api/v1/ogc", ogcRouter);
