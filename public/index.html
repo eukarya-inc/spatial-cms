@@ -151,6 +151,19 @@
     .modal-card input:focus, .modal-card select:focus { border-color: var(--primary); }
     .modal-card label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 
+    /* Reference autocomplete */
+    .ref-ac { position: relative; }
+    .ref-ac input { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; outline: none; }
+    .ref-ac input:focus { border-color: var(--primary); }
+    .ref-ac .ref-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .ref-ac.open .ref-list { display: block; }
+    .ref-ac .ref-item { padding: 6px 10px; font-size: 13px; cursor: pointer; }
+    .ref-ac .ref-item:hover { background: var(--bg); }
+    .ref-ac .ref-item.highlighted { background: var(--bg); }
+    .ref-ac .ref-selected { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
+    .ref-ac .ref-selected .ref-clear { cursor: pointer; color: var(--muted); font-size: 16px; margin-left: auto; }
+    .ref-ac .ref-selected .ref-clear:hover { color: var(--danger); }
+
     .sidebar-section[data-section="define"] { color: rgba(139,92,246,0.5); }
     .sidebar-section[data-section="manage"] { color: rgba(59,130,246,0.5); }
     .sidebar-section[data-section="publish"] { color: rgba(34,197,94,0.5); }
@@ -363,26 +376,69 @@ function entityDisplayName(entity, model) {
   return props.name || props.title || props.gmlid || props.key_code || entity.id?.substring(0, 12) || 'Untitled';
 }
 
-// Populate reference field dropdowns with entities from target model
+// Build autocomplete reference pickers
 async function populateReferenceSelects(container) {
-  const selects = (container || document).querySelectorAll('select[data-ref-model]');
-  for (const sel of selects) {
-    const modelKey = sel.dataset.refModel;
+  const containers = (container || document).querySelectorAll('.ref-ac[data-ref-model]');
+  for (const ac of containers) {
+    const modelKey = ac.dataset.refModel;
     if (!modelKey) continue;
     try {
-      const result = await api(`/entities?type=${modelKey}&status=active&pageSize=500`);
+      const result = await api(`/entities?type=${modelKey}&status=active&pageSize=1000`);
       const entities = result.entities || result;
-      // Get target model's displayField
       const targetModel = modelCache.find(m => m.key === modelKey);
-      const currentVal = sel.value;
-      const options = entities.map(e => {
-        const label = entityDisplayName(e, targetModel);
-        return `<option value="${e.id}">${label}</option>`;
-      });
-      sel.innerHTML = `<option value="">-- select (${modelKey}) --</option>` + options.join('');
-      if (currentVal) sel.value = currentVal;
+      const items = entities.map(e => ({ id: e.id, label: entityDisplayName(e, targetModel) }));
+
+      // Hidden value holder
+      ac._refValue = ac._refValue || '';
+      ac._refItems = items;
+
+      ac.innerHTML = `<input type="text" placeholder="Search ${targetModel?.name || modelKey}... (${items.length})" autocomplete="off">
+        <div class="ref-list"></div>`;
+
+      const input = ac.querySelector('input');
+      const list = ac.querySelector('.ref-list');
+
+      function render(query) {
+        const q = (query || '').toLowerCase();
+        const filtered = q.length > 0 ? items.filter(i => i.label.toLowerCase().includes(q)) : items.slice(0, 15);
+        list.innerHTML = filtered.slice(0, 20).map(i =>
+          `<div class="ref-item" data-id="${i.id}">${i.label}</div>`
+        ).join('') + (filtered.length > 20 ? `<div style="padding:6px 10px;color:var(--muted);font-size:12px">${filtered.length - 20} more — type to narrow</div>` : '');
+        if (filtered.length === 0) list.innerHTML = '<div style="padding:6px 10px;color:var(--muted);font-size:12px">No matches</div>';
+      }
+
+      function select(id, label) {
+        ac._refValue = id;
+        ac.innerHTML = `<div class="ref-selected"><span>${label}</span><span class="ref-clear" title="Clear">&times;</span></div>`;
+        ac.querySelector('.ref-clear').onclick = () => {
+          ac._refValue = '';
+          populateReferenceSelects(ac.parentElement); // rebuild this one
+        };
+        ac.classList.remove('open');
+      }
+
+      input.onfocus = () => { render(input.value); ac.classList.add('open'); };
+      input.oninput = () => { render(input.value); ac.classList.add('open'); };
+      input.onblur = () => { setTimeout(() => ac.classList.remove('open'), 200); };
+
+      list.onclick = (e) => {
+        const item = e.target.closest('.ref-item');
+        if (item) select(item.dataset.id, item.textContent);
+      };
+
+      // If there's a pre-set value, show it as selected
+      if (ac._refValue) {
+        const match = items.find(i => i.id === ac._refValue);
+        if (match) select(match.id, match.label);
+      }
     } catch {}
   }
+}
+
+// Get reference field value from autocomplete container
+function getRefValue(el) {
+  if (el?.classList?.contains('ref-ac')) return el._refValue || '';
+  return el?.value || '';
 }
 
 function copyText(text) {
@@ -1160,7 +1216,7 @@ async function viewEntityDetail(main, entityId) {
             case 'date': formHtml += `<input id="ef-${f.key}" type="date">`; break;
             case 'enum_': formHtml += `<select id="ef-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
             case 'json': formHtml += `<textarea id="ef-${f.key}" rows="3"></textarea>`; break;
-            case 'reference': formHtml += `<select id="ef-${f.key}" data-ref-model="${f.referenceModelKey || ''}"><option value="">-- select --</option></select>`; break;
+            case 'reference': formHtml += `<div class="ref-ac" id="ef-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
             default: formHtml += `<input id="ef-${f.key}" type="text">`;
           }
           formHtml += '</div>';
@@ -1178,9 +1234,21 @@ async function viewEntityDetail(main, entityId) {
         formHtml += `<div style="margin-top:20px;display:flex;gap:8px"><button class="btn btn-primary" id="ef-submit">Submit Edit Proposal</button></div>`;
         card.innerHTML = formHtml;
 
-        // Load reference field options, then pre-fill values
-        await populateReferenceSelects(card);
+        // Pre-set reference values before populating dropdowns
         for (const f of schema.fields) {
+          const el = $(`ef-${f.key}`);
+          if (!el) continue;
+          const val = e.properties?.[f.key];
+          if (val === undefined || val === null) continue;
+          if (f.fieldType === 'reference') { el._refValue = String(val); continue; }
+          if (f.fieldType === 'boolean') el.checked = !!val;
+          else if (f.fieldType === 'json') el.value = JSON.stringify(val, null, 2);
+          else el.value = String(val);
+        }
+        await populateReferenceSelects(card);
+        // Re-fill non-reference fields (populateReferenceSelects may rebuild DOM)
+        for (const f of schema.fields) {
+          if (f.fieldType === 'reference') continue;
           const el = $(`ef-${f.key}`);
           if (!el) continue;
           const val = e.properties?.[f.key];
@@ -1209,7 +1277,8 @@ async function viewEntityDetail(main, entityId) {
             for (const f of schema.fields) {
               const el = $(`ef-${f.key}`);
               if (!el) continue;
-              if (f.fieldType === 'boolean') { properties[f.key] = el.checked; }
+              if (f.fieldType === 'reference') { properties[f.key] = el._refValue || null; }
+              else if (f.fieldType === 'boolean') { properties[f.key] = el.checked; }
               else if (f.fieldType === 'number') { properties[f.key] = el.value !== '' ? parseFloat(el.value) : null; }
               else if (f.fieldType === 'json') {
                 if (el.value) try { properties[f.key] = JSON.parse(el.value); } catch { toast('Invalid JSON in ' + f.key, 'error'); return; }
@@ -1259,7 +1328,7 @@ async function viewNewRecord(main, modelKey) {
       case 'date': html += `<input id="rf-${f.key}" type="date">`; break;
       case 'enum_': html += `<select id="rf-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
       case 'json': html += `<textarea id="rf-${f.key}" rows="3" placeholder="JSON"></textarea>`; break;
-      case 'reference': html += `<select id="rf-${f.key}" data-ref-model="${f.referenceModelKey || ''}"><option value="">-- select --</option></select>`; break;
+      case 'reference': html += `<div class="ref-ac" id="rf-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
       default: html += `<input id="rf-${f.key}" type="text">`;
     }
     html += '</div>';
@@ -1283,7 +1352,8 @@ async function viewNewRecord(main, modelKey) {
       for (const f of schema.fields) {
         const el = $(`rf-${f.key}`);
         if (!el) continue;
-        if (f.fieldType === 'boolean') properties[f.key] = el.checked;
+        if (f.fieldType === 'reference') { if (el._refValue) properties[f.key] = el._refValue; }
+        else if (f.fieldType === 'boolean') properties[f.key] = el.checked;
         else if (f.fieldType === 'number') { if (el.value !== '') properties[f.key] = parseFloat(el.value); }
         else if (f.fieldType === 'json') { if (el.value) try { properties[f.key] = JSON.parse(el.value); } catch { toast('Invalid JSON in ' + f.key, 'error'); return; } }
         else { if (el.value) properties[f.key] = el.value; }
