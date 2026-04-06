@@ -17,6 +17,7 @@ const createModelSchema = z.object({
   geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
   is3D: z.boolean().optional(),
   srid: z.number().int().optional(),
+  displayField: z.string().optional(),
 });
 
 const updateModelSchema = z.object({
@@ -25,6 +26,7 @@ const updateModelSchema = z.object({
   geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
   is3D: z.boolean().optional(),
   srid: z.number().int().optional(),
+  displayField: z.string().optional(),
 });
 
 const createFieldSchema = z.object({

@@ -353,6 +353,16 @@ function toast(msg, type = 'success') {
   if (window._toastTimer) clearTimeout(window._toastTimer);
   window._toastTimer = setTimeout(() => el.style.display = 'none', duration);
 }
+// Get display name for an entity based on its model's displayField setting
+function entityDisplayName(entity, model) {
+  if (!entity) return 'Unknown';
+  const displayField = model?.displayField;
+  if (displayField && entity.properties?.[displayField]) return String(entity.properties[displayField]);
+  // Fallback: try common field names
+  const props = entity.properties || {};
+  return props.name || props.title || props.gmlid || props.key_code || entity.id?.substring(0, 12) || 'Untitled';
+}
+
 // Populate reference field dropdowns with entities from target model
 async function populateReferenceSelects(container) {
   const selects = (container || document).querySelectorAll('select[data-ref-model]');
@@ -362,9 +372,11 @@ async function populateReferenceSelects(container) {
     try {
       const result = await api(`/entities?type=${modelKey}&status=active&pageSize=500`);
       const entities = result.entities || result;
+      // Get target model's displayField
+      const targetModel = modelCache.find(m => m.key === modelKey);
       const currentVal = sel.value;
       const options = entities.map(e => {
-        const label = e.properties?.name || e.properties?.gmlid || e.id.substring(0, 12);
+        const label = entityDisplayName(e, targetModel);
         return `<option value="${e.id}">${label}</option>`;
       });
       sel.innerHTML = `<option value="">-- select (${modelKey}) --</option>` + options.join('');
@@ -846,7 +858,7 @@ function filterRecords() {
 
   html += `<table><thead><tr><th>Name</th><th>Model</th><th>Status</th><th>Created</th><th></th></tr></thead>
     <tbody>${entities.map(e => `<tr>
-      <td>${e.properties?.name || '<em style="color:var(--muted)">Untitled</em>'}</td>
+      <td>${entityDisplayName(e, modelCache.find(m => m.key === e.type))}</td>
       <td><code style="font-size:12px">${e.type}</code></td>
       <td>${badge(e.status)}</td>
       <td style="color:var(--muted)">${new Date(e.createdAt).toLocaleDateString()}</td>
@@ -965,7 +977,7 @@ function filterModelRecords(modelKey) {
 
   html += `<table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th></th></tr></thead>
     <tbody>${entities.map(e => `<tr>
-      <td>${e.properties?.name || '<em style="color:var(--muted)">Untitled</em>'}</td>
+      <td>${entityDisplayName(e, modelCache.find(m => m.key === e.type))}</td>
       <td>${badge(e.status)}</td>
       <td style="color:var(--muted)">${new Date(e.createdAt).toLocaleDateString()}</td>
       <td style="display:flex;gap:4px">
@@ -2097,7 +2109,7 @@ entities.forEach(entity => {
           <div id="delivery-structured-${dsId}">
             ${entities.length ? `<table><thead><tr><th>Name</th><th>Type</th><th>Geometry</th><th>Version</th><th></th></tr></thead>
               <tbody>${entities.map((e, i) => `<tr>
-                <td>${e.properties?.name || '<em style="color:var(--muted)">Untitled</em>'}</td>
+                <td>${entityDisplayName(e, modelCache.find(m => m.key === e.type))}</td>
                 <td><code style="font-size:12px">${e.type}</code></td>
                 <td>${e.geometry ? `<span class="badge badge-none">${e.geometry.type}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
                 <td style="color:var(--muted)">v${e.version}</td>
@@ -3776,6 +3788,17 @@ async function viewModelDetail(main, modelId) {
 
 
     <div class="card">
+      <h3>Display Field</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which field identifies a record in lists and dropdowns.</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="md-display-field" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+          ${m.fields.filter(f => f.fieldType === 'string').map(f => `<option value="${f.key}" ${m.displayField === f.key ? 'selected' : ''}>${f.label} (${f.key})</option>`).join('')}
+        </select>
+        <button class="btn btn-outline btn-sm" id="md-save-display">Save</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Governance Policy</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Controls how proposals for this model are processed.</p>
       <div class="form-row">
@@ -3857,6 +3880,13 @@ async function viewModelDetail(main, modelId) {
   };
 
   // Delete model handler
+  $('md-save-display').onclick = async () => {
+    try {
+      await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ displayField: $('md-display-field').value }) });
+      toast('Display field saved');
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
   $('del-model-btn').onclick = async () => {
     const entityCount = await api(`/entities?type=${m.key}&pageSize=1`).then(r => r.pagination?.total ?? 0).catch(() => 0);
     const msg = entityCount > 0
