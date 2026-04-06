@@ -11,7 +11,7 @@ export async function createModelDefinition(data: {
   is3D?: boolean;
   srid?: number;
 }) {
-  return prisma.modelDefinition.create({
+  const model = await prisma.modelDefinition.create({
     data: {
       key: data.key,
       name: data.name,
@@ -22,6 +22,18 @@ export async function createModelDefinition(data: {
     },
     include: { fields: true },
   });
+
+  // Auto-create default governance policy (manual approval)
+  await prisma.governancePolicy.create({
+    data: {
+      targetType: "model",
+      targetId: model.id,
+      approvalMode: "manual",
+      publishMode: "manual",
+    },
+  });
+
+  return model;
 }
 
 export async function listModelDefinitions() {
