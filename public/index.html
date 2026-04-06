@@ -2944,9 +2944,9 @@ async function viewManagementApi(main) {
     <div class="card">
       <h3>Authentication</h3>
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px">All API requests (except OGC) require authentication via <strong>JWT token</strong> (human users) or <strong>API Key</strong> (machine consumers).</p>
-      <table style="box-shadow:none;font-size:13px"><tbody>
-        <tr><td style="font-weight:600">JWT (Keycloak)</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td>Human users via browser login</td></tr>
-        <tr><td style="font-weight:600">API Key</td><td><code>X-API-Key: scms_xxx</code></td><td>Machine consumers (ETL, scripts, tools)</td></tr>
+      <table style="box-shadow:none;font-size:13px"><thead><tr><th>Method</th><th>Header</th><th>For</th></tr></thead><tbody>
+        <tr><td>JWT (Keycloak)</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td style="color:var(--muted)">Human users via browser login</td></tr>
+        <tr><td>API Key</td><td><code>X-API-Key: scms_xxx</code></td><td style="color:var(--muted)">Machine consumers (ETL, scripts, tools)</td></tr>
       </tbody></table>
       <div style="margin-top:12px;font-size:13px">
         <div style="font-weight:600;color:var(--muted);font-size:12px;margin-bottom:6px">Scope / Role requirements:</div>
