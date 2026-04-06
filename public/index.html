@@ -1354,7 +1354,7 @@ async function viewProposals(main) {
       const groups = [];
       for (const p of filtered) {
         const last = groups[groups.length - 1];
-        const pTime = Math.floor(new Date(p.createdAt).getTime() / 5000); // 5-sec window
+        const pTime = Math.floor(new Date(p.createdAt).getTime() / 60000); // 1-min window
         if (last && last.status === p.status && last.type === (p.proposedChange.data?.type || '') && last.timeKey === pTime) {
           last.items.push(p);
         } else {
