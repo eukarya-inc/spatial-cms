@@ -470,6 +470,42 @@ async function batchProgress(title, items, fn) {
   return { done, failed };
 }
 
+/** Show a processing modal for single long-running API calls */
+async function withProcessingModal(title, description, fn) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal-card" style="text-align:center">
+    <h3>${title}</h3>
+    <p>${description}</p>
+    <div style="margin:16px 0">
+      <div style="display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    </div>
+    <div id="_pm_status" style="font-size:13px;color:var(--muted)">Processing...</div>
+  </div>`;
+  // Add spinner animation
+  const style = document.createElement('style');
+  style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+  overlay.appendChild(style);
+  document.body.appendChild(overlay);
+
+  try {
+    const result = await fn();
+    // Show success
+    overlay.querySelector('.modal-card').innerHTML = `<h3>${title}</h3>
+      <div style="margin:16px 0;font-size:32px">✓</div>
+      <div id="_pm_status" style="font-size:14px;color:var(--success);font-weight:600">Complete</div>
+      <button class="btn btn-outline" style="margin-top:16px" onclick="this.closest('.modal-overlay').remove()">Close</button>`;
+    setTimeout(() => { if (document.body.contains(overlay)) overlay.remove(); }, 3000);
+    return result;
+  } catch (err) {
+    overlay.querySelector('.modal-card').innerHTML = `<h3>${title}</h3>
+      <div style="margin:16px 0;font-size:32px">✗</div>
+      <div style="font-size:14px;color:var(--danger);font-weight:600">${err.message}</div>
+      <button class="btn btn-outline" style="margin-top:16px" onclick="this.closest('.modal-overlay').remove()">Close</button>`;
+    throw err;
+  }
+}
+
 function $(id) { return document.getElementById(id); }
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -1422,17 +1458,18 @@ async function viewProposals(main) {
     const ids = getSelectedIds();
     if (!ids.length) return;
     if (!await modalConfirm('Approve', `${ids.length} proposal${ids.length > 1 ? 's' : ''}?`, {confirmText:'Approve'})) return;
-    const resultEl = $('rq-result');
-    resultEl.innerHTML = '<span style="color:var(--muted)">Approving...</span>';
     try {
-      const result = await api('/proposals/approve-batch', { method: 'POST', body: JSON.stringify({ ids }) });
+      const result = await withProcessingModal('Approving Proposals', `${ids.length} proposal(s)`, () =>
+        api('/proposals/approve-batch', { method: 'POST', body: JSON.stringify({ ids }) })
+      );
+      const resultEl = $('rq-result');
       resultEl.innerHTML = `<div style="padding:12px;border-radius:var(--radius);background:#f0fdf4;border:1px solid #bbf7d0">
         <strong style="color:var(--success)">${result.approved} approved</strong>
         ${result.failed > 0 ? `<span style="color:var(--danger);margin-left:12px">${result.failed} failed</span>` : ''}
       </div>`;
       refreshPendingCount();
       setTimeout(() => reload(), 1500);
-    } catch (err) { resultEl.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`; }
+    } catch (err) { $('rq-result').innerHTML = `<span style="color:var(--danger)">${err.message}</span>`; }
   };
 
   // ── Batch Reject ──
@@ -2695,20 +2732,22 @@ function setupFileImport(models) {
         const mode = $('fi-mode').value;
         const skipInvalid = $('fi-skip')?.checked || false;
         const report = $('fi-report');
-        report.innerHTML = '<span style="color:var(--muted)">Importing...</span>';
         try {
           const t0 = Date.now();
           const apiEntities = entities.map(e => ({ type: modelKey, properties: e.properties, geometry: e.geometry }));
           let result;
           if (mode === 'governed') {
-            result = await api('/ingestion/governed', { method: 'POST', body: JSON.stringify({ entities: apiEntities, source: 'import_', options: { skipInvalid } }) });
+            result = await withProcessingModal('Importing Data', `${apiEntities.length} records (governed mode)`, () =>
+              api('/ingestion/governed', { method: 'POST', body: JSON.stringify({ entities: apiEntities, source: 'import_', options: { skipInvalid } }) }));
             report.innerHTML = `<div style="padding:12px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0"><strong style="color:var(--success)">${result.approved || 0} auto-approved</strong>${result.pending ? `, <strong style="color:#1e40af">${result.pending} pending review</strong>` : ''}${result.skipped ? `, ${result.skipped} skipped` : ''} · ${((Date.now()-t0)/1000).toFixed(1)}s</div>`;
           } else if (mode === 'proposal') {
             const proposals = apiEntities.map(e => ({ proposedChange: { action: 'create', data: e } }));
-            result = await api('/ingestion/proposal-set', { method: 'POST', body: JSON.stringify({ proposals, source: 'import_' }) });
+            result = await withProcessingModal('Creating Proposals', `${proposals.length} proposals`, () =>
+              api('/ingestion/proposal-set', { method: 'POST', body: JSON.stringify({ proposals, source: 'import_' }) }));
             report.innerHTML = `<div style="padding:12px;background:#dbeafe;border-radius:var(--radius);border:1px solid #93c5fd"><strong style="color:#1e40af">${result.created} proposals created</strong> · ${((Date.now()-t0)/1000).toFixed(1)}s</div>`;
           } else {
-            result = await api('/ingestion/import', { method: 'POST', body: JSON.stringify({ entities: apiEntities, source: 'import_', options: { skipInvalid } }) });
+            result = await withProcessingModal('Importing Data', `${apiEntities.length} records (direct import)`, () =>
+              api('/ingestion/import', { method: 'POST', body: JSON.stringify({ entities: apiEntities, source: 'import_', options: { skipInvalid } }) }));
             report.innerHTML = `<div style="padding:12px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0"><strong style="color:var(--success)">${result.imported} imported</strong>${result.skipped ? `, ${result.skipped} skipped` : ''} · ${((Date.now()-t0)/1000).toFixed(1)}s</div>`;
           }
           refreshModels(); refreshPendingCount();
