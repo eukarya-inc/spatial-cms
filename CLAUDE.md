@@ -19,10 +19,30 @@ Core invariant: **ALL data changes go through proposals. No direct entity writes
 ## Quick Start
 
 ```bash
-docker compose up -d          # PostGIS + Directus + Keycloak
-npm run dev                   # Express on port 3001
-npm test                      # Run 47 integration tests
+# 1. Install dependencies
+npm install
+
+# 2. Start Docker services (PostGIS + Keycloak + Directus)
+docker compose up -d
+
+# 3. Wait for services to be ready (~20 seconds)
+#    Check: curl http://localhost:8180/realms/spatial-cms
+
+# 4. Run database migrations
+npx prisma migrate deploy
+npm run db:migrate:test        # Test database
+
+# 5. (Optional) Seed sample data
+npx tsx scripts/seed-taito.ts
+
+# 6. Start the dev server
+npm run dev                    # Express on port 3001
+
+# 7. Open http://localhost:3001
+#    Login: admin / admin (Keycloak)
 ```
+
+Run tests: `npm test` (47 integration tests)
 
 ## Project Structure
 

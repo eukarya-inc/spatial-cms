@@ -9,12 +9,11 @@ Tests use a **separate database** (`spatial_cms_test`) so dev data is never affe
 ## Prerequisites
 
 - Docker running (`docker compose up -d`) with PostGIS on port 5434
-- Test database created and migrated:
+- Test database migrated:
   ```bash
-  docker compose exec db psql -U spatial_cms -c "CREATE DATABASE spatial_cms_test;"
-  docker compose exec db psql -U spatial_cms -d spatial_cms_test -c "CREATE EXTENSION IF NOT EXISTS postgis;"
   npm run db:migrate:test
   ```
+  Note: The test database (`spatial_cms_test`) and PostGIS extension are created automatically by `docker/init-test-db.sh` on first Docker startup.
 
 ## Running Tests
 
