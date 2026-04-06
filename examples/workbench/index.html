@@ -488,12 +488,29 @@ function previewChanges() {
 }
 
 async function commitProposals() {
-  const btn = document.getElementById('commit-submit');
-  const countEl = document.getElementById('commit-count');
   const total = pendingChanges.length;
-  btn.disabled = true;
-  document.getElementById('commit-preview').disabled = true;
-  document.getElementById('commit-discard').disabled = true;
+  const updates = pendingChanges.filter(c => c.action === 'update').length;
+  const deletes = pendingChanges.filter(c => c.action === 'delete').length;
+  const sources = [...new Set(pendingChanges.map(c => c.source))].join(', ');
+
+  // Show progress modal
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `<div style="background:#1e293b;border-radius:12px;padding:32px;max-width:440px;width:90%;text-align:center">
+    <h3 style="color:#f8fafc;margin-bottom:16px">Creating Proposals</h3>
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:16px">${updates} update(s), ${deletes} delete(s) from ${sources}</div>
+    <div style="background:#334155;border-radius:8px;height:8px;margin-bottom:12px;overflow:hidden">
+      <div id="_cp_bar" style="background:#3b82f6;height:100%;width:0%;transition:width 0.2s;border-radius:8px"></div>
+    </div>
+    <div id="_cp_status" style="font-size:14px;color:#e2e8f0;font-weight:600">0 / ${total}</div>
+    <div id="_cp_detail" style="font-size:12px;color:#64748b;margin-top:4px">Starting...</div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const bar = overlay.querySelector('#_cp_bar');
+  const status = overlay.querySelector('#_cp_status');
+  const detail = overlay.querySelector('#_cp_detail');
+
   let created = 0, failed = 0;
 
   for (let i = 0; i < pendingChanges.length; i++) {
@@ -507,18 +524,31 @@ async function commitProposals() {
       created++;
     } catch { failed++; }
 
-    // Update progress every 5 items + yield to let UI repaint
-    if (i % 5 === 0 || i === pendingChanges.length - 1) {
-      countEl.textContent = `Creating ${i + 1}/${total}...`;
-      btn.textContent = `${Math.round(((i + 1) / total) * 100)}%`;
-      await new Promise(r => setTimeout(r, 0));
-    }
+    // Update progress
+    const pct = Math.round(((i + 1) / total) * 100);
+    bar.style.width = pct + '%';
+    status.textContent = `${i + 1} / ${total}`;
+    detail.textContent = `${created} created${failed ? `, ${failed} failed` : ''}`;
+    if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
   }
 
-  countEl.innerHTML = `<span style="color:#4ade80">Done: ${created} created</span>${failed ? `, <span style="color:#f87171">${failed} failed</span>` : ''}`;
-  btn.textContent = 'Create Proposals';
+  // Show result
+  bar.style.width = '100%';
+  bar.style.background = failed ? '#f59e0b' : '#22c55e';
+  status.textContent = 'Complete';
+  detail.innerHTML = `<span style="color:#4ade80">${created} proposals created</span>${failed ? ` · <span style="color:#f87171">${failed} failed</span>` : ''}`;
+
+  // Add close button + auto-close after 3s
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn btn-outline';
+  closeBtn.style.cssText = 'margin-top:20px;color:#94a3b8';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => document.body.removeChild(overlay);
+  overlay.querySelector('div > div').appendChild(closeBtn);
+
   pendingChanges = [];
-  setTimeout(() => updateCommitBar(), 5000);
+  updateCommitBar();
+  setTimeout(() => { if (document.body.contains(overlay)) document.body.removeChild(overlay); }, 5000);
 }
 
 // ─── Start ─────────────────────────────────────────
