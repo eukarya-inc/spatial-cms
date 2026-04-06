@@ -76,8 +76,9 @@ examples/
   viewer/                     # Consumer demo app (Delivery API + MapLibre GL JS)
     index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
     README.md
-  dedup/                      # Data quality tool (Management API)
-    index.html                # Duplicate detection + merge/delete via proposals
+  workbench/                  # Data quality workbench (Management API)
+    index.html                # Dedup + Cleanse + Validate + Transform tools
+    server.js                 # Backend proxy (manage scope key)
     README.md                 # How to run, API endpoints used
 ```
 

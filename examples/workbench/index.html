@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Workbench — Spatial CMS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }
+
+    .app { display: grid; grid-template-rows: 48px 40px 1fr auto; height: 100vh; }
+    .topbar { background: #0f172a; display: flex; align-items: center; padding: 0 16px; gap: 12px; border-bottom: 1px solid #1e293b; }
+    .topbar h1 { font-size: 15px; font-weight: 600; color: #f8fafc; white-space: nowrap; }
+    .topbar select { padding: 5px 8px; border: 1px solid #334155; border-radius: 6px; font-size: 12px; background: #1e293b; color: #e2e8f0; outline: none; }
+    .topbar .right { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .badge-ok { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .badge-count { background: rgba(59,130,246,0.15); color: #60a5fa; }
+
+    .tab-bar { background: #1e293b; display: flex; gap: 0; border-bottom: 1px solid #334155; padding: 0 16px; }
+    .tab-btn { padding: 10px 20px; font-size: 13px; font-weight: 500; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.1s; }
+    .tab-btn:hover { color: #cbd5e1; }
+    .tab-btn.active { color: #f8fafc; border-bottom-color: #3b82f6; }
+
+    .workspace { display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+    .sidebar { background: #1e293b; overflow-y: auto; padding: 16px; border-right: 1px solid #334155; }
+    .sidebar h3 { font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .sidebar label { display: block; font-size: 13px; padding: 6px 0; cursor: pointer; color: #cbd5e1; }
+    .sidebar label:hover { color: #f1f5f9; }
+    .sidebar input[type="radio"] { margin-right: 8px; }
+    .sidebar .group { margin-bottom: 16px; }
+    .sidebar .field-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+    .sidebar input[type="text"], .sidebar input[type="number"], .sidebar input[type="range"], .sidebar select { width: 100%; padding: 6px 8px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: #e2e8f0; font-size: 13px; margin-bottom: 8px; outline: none; }
+    .sidebar input:focus, .sidebar select:focus { border-color: #3b82f6; }
+    .sidebar .stats { margin-top: 16px; padding-top: 16px; border-top: 1px solid #334155; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+    .stat-label { color: #64748b; }
+    .stat-value { color: #e2e8f0; font-weight: 600; }
+
+    .main { overflow-y: auto; padding: 16px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+    .btn:hover { opacity: 0.85; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .commit-bar { background: #1e293b; border-top: 1px solid #334155; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+    .commit-bar .commit-count { font-size: 13px; color: #94a3b8; flex: 1; }
+    .commit-bar .commit-count strong { color: #f59e0b; }
+
+    .group-card { background: #1e293b; border-radius: 8px; padding: 14px; margin-bottom: 12px; border: 1px solid #334155; }
+    .group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .group-title { font-size: 14px; font-weight: 600; }
+    .dup-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-size: 13px; margin-bottom: 4px; cursor: pointer; }
+    .dup-row:hover { background: #334155; }
+    .dup-row.keep { background: rgba(34,197,94,0.1); border-left: 3px solid #22c55e; }
+    .dup-row.delete { background: rgba(239,68,68,0.05); color: #94a3b8; }
+    .dup-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dup-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+    .tag-keep { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .tag-delete { background: rgba(239,68,68,0.2); color: #f87171; }
+
+    .diff-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .diff-table th, .diff-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    .diff-table th { color: #64748b; font-size: 11px; text-transform: uppercase; }
+    .diff-same { color: #64748b; }
+    .diff-diff { color: #f59e0b; font-weight: 600; }
+
+    .data-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .data-table th, .data-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    .data-table th { color: #64748b; font-size: 11px; text-transform: uppercase; position: sticky; top: 0; background: #0f172a; }
+    .data-table .changed { background: rgba(245,158,11,0.1); color: #f59e0b; }
+
+    .loading { padding: 40px; text-align: center; color: #64748b; }
+    .empty { padding: 40px; text-align: center; color: #64748b; }
+    .empty h4 { color: #e2e8f0; margin-bottom: 8px; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+
+    @media (max-width: 768px) {
+      .tab-panel.active { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- Topbar -->
+  <div class="topbar">
+    <h1>Data Workbench</h1>
+    <select id="model-select"><option value="">Loading models...</option></select>
+    <button class="btn btn-primary btn-sm" id="load-btn" disabled>Load</button>
+    <div class="right">
+      <span class="badge badge-count" id="entity-count"></span>
+      <span class="badge badge-ok">Management API</span>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <div class="tab-btn active" data-tab="dedup">Dedup</div>
+    <div class="tab-btn" data-tab="cleanse">Cleanse</div>
+    <div class="tab-btn" data-tab="validate" style="opacity:0.4;cursor:default" title="Coming soon">Validate</div>
+    <div class="tab-btn" data-tab="transform" style="opacity:0.4;cursor:default" title="Coming soon">Transform</div>
+  </div>
+
+  <!-- Tab panels -->
+  <div id="tab-dedup" class="tab-panel active">
+    <div class="sidebar">
+      <h3>Dedup Strategy</h3>
+      <div class="group">
+        <label><input type="radio" name="dedup-strategy" value="exact" checked> Exact field match</label>
+        <label><input type="radio" name="dedup-strategy" value="fuzzy"> Fuzzy name match</label>
+        <label><input type="radio" name="dedup-strategy" value="spatial"> Near location</label>
+        <label><input type="radio" name="dedup-strategy" value="combined"> Combined</label>
+      </div>
+      <div class="group">
+        <div class="field-label">Match field</div>
+        <select id="dedup-field"></select>
+      </div>
+      <div class="group" id="dedup-fuzzy-opts" style="display:none">
+        <div class="field-label">Similarity threshold</div>
+        <input type="range" id="dedup-threshold" min="0.5" max="1" step="0.05" value="0.8">
+        <div style="font-size:12px;color:#94a3b8;text-align:center" id="dedup-threshold-val">0.80</div>
+      </div>
+      <div class="group" id="dedup-spatial-opts" style="display:none">
+        <div class="field-label">Max distance (meters)</div>
+        <input type="number" id="dedup-distance" value="10" min="1" max="1000">
+      </div>
+      <button class="btn btn-primary" id="dedup-run" style="width:100%;margin-bottom:12px" disabled>Run Analysis</button>
+      <div id="dedup-stats" class="stats"></div>
+      <button class="btn btn-outline" id="dedup-auto" style="width:100%;margin-top:8px" disabled>Auto-resolve All</button>
+      <button class="btn btn-success" id="dedup-apply" style="width:100%;margin-top:8px" disabled>Apply to Commit</button>
+    </div>
+    <div class="main" id="dedup-results">
+      <div class="empty"><h4>Select a model and run analysis</h4><p>Choose a strategy and click "Run Analysis" to find duplicates.</p></div>
+    </div>
+  </div>
+
+  <div id="tab-cleanse" class="tab-panel">
+    <div class="sidebar">
+      <h3>Cleanse Operation</h3>
+      <div class="group">
+        <div class="field-label">Target field</div>
+        <select id="cleanse-field"></select>
+      </div>
+      <div class="group">
+        <div class="field-label">Operation</div>
+        <select id="cleanse-op">
+          <option value="uppercase">UPPERCASE</option>
+          <option value="lowercase">lowercase</option>
+          <option value="titlecase">Title Case</option>
+          <option value="trim">Trim whitespace</option>
+          <option value="remove-special">Remove special characters</option>
+          <option value="find-replace">Find & Replace</option>
+          <option value="fill-empty">Fill empty values</option>
+        </select>
+      </div>
+      <div class="group" id="cleanse-fr-opts" style="display:none">
+        <div class="field-label">Find</div>
+        <input type="text" id="cleanse-find" placeholder="Search text or /regex/">
+        <div class="field-label">Replace with</div>
+        <input type="text" id="cleanse-replace" placeholder="Replacement">
+      </div>
+      <div class="group" id="cleanse-fill-opts" style="display:none">
+        <div class="field-label">Default value</div>
+        <input type="text" id="cleanse-default" placeholder="Value for empty fields">
+      </div>
+      <button class="btn btn-primary" id="cleanse-preview" style="width:100%;margin-bottom:8px" disabled>Preview Changes</button>
+      <button class="btn btn-success" id="cleanse-apply" style="width:100%;margin-bottom:12px" disabled>Apply to Commit</button>
+      <div id="cleanse-stats" class="stats"></div>
+    </div>
+    <div class="main" id="cleanse-results">
+      <div class="empty"><h4>Select a field and operation</h4><p>Preview changes before applying.</p></div>
+    </div>
+  </div>
+
+  <!-- Commit bar -->
+  <div class="commit-bar">
+    <div class="commit-count">Pending: <strong id="commit-count">0</strong> changes</div>
+    <button class="btn btn-outline btn-sm" id="commit-preview" disabled>Preview</button>
+    <button class="btn btn-success btn-sm" id="commit-submit" disabled>Create Proposals</button>
+    <button class="btn btn-danger btn-sm" id="commit-discard" disabled>Discard All</button>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+
+// ─── Shared State ──────────────────────────────────
+let allEntities = [];
+let modelFields = [];
+let modelKey = '';
+let modelId = '';
+let pendingChanges = []; // { entityId, action: 'update'|'delete', data: { properties }, source }
+
+// ─── API ───────────────────────────────────────────
+async function apiGet(path) { const r = await fetch(`${API}${path}`); return r.json(); }
+async function apiPost(path, body) {
+  const r = await fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+// ─── Init ──────────────────────────────────────────
+async function init() {
+  const models = await apiGet('/definitions/models');
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '<option value="">Select model...</option>' + models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('');
+  sel.onchange = () => {
+    modelKey = sel.value;
+    modelId = sel.selectedOptions[0]?.dataset.id || '';
+    document.getElementById('load-btn').disabled = !modelKey;
+  };
+  document.getElementById('load-btn').onclick = loadEntities;
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    if (btn.style.opacity === '0.4') return;
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    };
+  });
+
+  // Dedup strategy toggle
+  document.querySelectorAll('input[name="dedup-strategy"]').forEach(r => {
+    r.onchange = () => {
+      document.getElementById('dedup-fuzzy-opts').style.display = ['fuzzy', 'combined'].includes(r.value) ? '' : 'none';
+      document.getElementById('dedup-spatial-opts').style.display = ['spatial', 'combined'].includes(r.value) ? '' : 'none';
+    };
+  });
+  document.getElementById('dedup-threshold').oninput = (e) => { document.getElementById('dedup-threshold-val').textContent = parseFloat(e.target.value).toFixed(2); };
+
+  // Cleanse operation toggle
+  document.getElementById('cleanse-op').onchange = () => {
+    const op = document.getElementById('cleanse-op').value;
+    document.getElementById('cleanse-fr-opts').style.display = op === 'find-replace' ? '' : 'none';
+    document.getElementById('cleanse-fill-opts').style.display = op === 'fill-empty' ? '' : 'none';
+  };
+
+  // Commit bar
+  document.getElementById('commit-discard').onclick = () => { pendingChanges = []; updateCommitBar(); };
+  document.getElementById('commit-submit').onclick = commitProposals;
+  document.getElementById('commit-preview').onclick = previewChanges;
+
+  // Dedup buttons
+  document.getElementById('dedup-run').onclick = runDedup;
+  document.getElementById('dedup-auto').onclick = autoResolveDedup;
+  document.getElementById('dedup-apply').onclick = applyDedup;
+
+  // Cleanse buttons
+  document.getElementById('cleanse-preview').onclick = previewCleanse;
+  document.getElementById('cleanse-apply').onclick = applyCleanse;
+}
+
+async function loadEntities() {
+  if (!modelKey) return;
+  document.getElementById('entity-count').textContent = 'Loading...';
+  allEntities = [];
+  let page = 1;
+  while (true) {
+    const r = await apiGet(`/entities?type=${modelKey}&status=active&page=${page}&pageSize=500`);
+    allEntities.push(...r.entities);
+    if (allEntities.length >= r.pagination.total) break;
+    page++;
+  }
+  document.getElementById('entity-count').textContent = `${allEntities.length} loaded`;
+
+  // Load schema
+  const schema = await apiGet(`/definitions/models/${modelId}/schema`);
+  modelFields = schema.fields || [];
+
+  // Populate field selectors
+  const stringFields = modelFields.filter(f => f.fieldType === 'string');
+  document.getElementById('dedup-field').innerHTML = stringFields.map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('');
+  document.getElementById('cleanse-field').innerHTML = modelFields.map(f => `<option value="${f.key}">${f.label} (${f.key}) — ${f.fieldType}</option>`).join('');
+
+  // Enable buttons
+  document.getElementById('dedup-run').disabled = false;
+  document.getElementById('cleanse-preview').disabled = false;
+}
+
+// ─── Dedup ─────────────────────────────────────────
+let duplicateGroups = [];
+let selectedGroupIdx = null;
+
+function runDedup() {
+  const strategy = document.querySelector('input[name="dedup-strategy"]:checked').value;
+  const matchField = document.getElementById('dedup-field').value || 'name';
+  const threshold = parseFloat(document.getElementById('dedup-threshold').value);
+  const maxDistance = parseInt(document.getElementById('dedup-distance').value);
+
+  duplicateGroups = [];
+  if (strategy === 'exact') duplicateGroups = findExact(matchField);
+  else if (strategy === 'fuzzy') duplicateGroups = findFuzzy(matchField, threshold);
+  else if (strategy === 'spatial') duplicateGroups = findSpatial(maxDistance);
+  else if (strategy === 'combined') duplicateGroups = findCombined(matchField, threshold, maxDistance);
+
+  duplicateGroups.forEach(g => g.forEach((e, i) => { e._action = i === 0 ? 'keep' : 'delete'; }));
+  renderDedupResults();
+  renderDedupStats();
+}
+
+function findExact(field) {
+  const groups = {};
+  allEntities.forEach(e => { const v = String(e.properties?.[field] || '').trim(); if (!v) return; if (!groups[v]) groups[v] = []; groups[v].push({ ...e }); });
+  return Object.values(groups).filter(g => g.length > 1);
+}
+function findFuzzy(field, threshold) {
+  const items = allEntities.filter(e => e.properties?.[field]).map(e => ({ ...e, _n: normalize(String(e.properties[field])) }));
+  const used = new Set(); const groups = [];
+  for (let i = 0; i < items.length; i++) { if (used.has(i)) continue; const g = [items[i]]; used.add(i);
+    for (let j = i + 1; j < items.length; j++) { if (used.has(j)) continue; if (similarity(items[i]._n, items[j]._n) >= threshold) { g.push(items[j]); used.add(j); } }
+    if (g.length > 1) groups.push(g); } return groups;
+}
+function findSpatial(maxDist) {
+  const items = allEntities.filter(e => e.geometry).map(e => ({ ...e, _c: getCoords(e.geometry) })).filter(e => e._c);
+  const used = new Set(); const groups = [];
+  for (let i = 0; i < items.length; i++) { if (used.has(i)) continue; const g = [items[i]]; used.add(i);
+    for (let j = i + 1; j < items.length; j++) { if (used.has(j)) continue; if (haversine(items[i]._c, items[j]._c) <= maxDist) { g.push(items[j]); used.add(j); } }
+    if (g.length > 1) groups.push(g); } return groups;
+}
+function findCombined(field, threshold, maxDist) {
+  const items = allEntities.filter(e => e.properties?.[field] && e.geometry).map(e => ({ ...e, _n: normalize(String(e.properties[field])), _c: getCoords(e.geometry) })).filter(e => e._c);
+  const used = new Set(); const groups = [];
+  for (let i = 0; i < items.length; i++) { if (used.has(i)) continue; const g = [items[i]]; used.add(i);
+    for (let j = i + 1; j < items.length; j++) { if (used.has(j)) continue; if (similarity(items[i]._n, items[j]._n) >= threshold && haversine(items[i]._c, items[j]._c) <= maxDist) { g.push(items[j]); used.add(j); } }
+    if (g.length > 1) groups.push(g); } return groups;
+}
+
+function normalize(s) { return s.toLowerCase().replace(/[\s\-_.,()（）、。「」]/g, '').trim(); }
+function similarity(a, b) { if (a === b) return 1; const len = Math.max(a.length, b.length); if (!len) return 0; return (len - levenshtein(a, b)) / len; }
+function levenshtein(a, b) { const m = a.length, n = b.length; const d = Array.from({ length: m + 1 }, (_, i) => [i]); for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = a[i-1] === b[j-1] ? d[i-1][j-1] : 1 + Math.min(d[i-1][j], d[i][j-1], d[i-1][j-1]); return d[m][n]; }
+function getCoords(g) { if (!g) return null; if (g.type === 'Point') return g.coordinates; if (g.coordinates?.[0]?.[0]) { const r = g.coordinates[0]; return [r.reduce((s,c)=>s+c[0],0)/r.length, r.reduce((s,c)=>s+c[1],0)/r.length]; } return null; }
+function haversine([lon1,lat1],[lon2,lat2]) { const R=6371000; const dLat=(lat2-lat1)*Math.PI/180; const dLon=(lon2-lon1)*Math.PI/180; const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
+
+function renderDedupResults() {
+  const el = document.getElementById('dedup-results');
+  const titleKey = document.getElementById('dedup-field').value || 'name';
+  if (!duplicateGroups.length) { el.innerHTML = '<div class="empty"><h4>No duplicates found</h4></div>'; return; }
+  el.innerHTML = duplicateGroups.map((group, gi) => `
+    <div class="group-card">
+      <div class="group-header"><span class="group-title">Group ${gi + 1}</span><span style="color:#64748b;font-size:12px">${group.length} records</span></div>
+      ${group.map((e, ei) => `
+        <div class="dup-row ${e._action}" onclick="toggleDedupAction(${gi},${ei})">
+          <span class="dup-tag ${e._action === 'keep' ? 'tag-keep' : 'tag-delete'}">${e._action === 'keep' ? 'KEEP' : 'DEL'}</span>
+          <span class="dup-name">${e.properties?.[titleKey] || e.id?.substring(0,12)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+function toggleDedupAction(gi, ei) {
+  const g = duplicateGroups[gi];
+  if (g[ei]._action === 'keep') { if (g.filter(e => e._action === 'keep').length <= 1) return; g[ei]._action = 'delete'; } else { g[ei]._action = 'keep'; }
+  renderDedupResults(); renderDedupStats();
+}
+function renderDedupStats() {
+  const totalDups = duplicateGroups.reduce((s, g) => s + g.length - 1, 0);
+  document.getElementById('dedup-stats').innerHTML = `
+    <div class="stat-row"><span class="stat-label">Entities</span><span class="stat-value">${allEntities.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Duplicate groups</span><span class="stat-value">${duplicateGroups.length}</span></div>
+    <div class="stat-row"><span class="stat-label">To delete</span><span class="stat-value" style="color:#f87171">${totalDups}</span></div>`;
+  document.getElementById('dedup-auto').disabled = !duplicateGroups.length;
+  document.getElementById('dedup-apply').disabled = !duplicateGroups.length;
+}
+function autoResolveDedup() {
+  duplicateGroups.forEach(g => { g.forEach(e => e._action = 'delete');
+    const best = g.reduce((a, b) => Object.values(b.properties || {}).filter(v => v != null && v !== '').length > Object.values(a.properties || {}).filter(v => v != null && v !== '').length ? b : a);
+    best._action = 'keep'; });
+  renderDedupResults(); renderDedupStats();
+}
+function applyDedup() {
+  for (const group of duplicateGroups) {
+    const keep = group.find(e => e._action === 'keep');
+    const dels = group.filter(e => e._action === 'delete');
+    // Merge non-null fields from deleted into keep
+    const mergedProps = { ...(keep.properties || {}) };
+    dels.forEach(d => { Object.entries(d.properties || {}).forEach(([k, v]) => { if ((mergedProps[k] === null || mergedProps[k] === undefined || mergedProps[k] === '') && v != null && v !== '') mergedProps[k] = v; }); });
+    if (JSON.stringify(mergedProps) !== JSON.stringify(keep.properties)) {
+      pendingChanges.push({ entityId: keep.id, action: 'update', data: { properties: mergedProps }, source: 'dedup' });
+    }
+    dels.forEach(d => { pendingChanges.push({ entityId: d.id, action: 'delete', data: {}, source: 'dedup' }); });
+  }
+  updateCommitBar();
+  duplicateGroups = [];
+  document.getElementById('dedup-results').innerHTML = '<div class="empty"><h4>Changes staged</h4><p>Check the commit bar below to review and submit.</p></div>';
+  document.getElementById('dedup-stats').innerHTML = '';
+}
+
+// ─── Cleanse ───────────────────────────────────────
+let cleansePreview = []; // { entityId, field, oldValue, newValue }
+
+function previewCleanse() {
+  const field = document.getElementById('cleanse-field').value;
+  const op = document.getElementById('cleanse-op').value;
+  cleansePreview = [];
+
+  for (const e of allEntities) {
+    const oldVal = e.properties?.[field];
+    if (oldVal === undefined || oldVal === null) {
+      if (op === 'fill-empty') {
+        const def = document.getElementById('cleanse-default').value;
+        if (def) cleansePreview.push({ entityId: e.id, field, oldValue: null, newValue: def, entity: e });
+      }
+      continue;
+    }
+    const str = String(oldVal);
+    let newVal = str;
+
+    if (op === 'uppercase') newVal = str.toUpperCase();
+    else if (op === 'lowercase') newVal = str.toLowerCase();
+    else if (op === 'titlecase') newVal = str.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+    else if (op === 'trim') newVal = str.trim();
+    else if (op === 'remove-special') newVal = str.replace(/[^a-zA-Z0-9\s\u3000-\u9fff]/g, '');
+    else if (op === 'find-replace') {
+      const find = document.getElementById('cleanse-find').value;
+      const replace = document.getElementById('cleanse-replace').value;
+      if (find.startsWith('/') && find.lastIndexOf('/') > 0) {
+        const pattern = find.substring(1, find.lastIndexOf('/'));
+        const flags = find.substring(find.lastIndexOf('/') + 1) || 'g';
+        try { newVal = str.replace(new RegExp(pattern, flags), replace); } catch { newVal = str; }
+      } else {
+        newVal = str.split(find).join(replace);
+      }
+    }
+
+    if (newVal !== str) cleansePreview.push({ entityId: e.id, field, oldValue: str, newValue: newVal, entity: e });
+  }
+
+  renderCleanseResults();
+  document.getElementById('cleanse-apply').disabled = !cleansePreview.length;
+}
+
+function renderCleanseResults() {
+  const el = document.getElementById('cleanse-results');
+  if (!cleansePreview.length) { el.innerHTML = '<div class="empty"><h4>No changes</h4><p>All values are already in the target format.</p></div>'; return; }
+
+  const field = document.getElementById('cleanse-field').value;
+  const fieldLabel = modelFields.find(f => f.key === field)?.label || field;
+  document.getElementById('cleanse-stats').innerHTML = `<div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" style="color:#f59e0b">${cleansePreview.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Unchanged</span><span class="stat-value">${allEntities.length - cleansePreview.length}</span></div>`;
+
+  el.innerHTML = `<div style="margin-bottom:12px;font-size:13px;color:#94a3b8">${cleansePreview.length} changes in <strong>${fieldLabel}</strong></div>
+    <table class="data-table"><thead><tr><th>Entity</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>${cleansePreview.slice(0, 200).map(c => `<tr>
+      <td style="color:#94a3b8">${c.entity.properties?.name || c.entityId.substring(0,8)}</td>
+      <td>${c.oldValue ?? '<em style="color:#475569">empty</em>'}</td>
+      <td class="changed">${c.newValue}</td>
+    </tr>`).join('')}</tbody></table>
+    ${cleansePreview.length > 200 ? `<div style="padding:12px;color:#64748b;text-align:center">${cleansePreview.length - 200} more...</div>` : ''}`;
+}
+
+function applyCleanse() {
+  for (const c of cleansePreview) {
+    const existing = pendingChanges.find(p => p.entityId === c.entityId && p.action === 'update');
+    if (existing) {
+      existing.data.properties[c.field] = c.newValue;
+    } else {
+      pendingChanges.push({ entityId: c.entityId, action: 'update', data: { properties: { [c.field]: c.newValue } }, source: 'cleanse' });
+    }
+  }
+  updateCommitBar();
+  cleansePreview = [];
+  document.getElementById('cleanse-results').innerHTML = '<div class="empty"><h4>Changes staged</h4><p>Check the commit bar below.</p></div>';
+  document.getElementById('cleanse-stats').innerHTML = '';
+  document.getElementById('cleanse-apply').disabled = true;
+}
+
+// ─── Commit Bar ────────────────────────────────────
+function updateCommitBar() {
+  const n = pendingChanges.length;
+  document.getElementById('commit-count').textContent = n;
+  document.getElementById('commit-preview').disabled = !n;
+  document.getElementById('commit-submit').disabled = !n;
+  document.getElementById('commit-discard').disabled = !n;
+}
+
+function previewChanges() {
+  const updates = pendingChanges.filter(c => c.action === 'update');
+  const deletes = pendingChanges.filter(c => c.action === 'delete');
+  const msg = `${updates.length} update(s), ${deletes.length} delete(s)\n\nFrom: ${[...new Set(pendingChanges.map(c => c.source))].join(', ')}`;
+  alert(msg); // TODO: replace with modal
+}
+
+async function commitProposals() {
+  const btn = document.getElementById('commit-submit');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  let created = 0, failed = 0;
+
+  for (const c of pendingChanges) {
+    try {
+      if (c.action === 'delete') {
+        await apiPost('/proposals', { entityId: c.entityId, proposedChange: { action: 'delete', data: {} }, source: 'machine' });
+      } else {
+        await apiPost('/proposals', { entityId: c.entityId, proposedChange: { action: 'update', data: c.data }, source: 'machine' });
+      }
+      created++;
+    } catch { failed++; }
+  }
+
+  btn.textContent = `Done: ${created} proposals`;
+  pendingChanges = [];
+  updateCommitBar();
+  setTimeout(() => { btn.textContent = 'Create Proposals'; }, 3000);
+}
+
+// ─── Start ─────────────────────────────────────────
+init().catch(err => {
+  document.getElementById('dedup-results').innerHTML = `<div class="empty" style="color:#f87171">${err.message}</div>`;
+});
+</script>
+</body>
+</html>
