@@ -651,7 +651,7 @@ async function viewDashboard(main) {
 
   const pending = proposals.filter(p => p.status === 'pending');
   const totalActive = entities.pagination?.total ?? 0;
-  const recentProposals = proposals.slice(0, 8);
+  const recentProposals = proposals.slice(0, 50);
 
   // Model record counts — query each model individually for accurate counts
   const modelCounts = {};
@@ -701,23 +701,37 @@ async function viewDashboard(main) {
         }).join('') : '<div class="empty"><h4>No models yet</h4><p>Define your first model to get started.</p><button class="btn btn-primary" onclick="nav(\'define/models\')">Go to Models</button></div>'}
       </div>
 
-      <!-- Recent activity -->
+      <!-- Recent activity (grouped by batch) -->
       <div class="card">
         <h3>Recent Activity</h3>
-        ${recentProposals.length ? recentProposals.map(p => {
-          const action = p.proposedChange.action;
-          const type = p.proposedChange.data?.type || '—';
-          const name = p.proposedChange.data?.properties?.name || '';
-          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-            <div>
-              ${badge(p.status)}
-              <span style="margin-left:6px">${action}</span>
-              <code style="color:var(--muted)">${type}</code>
-              ${name ? `<span style="color:var(--text)">${name}</span>` : ''}
-            </div>
-            <span style="color:var(--muted)">${new Date(p.createdAt).toLocaleDateString()}</span>
-          </div>`;
-        }).join('') : '<p style="color:var(--muted)">No activity yet.</p>'}
+        ${(function() {
+          if (!recentProposals.length) return '<p style="color:var(--muted)">No activity yet.</p>';
+          // Group proposals by: same action + type + status + same minute
+          const groups = [];
+          for (const p of recentProposals) {
+            const action = p.proposedChange.action;
+            const type = p.proposedChange.data?.type || '—';
+            const minute = new Date(p.createdAt).toISOString().substring(0, 16);
+            const key = [action, type, p.status, p.source, minute].join('|');
+            const last = groups[groups.length - 1];
+            if (last && last.key === key) { last.count++; last.items.push(p); }
+            else groups.push({ key, action, type, status: p.status, source: p.source, time: p.createdAt, count: 1, items: [p] });
+          }
+          return groups.slice(0, 12).map(g => {
+            const name = g.count === 1 ? (g.items[0].proposedChange.data?.properties?.name || '') : '';
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+              <div>
+                ${badge(g.status)}
+                <span style="margin-left:6px">${g.action}</span>
+                <code style="color:var(--muted)">${g.type}</code>
+                ${g.count > 1 ? `<span style="background:var(--bg);padding:1px 6px;border-radius:10px;font-size:11px;color:var(--muted);margin-left:4px">×${g.count}</span>` : ''}
+                ${name ? `<span style="color:var(--text)">${name}</span>` : ''}
+                ${g.source === 'machine' ? '<span style="font-size:10px;color:var(--muted);margin-left:4px">auto</span>' : ''}
+              </div>
+              <span style="color:var(--muted)">${new Date(g.time).toLocaleString()}</span>
+            </div>`;
+          }).join('');
+        })()}
       </div>
     </div>
 
