@@ -771,7 +771,7 @@ async function viewContentAll(main) {
 
   main.innerHTML = `<div class="page-header"><div><h2>All Records</h2><div class="sub">${entities.length} records</div></div></div>
     <div style="display:flex;gap:12px;margin-bottom:16px">
-      <input id="rec-search" type="text" placeholder="Search by name..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none" oninput="filterRecords()">
+      <input id="rec-search" type="text" placeholder="Search by ID, name, or any field..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none" oninput="filterRecords()">
       <select id="rec-filter-model" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px" onchange="filterRecords()">
         <option value="">All models</option>
         ${modelCache.map(m => `<option value="${m.key}">${m.name}</option>`).join('')}
@@ -804,7 +804,10 @@ function filterRecords() {
   const search = ($('rec-search')?.value || '').toLowerCase();
   const modelFilter = $('rec-filter-model')?.value || '';
   const entities = (window._allEntities || []).filter(e => {
-    if (search && !(e.properties?.name || '').toLowerCase().includes(search)) return false;
+    if (search) {
+      const haystack = [e.id, ...Object.values(e.properties || {}).map(String)].join(' ').toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
     if (modelFilter && e.type !== modelFilter) return false;
     return true;
   });
@@ -890,7 +893,7 @@ async function viewContentByModel(main, modelKey) {
       <button class="btn btn-primary" onclick="nav('manage/new/${modelKey}')">+ New ${modelName}</button>
     </div>
     ${entities.length ? `<div style="display:flex;gap:12px;margin-bottom:16px">
-      <input id="model-search" type="text" placeholder="Search by name..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none" oninput="filterModelRecords('${modelKey}')">
+      <input id="model-search" type="text" placeholder="Search by ID, name, or any field..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none" oninput="filterModelRecords('${modelKey}')">
       <select id="model-filter-status" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px" onchange="reloadModelRecords('${modelKey}')">
         <option value="active" selected>Active</option><option value="">All statuses</option><option value="draft">Draft</option><option value="archived">Archived</option>
       </select>
@@ -921,7 +924,10 @@ async function reloadModelRecords(modelKey) {
 function filterModelRecords(modelKey) {
   const search = ($('model-search')?.value || '').toLowerCase();
   const entities = (window._modelEntities || []).filter(e => {
-    if (search && !(e.properties?.name || '').toLowerCase().includes(search)) return false;
+    if (search) {
+      const haystack = [e.id, ...Object.values(e.properties || {}).map(String)].join(' ').toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
     return true;
   });
   const container = $('model-rec-table');
