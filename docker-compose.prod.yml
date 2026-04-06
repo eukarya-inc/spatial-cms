@@ -51,6 +51,16 @@ services:
       - cms
     restart: always
 
+  workbench:
+    build: ./examples/workbench
+    environment:
+      CMS_URL: http://cms:3001/api/v1
+      CMS_API_KEY: ${WORKBENCH_API_KEY:-}
+      PORT: "8095"
+    depends_on:
+      - cms
+    restart: always
+
   nginx:
     image: nginx:alpine
     ports:
@@ -61,6 +71,7 @@ services:
       - cms
       - keycloak
       - viewer
+      - workbench
     restart: always
 
 volumes:

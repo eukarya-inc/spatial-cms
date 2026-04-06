@@ -3,7 +3,8 @@ dist
 .git
 .claude
 tests
-examples/dedup
+examples/workbench
+examples/viewer
 *.md
 .env
 .env.*

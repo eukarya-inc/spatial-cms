@@ -46,7 +46,7 @@ app.get("/api/v1/auth/config", (req, res) => {
   }
 });
 
-// CORS for all API routes (external tools, viewer, dedup tool)
+// CORS for all API routes (external tools, viewer, workbench)
 app.use("/api/v1", (
   _req: express.Request,
   res: express.Response,

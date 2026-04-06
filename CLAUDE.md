@@ -21,7 +21,7 @@ Core invariant: **ALL data changes go through proposals. No direct entity writes
 ```bash
 docker compose up -d          # PostGIS + Directus + Keycloak
 npm run dev                   # Express on port 3001
-npm test                      # Run 46 integration tests
+npm test                      # Run 47 integration tests
 ```
 
 ## Project Structure
@@ -135,7 +135,7 @@ Delete action archives entities (status → archived). Archived entities are hid
 - **Purge** (`DELETE /entities/:id/purge`) — permanent physical delete (only archived entities). Disconnects proposals (audit trail preserved), deletes versions, removes entity.
 
 ### CORS
-All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for external tools (viewer, dedup tool). Configured in `src/app.ts` before route registration.
+All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for external tools (viewer, workbench). Configured in `src/app.ts` before route registration.
 
 ### Delivery API vs Management API
 - **Management API** (`/api/v1/entities`, `/proposals`, etc.) — full read/write, all data including drafts/archived
@@ -149,6 +149,9 @@ Two auth systems coexist in middleware:
 Middleware checks JWT first, then API Key. OGC API requires neither.
 
 API Key scopes: `delivery` (read-only) < `manage` (read/write) < `admin` (full).
+- `delivery`: Delivery API only
+- `manage`: + Management API + Ingestion API + Definitions read (GET)
+- `admin`: + Definitions write (POST/PUT/DELETE) + API Key management
 Bootstrap: `POST /api-keys/bootstrap` creates first admin key without auth (only when no keys exist).
 Env: `DELIVERY_API_KEY_REQUIRED=false` disables all auth checks (dev mode).
 
