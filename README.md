@@ -11,7 +11,7 @@ Spatial data governance control plane. Define models, manage entities through pr
 
 ```bash
 # Clone and install
-git clone https://github.com/lavalse/spatial-cms.git
+git clone https://github.com/eukarya-inc/spatial-cms.git
 cd spatial-cms
 npm install
 
