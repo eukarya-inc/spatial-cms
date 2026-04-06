@@ -25,6 +25,12 @@ interface ProposalInput {
 }
 
 export async function createProposal(input: ProposalInput) {
+  // For update/delete proposals, resolve entity type if not provided
+  if (input.entityId && !input.proposedChange.data.type) {
+    const entity = await prisma.entity.findUnique({ where: { id: input.entityId }, select: { type: true } });
+    if (entity?.type) input.proposedChange.data.type = entity.type;
+  }
+
   const proposal = await prisma.proposal.create({
     data: {
       entityId: input.entityId,

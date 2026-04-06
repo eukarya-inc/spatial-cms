@@ -710,9 +710,9 @@ async function viewDashboard(main) {
           const groups = [];
           for (const p of recentProposals) {
             const action = p.proposedChange.action;
-            const type = p.proposedChange.data?.type || '—';
+            const type = p.proposedChange.data?.type || '';
             const minute = new Date(p.createdAt).toISOString().substring(0, 16);
-            const key = [action, type, p.status, p.source, minute].join('|');
+            const key = [action, p.status, p.source, minute].join('|');
             const last = groups[groups.length - 1];
             if (last && last.key === key) { last.count++; last.items.push(p); }
             else groups.push({ key, action, type, status: p.status, source: p.source, time: p.createdAt, count: 1, items: [p] });
@@ -723,7 +723,7 @@ async function viewDashboard(main) {
               <div>
                 ${badge(g.status)}
                 <span style="margin-left:6px">${g.action}</span>
-                <code style="color:var(--muted)">${g.type}</code>
+                ${g.type ? `<code style="color:var(--muted)">${g.type}</code>` : ''}
                 ${g.count > 1 ? `<span style="background:var(--bg);padding:1px 6px;border-radius:10px;font-size:11px;color:var(--muted);margin-left:4px">×${g.count}</span>` : ''}
                 ${name ? `<span style="color:var(--text)">${name}</span>` : ''}
                 ${g.source === 'machine' ? '<span style="font-size:10px;color:var(--muted);margin-left:4px">auto</span>' : ''}
@@ -1355,7 +1355,7 @@ async function viewProposals(main) {
       for (const p of filtered) {
         const last = groups[groups.length - 1];
         const pTime = Math.floor(new Date(p.createdAt).getTime() / 60000); // 1-min window
-        if (last && last.status === p.status && last.type === (p.proposedChange.data?.type || '') && last.timeKey === pTime) {
+        if (last && last.status === p.status && last.action === p.proposedChange.action && last.source === p.source && last.timeKey === pTime) {
           last.items.push(p);
         } else {
           groups.push({
