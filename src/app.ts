@@ -13,6 +13,7 @@ import { definitionRouter } from "./modules/definition/definition.router.js";
 import { deliveryRouter } from "./modules/delivery/delivery.router.js";
 import { ogcRouter } from "./modules/delivery/ogc.router.js";
 import { apiKeyRouter } from "./modules/api-keys/api-key.router.js";
+import { templateRouter } from "./modules/template/template.router.js";
 import { requireApiKey } from "./middleware/apiKeyAuth.js";
 
 const app = express();
@@ -78,6 +79,7 @@ app.use("/api/v1/publications", requireApiKey("manage"), publicationRouter);
 app.use("/api/v1/ingestion", requireApiKey("manage"), ingestionRouter);
 app.use("/api/v1/definitions", requireApiKey("manage"), definitionRouter);
 app.use("/api/v1/api-keys", requireApiKey("admin"), apiKeyRouter);
+app.use("/api/v1/templates", requireApiKey("manage"), templateRouter);
 app.use("/api/v1/delivery", requireApiKey("delivery"), deliveryRouter);
 app.use("/api/v1/ogc", ogcRouter);
 

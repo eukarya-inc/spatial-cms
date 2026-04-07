@@ -1,0 +1,33 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "OpenStreetMap Building",
+    "description": "Building model matching common OSM building tags. Compatible with Overpass API exports.",
+    "author": "Spatial CMS",
+    "license": "ODbL-1.0",
+    "tags": ["osm", "openstreetmap", "building"]
+  },
+  "models": [
+    {
+      "key": "osm_building",
+      "name": "OSM Building",
+      "description": "Buildings from OpenStreetMap with standard tags",
+      "geometryType": "POLYGON",
+      "is3D": false,
+      "srid": 4326,
+      "displayField": "name",
+      "governance": { "approvalMode": "auto", "publishMode": "manual" },
+      "fields": [
+        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": false, "orderIndex": 0 },
+        { "key": "name_ja", "label": "Name (Japanese)", "fieldType": "string", "isRequired": false, "orderIndex": 1 },
+        { "key": "building_type", "label": "Building Type", "fieldType": "enum_", "enumValues": ["yes", "residential", "commercial", "industrial", "retail", "office", "apartments", "house", "school", "hospital", "church", "public"], "orderIndex": 2 },
+        { "key": "height", "label": "Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 3 },
+        { "key": "levels", "label": "Levels", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 4 },
+        { "key": "addr_full", "label": "Address", "fieldType": "string", "isRequired": false, "orderIndex": 5 },
+        { "key": "addr_housenumber", "label": "House Number", "fieldType": "string", "isRequired": false, "orderIndex": 6 },
+        { "key": "addr_postcode", "label": "Postal Code", "fieldType": "string", "isRequired": false, "orderIndex": 7 }
+      ]
+    }
+  ]
+}

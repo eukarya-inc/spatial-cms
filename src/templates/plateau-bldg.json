@@ -1,0 +1,34 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "PLATEAU Building",
+    "description": "Building model based on PLATEAU 3D City Model Standard. Includes standard CityGML building attributes.",
+    "author": "Spatial CMS",
+    "license": "CC-BY-4.0",
+    "tags": ["plateau", "building", "citygml", "japan", "3d"]
+  },
+  "models": [
+    {
+      "key": "plateau_building",
+      "name": "PLATEAU Building",
+      "description": "Building features from PLATEAU 3D city model (bldg:Building)",
+      "geometryType": "POLYGON",
+      "is3D": true,
+      "srid": 6668,
+      "displayField": "gml_id",
+      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "fields": [
+        { "key": "gml_id", "label": "GML ID", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
+        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": false, "orderIndex": 1 },
+        { "key": "usage", "label": "Usage Code", "fieldType": "string", "isRequired": false, "orderIndex": 2 },
+        { "key": "usage_label", "label": "Usage Label", "fieldType": "string", "isRequired": false, "orderIndex": 3 },
+        { "key": "measured_height", "label": "Measured Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 4 },
+        { "key": "storeys_above_ground", "label": "Storeys Above Ground", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 5 },
+        { "key": "year_of_construction", "label": "Year of Construction", "fieldType": "number", "orderIndex": 6 },
+        { "key": "roof_type", "label": "Roof Type", "fieldType": "string", "isRequired": false, "orderIndex": 7 },
+        { "key": "lod", "label": "LoD Level", "fieldType": "string", "isRequired": false, "orderIndex": 8 }
+      ]
+    }
+  ]
+}

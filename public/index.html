@@ -3777,8 +3777,10 @@ async function viewModels(main) {
   main.innerHTML = '';
   const header = h('div', { className: 'page-header' });
   header.append(h('h2', {}, 'Model Designer'));
-  const btn = h('button', { className: 'btn btn-primary', onclick: () => { $('md-create').style.display = 'block'; } }, '+ New Model');
-  header.append(btn); main.append(header);
+  const btnGroup = h('div', { style: { display: 'flex', gap: '8px' } });
+  btnGroup.append(h('button', { className: 'btn btn-primary', onclick: () => { $('md-create').style.display = 'block'; $('md-templates').style.display = 'none'; } }, '+ New Model'));
+  btnGroup.append(h('button', { className: 'btn btn-outline', onclick: () => { $('md-templates').style.display = $('md-templates').style.display === 'none' ? 'block' : 'none'; $('md-create').style.display = 'none'; loadTemplates(); } }, 'From Template'));
+  header.append(btnGroup); main.append(header);
 
   const form = h('div', { id: 'md-create', className: 'card', style: { display: 'none' } });
   form.innerHTML = `<h3>New Model</h3>
@@ -3793,6 +3795,51 @@ async function viewModels(main) {
     </details>
     <div style="display:flex;gap:8px"><button class="btn btn-primary" id="md-create-btn">Create</button><button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='none'">Cancel</button></div>`;
   main.append(form);
+
+  // Template browser panel
+  const tplPanel = h('div', { id: 'md-templates', className: 'card', style: { display: 'none' } });
+  tplPanel.innerHTML = `<h3>Apply Template</h3><p style="color:var(--muted);font-size:13px;margin-bottom:16px">Choose a pre-defined schema to quickly create models with fields and governance.</p><div id="tpl-list" style="color:var(--muted)">Loading...</div>`;
+  main.append(tplPanel);
+
+  async function loadTemplates() {
+    try {
+      const templates = await api('/templates');
+      const el = $('tpl-list');
+      if (!templates.length) { el.innerHTML = '<p>No templates available.</p>'; return; }
+      el.innerHTML = templates.map(t => `
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:8px;cursor:pointer;transition:background 0.1s" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${t.name}</strong>
+              <span style="font-size:12px;color:var(--muted);margin-left:8px">${t.modelCount} model(s), ${t.fieldCount} fields</span>
+            </div>
+            <button class="btn btn-primary btn-sm" data-apply-tpl="${t.id}">Apply</button>
+          </div>
+          ${t.description ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${t.description}</div>` : ''}
+          ${t.tags?.length ? `<div style="margin-top:6px">${t.tags.map(tag => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted);margin-right:4px">${tag}</span>`).join('')}</div>` : ''}
+        </div>
+      `).join('');
+
+      el.querySelectorAll('[data-apply-tpl]').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const tplId = btn.dataset.applyTpl;
+          const tpl = await api('/templates/' + tplId);
+          const modelList = tpl.models.map(m => m.name + ' (' + m.key + ') — ' + m.fields.length + ' fields').join('\n');
+          if (!await modalConfirm('Apply Template', tpl.metadata.name + '\n\nThis will create:\n' + modelList + (tpl.dataset ? '\n\nPlus a dataset: ' + tpl.dataset.name : ''), { confirmText: 'Apply' })) return;
+          try {
+            const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
+              api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId }) })
+            );
+            toast('Template applied: ' + result.models.length + ' model(s) created');
+            refreshModels();
+            if (result.models.length === 1) nav('define/models/' + result.models[0].id);
+            else nav('define/models');
+          } catch (err) { toast(err.message, 'error'); }
+        };
+      });
+    } catch (err) { $('tpl-list').innerHTML = '<p style="color:var(--danger)">' + err.message + '</p>'; }
+  }
 
   setTimeout(() => {
     const createBtn = $('md-create-btn');

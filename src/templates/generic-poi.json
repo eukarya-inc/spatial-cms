@@ -1,0 +1,31 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "Generic Point of Interest",
+    "description": "Simple POI model for any point-based spatial data. Good starting point for custom models.",
+    "author": "Spatial CMS",
+    "license": "CC0-1.0",
+    "tags": ["poi", "generic", "starter"]
+  },
+  "models": [
+    {
+      "key": "poi",
+      "name": "Point of Interest",
+      "description": "Generic point features with name, category, and description",
+      "geometryType": "POINT",
+      "is3D": false,
+      "srid": 4326,
+      "displayField": "name",
+      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "fields": [
+        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
+        { "key": "category", "label": "Category", "fieldType": "enum_", "enumValues": ["restaurant", "shop", "park", "school", "hospital", "station", "office", "other"], "orderIndex": 1 },
+        { "key": "description", "label": "Description", "fieldType": "string", "isRequired": false, "orderIndex": 2 },
+        { "key": "address", "label": "Address", "fieldType": "string", "isRequired": false, "orderIndex": 3 },
+        { "key": "phone", "label": "Phone", "fieldType": "string", "isRequired": false, "orderIndex": 4 },
+        { "key": "website", "label": "Website", "fieldType": "string", "isRequired": false, "orderIndex": 5 }
+      ]
+    }
+  ]
+}
