@@ -95,18 +95,27 @@ export async function resolveTemplateFromUrl(url: string): Promise<Template> {
 }
 
 /** Apply a template: create models, fields, governance, optionally dataset */
-export async function applyTemplate(template: Template) {
+export async function applyTemplate(
+  template: Template,
+  overrides?: Record<string, { key?: string; name?: string }>,
+) {
+  // Apply key/name overrides
+  const models = template.models.map((m) => {
+    const ovr = overrides?.[m.key];
+    return { ...m, key: ovr?.key || m.key, name: ovr?.name || m.name };
+  });
+
   // Check for key conflicts
   const existingModels = await prisma.modelDefinition.findMany({ select: { key: true } });
   const existingKeys = new Set(existingModels.map((m) => m.key));
-  const conflicts = template.models.filter((m) => existingKeys.has(m.key)).map((m) => m.key);
+  const conflicts = models.filter((m) => existingKeys.has(m.key)).map((m) => m.key);
   if (conflicts.length) {
     throw new Error(`Model key conflict: ${conflicts.join(", ")} already exist`);
   }
 
   const createdModels: Array<{ id: string; key: string; name: string; fieldCount: number }> = [];
 
-  for (const tm of template.models) {
+  for (const tm of models) {
     // Create model
     const model = await createModelDefinition({
       key: tm.key,

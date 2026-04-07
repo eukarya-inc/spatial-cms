@@ -3825,11 +3825,29 @@ async function viewModels(main) {
           e.stopPropagation();
           const tplId = btn.dataset.applyTpl;
           const tpl = await api('/templates/' + tplId);
-          const modelList = tpl.models.map(m => m.name + ' (' + m.key + ') — ' + m.fields.length + ' fields').join('\n');
-          if (!await modalConfirm('Apply Template', tpl.metadata.name + '\n\nThis will create:\n' + modelList + (tpl.dataset ? '\n\nPlus a dataset: ' + tpl.dataset.name : ''), { confirmText: 'Apply' })) return;
+
+          // Build prompt fields — one key+name pair per model in template
+          const promptFields = [];
+          for (const m of tpl.models) {
+            promptFields.push({ key: 'key_' + m.key, label: 'Model Key', type: 'text', placeholder: m.key, value: m.key });
+            promptFields.push({ key: 'name_' + m.key, label: 'Model Name', type: 'text', placeholder: m.name, value: m.name });
+          }
+
+          const input = await modalPrompt('Apply Template: ' + tpl.metadata.name, promptFields);
+          if (!input) return;
+
+          // Build overrides from user input
+          const overrides = {};
+          for (const m of tpl.models) {
+            const newKey = input['key_' + m.key]?.trim();
+            const newName = input['name_' + m.key]?.trim();
+            if (newKey && newKey !== m.key) { overrides[m.key] = { key: newKey, name: newName || newKey }; }
+            else if (newName && newName !== m.name) { overrides[m.key] = { name: newName }; }
+          }
+
           try {
             const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
-              api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId }) })
+              api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId, overrides }) })
             );
             toast('Template applied: ' + result.models.length + ' model(s) created');
             refreshModels();

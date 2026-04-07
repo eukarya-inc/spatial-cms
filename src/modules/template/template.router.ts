@@ -45,7 +45,7 @@ templateRouter.post("/resolve", async (req, res, next) => {
 // POST /api/v1/templates/apply — apply a template (create models + fields)
 templateRouter.post("/apply", async (req, res, next) => {
   try {
-    const { template, templateId } = req.body;
+    const { template, templateId, overrides } = req.body;
     let toApply;
     if (templateId) {
       toApply = templateService.getBundledTemplate(templateId);
@@ -55,7 +55,7 @@ templateRouter.post("/apply", async (req, res, next) => {
     } else {
       return res.status(400).json({ error: "Provide 'templateId' or 'template' in request body" });
     }
-    const result = await templateService.applyTemplate(toApply);
+    const result = await templateService.applyTemplate(toApply, overrides);
     res.status(201).json(result);
   } catch (err: any) {
     if (err.message?.includes("conflict")) {
