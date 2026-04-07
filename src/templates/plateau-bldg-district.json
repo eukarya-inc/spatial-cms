@@ -1,0 +1,55 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "PLATEAU Building + District",
+    "description": "Multi-model package: Buildings with district reference. Buildings belong to administrative districts.",
+    "author": "Spatial CMS",
+    "license": "CC-BY-4.0",
+    "tags": ["plateau", "building", "district", "multi-model", "reference"]
+  },
+  "models": [
+    {
+      "key": "p_district",
+      "name": "District",
+      "description": "Administrative district (行政区)",
+      "geometryType": "POLYGON",
+      "is3D": false,
+      "srid": 4326,
+      "displayField": "name",
+      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "fields": [
+        { "key": "code", "label": "District Code", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
+        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": true, "orderIndex": 1 },
+        { "key": "name_en", "label": "Name (English)", "fieldType": "string", "orderIndex": 2 },
+        { "key": "prefecture", "label": "Prefecture", "fieldType": "string", "orderIndex": 3 },
+        { "key": "area_sqm", "label": "Area (sqm)", "fieldType": "number", "orderIndex": 4 }
+      ]
+    },
+    {
+      "key": "p_building",
+      "name": "Building",
+      "description": "Building with district reference (bldg:Building)",
+      "geometryType": "POLYGON",
+      "is3D": true,
+      "srid": 6668,
+      "displayField": "gml_id",
+      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "fields": [
+        { "key": "gml_id", "label": "GML ID", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
+        { "key": "name", "label": "Name", "fieldType": "string", "orderIndex": 1 },
+        { "key": "measured_height", "label": "Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 2 },
+        { "key": "usage", "label": "Usage Code", "fieldType": "string", "orderIndex": 3 },
+        { "key": "year_built", "label": "Year Built", "fieldType": "number", "orderIndex": 4 },
+        { "key": "district", "label": "District", "fieldType": "reference", "referenceModelKey": "p_district", "orderIndex": 5 }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "PLATEAU Buildings with Districts",
+    "description": "Building dataset with administrative district references",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": false
+  }
+}

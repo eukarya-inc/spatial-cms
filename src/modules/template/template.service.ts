@@ -99,10 +99,24 @@ export async function applyTemplate(
   template: Template,
   overrides?: Record<string, { key?: string; name?: string }>,
 ) {
-  // Apply key/name overrides
+  // Build key rename map from overrides
+  const keyMap: Record<string, string> = {};
+  if (overrides) {
+    for (const [origKey, ovr] of Object.entries(overrides)) {
+      if (ovr.key && ovr.key !== origKey) keyMap[origKey] = ovr.key;
+    }
+  }
+
+  // Apply key/name overrides + fix reference fields that point to renamed models
   const models = template.models.map((m) => {
     const ovr = overrides?.[m.key];
-    return { ...m, key: ovr?.key || m.key, name: ovr?.name || m.name };
+    const newFields = m.fields.map((f) => {
+      if (f.fieldType === "reference" && f.referenceModelKey && keyMap[f.referenceModelKey]) {
+        return { ...f, referenceModelKey: keyMap[f.referenceModelKey] };
+      }
+      return f;
+    });
+    return { ...m, key: ovr?.key || m.key, name: ovr?.name || m.name, fields: newFields };
   });
 
   // Check for key conflicts
