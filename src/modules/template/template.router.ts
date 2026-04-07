@@ -1,9 +1,11 @@
 import { Router } from "express";
+import { requireApiKey } from "../../middleware/apiKeyAuth.js";
 import * as templateService from "./template.service.js";
 
 export const templateRouter = Router();
+const adminOnly = requireApiKey("admin");
 
-// GET /api/v1/templates — list available templates
+// GET /api/v1/templates — list available templates (manage scope)
 templateRouter.get("/", async (_req, res, next) => {
   try {
     const templates = templateService.listBundledTemplates();
@@ -42,8 +44,8 @@ templateRouter.post("/resolve", async (req, res, next) => {
   }
 });
 
-// POST /api/v1/templates/apply — apply a template (create models + fields)
-templateRouter.post("/apply", async (req, res, next) => {
+// POST /api/v1/templates/apply — apply a template (create models + fields, requires admin)
+templateRouter.post("/apply", adminOnly, async (req, res, next) => {
   try {
     const { template, templateId, overrides } = req.body;
     let toApply;

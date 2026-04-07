@@ -497,7 +497,8 @@ function modalPrompt(title, fields) {
       </div>
     </div>`;
     document.body.appendChild(overlay);
-    const close = (val) => { document.body.removeChild(overlay); resolve(val); };
+    let escHandler;
+    const close = (val) => { document.removeEventListener('keydown', escHandler); document.body.removeChild(overlay); resolve(val); };
     overlay.querySelector('#_mp_cancel').onclick = () => close(null);
     overlay.querySelector('#_mp_ok').onclick = () => {
       const result = {};
@@ -505,11 +506,14 @@ function modalPrompt(title, fields) {
       close(result);
     };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
-    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(null); } });
+    escHandler = (e) => { if (e.key === 'Escape') close(null); };
+    document.addEventListener('keydown', escHandler);
     const firstInput = overlay.querySelector('input, select');
     if (firstInput) firstInput.focus();
-    // Enter key submits
-    overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_mp_ok').click(); }; });
+    // Enter key submits (delayed to prevent propagation from button Enter)
+    setTimeout(() => {
+      overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_mp_ok').click(); }; });
+    }, 150);
   });
 }
 
@@ -3867,18 +3871,30 @@ async function viewTemplateGallery(main) {
             </div>
           `).join('')}
 
-          ${tpl.dataset ? `<div style="margin-top:16px;padding:10px;background:var(--bg);border-radius:var(--radius);font-size:13px;color:var(--muted)">Also creates dataset: <strong>${tpl.dataset.name}</strong></div>` : ''}
+          ${tpl.dataset ? `<div style="margin-top:16px;padding:10px;background:var(--bg);border-radius:var(--radius);font-size:12px;color:var(--muted)">Recommended dataset: <strong>${tpl.dataset.name}</strong>${tpl.dataset.license ? ' (' + tpl.dataset.license + ')' : ''} — create manually in Publish \u2192 Datasets after applying</div>` : ''}
         </div>`;
 
       $('tpl-apply-btn').onclick = async () => {
-        // Prompt for custom key/name
+        // Pre-check: detect model key conflicts
+        const existingModels = await api('/definitions/models').catch(() => []);
+        const existingKeys = new Set(existingModels.map(m => m.key));
+
         const promptFields = [];
         for (const m of tpl.models) {
-          promptFields.push({ key: 'key_' + m.key, label: 'Model Key', type: 'text', placeholder: m.key, value: m.key });
+          const conflict = existingKeys.has(m.key);
+          promptFields.push({ key: 'key_' + m.key, label: 'Model Key' + (conflict ? ' \u26a0 exists!' : ''), type: 'text', placeholder: m.key, value: m.key });
           promptFields.push({ key: 'name_' + m.key, label: 'Model Name', type: 'text', placeholder: m.name, value: m.name });
         }
         const input = await modalPrompt('Apply: ' + tpl.metadata.name, promptFields);
         if (!input) return;
+
+        // Validate: block if any final keys still conflict
+        const finalKeys = tpl.models.map(m => (input['key_' + m.key]?.trim()) || m.key);
+        const stillConflicting = finalKeys.filter(k => existingKeys.has(k));
+        if (stillConflicting.length) {
+          toast('Model key conflict: ' + stillConflicting.join(', ') + ' already exist. Change the keys or delete existing models first.', 'error');
+          return;
+        }
 
         const overrides = {};
         for (const m of tpl.models) {
@@ -3892,10 +3908,15 @@ async function viewTemplateGallery(main) {
           const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
             api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId, overrides }) })
           );
-          toast('Template applied: ' + result.models.length + ' model(s) created');
+          const msg = result.models.length + ' model(s) created';
+          toast(result.datasetHint
+            ? msg + '. Recommended dataset: create it in Publish \u2192 Datasets.'
+            : 'Template applied: ' + msg);
           refreshModels();
-          if (result.models.length === 1) nav('define/models/' + result.models[0].id);
-          else nav('define/models');
+          setTimeout(() => {
+            if (result.models.length === 1) nav('define/models/' + result.models[0].id);
+            else nav('define/models');
+          }, 1500);
         } catch (err) { toast(err.message, 'error'); }
       };
     } catch (err) {

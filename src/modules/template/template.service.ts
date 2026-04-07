@@ -2,10 +2,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import prisma from "../../db/client.js";
-import {
-  createModelDefinition,
-  addField,
-} from "../definition/definition.service.js";
+// Note: applyTemplate uses tx (transaction client) directly instead of
+// createModelDefinition/addField to ensure atomicity.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, "../../templates");
@@ -127,75 +125,73 @@ export async function applyTemplate(
     throw new Error(`Model key conflict: ${conflicts.join(", ")} already exist`);
   }
 
-  const createdModels: Array<{ id: string; key: string; name: string; fieldCount: number }> = [];
+  // Use transaction so partial failures roll back (models + fields are atomic)
+  const createdModels = await prisma.$transaction(async (tx) => {
+    const result: Array<{ id: string; key: string; name: string; fieldCount: number }> = [];
 
-  for (const tm of models) {
-    // Create model
-    const model = await createModelDefinition({
-      key: tm.key,
-      name: tm.name,
-      description: tm.description,
-      geometryType: (tm.geometryType as any) ?? "NONE",
-      is3D: tm.is3D ?? false,
-      srid: tm.srid ?? 4326,
-      displayField: tm.displayField,
-    });
-
-    // Create fields
-    for (const tf of tm.fields) {
-      await addField(model.id, {
-        key: tf.key,
-        label: tf.label,
-        fieldType: tf.fieldType,
-        isRequired: tf.isRequired ?? false,
-        defaultValue: tf.defaultValue,
-        enumValues: tf.enumValues,
-        validationJson: tf.validationJson,
-        referenceModelKey: tf.referenceModelKey,
-        orderIndex: tf.orderIndex ?? 0,
-      });
-    }
-
-    // Override governance if specified
-    if (tm.governance?.approvalMode && tm.governance.approvalMode !== "manual") {
-      await prisma.governancePolicy.updateMany({
-        where: { targetType: "model", targetId: model.id },
+    for (const tm of models) {
+      // Create model + governance policy
+      const model = await tx.modelDefinition.create({
         data: {
-          approvalMode: tm.governance.approvalMode as any,
-          publishMode: (tm.governance.publishMode as any) ?? "manual",
+          key: tm.key,
+          name: tm.name,
+          description: tm.description,
+          geometryType: (tm.geometryType as any) ?? "NONE",
+          is3D: tm.is3D ?? false,
+          srid: tm.srid ?? 4326,
+          displayField: tm.displayField,
+        },
+        include: { fields: true },
+      });
+      await tx.governancePolicy.create({
+        data: {
+          targetType: "model",
+          targetId: model.id,
+          approvalMode: "manual",
+          publishMode: "manual",
         },
       });
+
+      // Create fields
+      for (const tf of tm.fields) {
+        await tx.fieldDefinition.create({
+          data: {
+            modelDefinitionId: model.id,
+            key: tf.key,
+            label: tf.label,
+            fieldType: tf.fieldType as any,
+            isRequired: tf.isRequired ?? false,
+            defaultValue: tf.defaultValue as any,
+            enumValues: tf.enumValues as any,
+            validationJson: tf.validationJson as any,
+            referenceModelKey: tf.referenceModelKey,
+            orderIndex: tf.orderIndex ?? 0,
+          },
+        });
+      }
+
+      // Override governance if specified
+      if (tm.governance?.approvalMode && tm.governance.approvalMode !== "manual") {
+        await tx.governancePolicy.updateMany({
+          where: { targetType: "model", targetId: model.id },
+          data: {
+            approvalMode: tm.governance.approvalMode as any,
+            publishMode: (tm.governance.publishMode as any) ?? "manual",
+          },
+        });
+      }
+
+      result.push({ id: model.id, key: model.key, name: tm.name, fieldCount: tm.fields.length });
     }
 
-    createdModels.push({ id: model.id, key: model.key, name: tm.name, fieldCount: tm.fields.length });
-  }
+    return result;
+  });
 
-  // Create dataset if specified
-  let datasetId: string | null = null;
-  if (template.dataset) {
-    const ds = await prisma.datasetDefinition.create({
-      data: {
-        name: template.dataset.name,
-        description: template.dataset.description,
-        license: template.dataset.license,
-        entityTypes: [] as any,
-        publishToDelivery: template.dataset.publishToDelivery ?? true,
-        publishToOgc: template.dataset.publishToOgc ?? false,
-      },
-    });
-    datasetId = ds.id;
-
-    // Bind all created models to the dataset
-    for (const cm of createdModels) {
-      await prisma.datasetModelBinding.create({
-        data: { datasetDefinitionId: ds.id, modelDefinitionId: cm.id },
-      });
-    }
-  }
-
+  // Template only creates models (Definition Kernel).
+  // Dataset creation is a Publish decision — return hint for user reference only.
   return {
     models: createdModels,
-    datasetId,
+    datasetHint: template.dataset || null,
     templateName: template.metadata.name,
   };
 }
