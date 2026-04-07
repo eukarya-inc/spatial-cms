@@ -65,6 +65,8 @@ src/
     ingestion/                # Bulk import + batch proposal creation + validation
     definition/               # Model/field/binding/governance CRUD
     delivery/                 # Read-only API for external data consumers + OGC API
+    template/                 # Bundled template gallery + apply (models only, no dataset)
+    api-keys/                 # API Key CRUD, bootstrap, scope management
 public/index.html             # Single-page admin UI (sidebar nav, hash router)
                               #   Dashboard: stats, records by model, recent activity, pending review
                               #   Content: entity list by model, search/filter, detail with
@@ -154,6 +156,9 @@ Delete action archives entities (status → archived). Archived entities are hid
 - **Restore** (`POST /entities/:id/restore`) — archived → active
 - **Purge** (`DELETE /entities/:id/purge`) — permanent physical delete (only archived entities). Disconnects proposals (audit trail preserved), deletes versions, removes entity.
 
+### Model Templates
+Templates only create models + fields (Definition Kernel). They do NOT create datasets (Publish Kernel). Template JSON files may include a `dataset` section as a recommended configuration hint, but `applyTemplate` ignores it — dataset creation is a publish decision the user must make explicitly. Apply uses `$transaction` for atomicity. GET endpoints require `manage` scope; POST /apply requires `admin`.
+
 ### CORS
 All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for external tools (viewer, workbench). Configured in `src/app.ts` before route registration.
 
@@ -170,8 +175,8 @@ Middleware checks JWT first, then API Key. OGC API requires neither.
 
 API Key scopes: `delivery` (read-only) < `manage` (read/write) < `admin` (full).
 - `delivery`: Delivery API only
-- `manage`: + Management API + Ingestion API + Definitions read (GET)
-- `admin`: + Definitions write (POST/PUT/DELETE) + API Key management
+- `manage`: + Management API + Ingestion API + Definitions read (GET) + Templates browse/preview
+- `admin`: + Definitions write (POST/PUT/DELETE) + Template apply + API Key management
 Bootstrap: `POST /api-keys/bootstrap` creates first admin key without auth (only when no keys exist).
 Env: `DELIVERY_API_KEY_REQUIRED=false` disables all auth checks (dev mode).
 
@@ -230,6 +235,12 @@ Each dataset controls which APIs expose its data:
 - `POST /api/v1/ingestion/governed` — governed import (respects governance policy)
 - `POST /api/v1/ingestion/proposal-set` — batch proposal creation (all pending)
 
+### Templates
+- `GET /api/v1/templates` — list bundled templates (metadata only, manage scope)
+- `GET /api/v1/templates/:id` — get full template content (manage scope)
+- `POST /api/v1/templates/resolve` — fetch + validate from URL or inline JSON (manage scope)
+- `POST /api/v1/templates/apply` — apply template: creates models + fields only, no dataset (admin scope)
+
 ### Delivery (read-only, for external consumers)
 - `GET /api/v1/delivery/datasets` — list published datasets (publishToDelivery=true)
 - `GET /api/v1/delivery/datasets/:id` — dataset metadata (description, license, CRS, etc.)
@@ -266,6 +277,7 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#dashboard` | Manage | Dashboard: stats, activity, pending review |
 | `#define/models` | Define | Model Designer list + create + governance columns |
 | `#define/models/{id}` | Define | Fields, reference fields, governance policy |
+| `#define/templates` | Define | Template Gallery: search, preview, apply (models only) |
 | `#manage/records` | Manage | All records with search/filter |
 | `#manage/records/{modelKey}` | Manage | Records filtered by model |
 | `#manage/records/{modelKey}/{id}` | Manage | Entity detail + structured props + version history + edit |

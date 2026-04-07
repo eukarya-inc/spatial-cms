@@ -196,6 +196,7 @@
 
     <div class="sidebar-section" data-section="define">Define</div>
     <div class="sidebar-item" data-section="define" onclick="nav('define/models')" data-nav="define/models"><span>Models & Fields</span></div>
+    <div class="sidebar-item" data-section="define" onclick="nav('define/templates')" data-nav="define/templates"><span>Template Gallery</span></div>
 
     <div class="sidebar-section" data-section="manage">Manage</div>
     <div class="sidebar-item" data-section="manage" onclick="nav('dashboard')" data-nav="dashboard"><span>Dashboard</span></div>
@@ -496,7 +497,8 @@ function modalPrompt(title, fields) {
       </div>
     </div>`;
     document.body.appendChild(overlay);
-    const close = (val) => { document.body.removeChild(overlay); resolve(val); };
+    let escHandler;
+    const close = (val) => { document.removeEventListener('keydown', escHandler); document.body.removeChild(overlay); resolve(val); };
     overlay.querySelector('#_mp_cancel').onclick = () => close(null);
     overlay.querySelector('#_mp_ok').onclick = () => {
       const result = {};
@@ -504,11 +506,14 @@ function modalPrompt(title, fields) {
       close(result);
     };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
-    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(null); } });
+    escHandler = (e) => { if (e.key === 'Escape') close(null); };
+    document.addEventListener('keydown', escHandler);
     const firstInput = overlay.querySelector('input, select');
     if (firstInput) firstInput.focus();
-    // Enter key submits
-    overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_mp_ok').click(); }; });
+    // Enter key submits (delayed to prevent propagation from button Enter)
+    setTimeout(() => {
+      overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_mp_ok').click(); }; });
+    }, 150);
   });
 }
 
@@ -693,6 +698,7 @@ async function router() {
     const route = parts.slice(0, 3).join('/');
     if (hash === 'dashboard') await viewDashboard(main);
     else if (route === 'define/models' && parts.length === 2) await viewModels(main);
+    else if (route === 'define/templates') await viewTemplateGallery(main);
     else if (parts[0] === 'define' && parts[1] === 'models' && parts[2]) await viewModelDetail(main, parts[2]);
     else if (route === 'define/governance') await viewGovernance(main);
     else if (route === 'manage/records' && parts.length === 2) await viewContentAll(main);
@@ -3768,6 +3774,159 @@ function apgShowHistory(idx) {
   $('apg-resp-body').textContent = JSON.stringify(h.response, null, 2);
 }
 
+// ─── Template Gallery ──────────────────────────────
+async function viewTemplateGallery(main) {
+  setBreadcrumb(['Define'], ['Template Gallery']);
+  setActiveNav('define/templates');
+
+  const templates = await api('/templates').catch(() => []);
+
+  main.innerHTML = `
+    <div class="page-header">
+      <div><h2>Template Gallery</h2><div class="sub">Pre-defined model schemas. Preview before applying.</div></div>
+      <input id="tpl-search" type="text" placeholder="Search templates..." style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;outline:none;width:240px">
+    </div>
+
+    <div id="tpl-tags" style="margin-bottom:16px;display:flex;gap:4px;flex-wrap:wrap"></div>
+    <div id="tpl-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
+    <div id="tpl-detail" style="margin-top:16px;display:none"></div>`;
+
+  // Collect all tags
+  const allTags = [...new Set(templates.flatMap(t => t.tags || []))].sort();
+  let activeTag = '';
+  const tagsEl = $('tpl-tags');
+  tagsEl.innerHTML = `<span class="filter-chip active" data-tag="">All</span>` +
+    allTags.map(tag => `<span class="filter-chip" data-tag="${tag}">${tag}</span>`).join('');
+  tagsEl.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.onclick = () => {
+      tagsEl.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeTag = chip.dataset.tag;
+      renderGrid();
+    };
+  });
+
+  $('tpl-search').oninput = () => renderGrid();
+
+  function renderGrid() {
+    const search = ($('tpl-search')?.value || '').toLowerCase();
+    let filtered = templates;
+    if (activeTag) filtered = filtered.filter(t => (t.tags || []).includes(activeTag));
+    if (search) filtered = filtered.filter(t => (t.name + ' ' + (t.description || '') + ' ' + (t.tags || []).join(' ')).toLowerCase().includes(search));
+
+    const grid = $('tpl-grid');
+    grid.innerHTML = filtered.map(t => `
+      <div class="card" style="cursor:pointer;margin:0;transition:border-color 0.15s" data-tpl-card="${t.id}"
+        onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <h3 style="font-size:15px;margin:0">${t.name}</h3>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">${t.modelCount} model(s) · ${t.fieldCount} fields</span>
+        </div>
+        ${t.description ? `<p style="font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.4">${t.description}</p>` : ''}
+        ${t.tags?.length ? `<div>${t.tags.map(tag => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted);margin-right:4px">${tag}</span>`).join('')}</div>` : ''}
+      </div>
+    `).join('') || '<div style="color:var(--muted);padding:24px;text-align:center">No templates match your search.</div>';
+
+    grid.querySelectorAll('[data-tpl-card]').forEach(card => {
+      card.onclick = () => showDetail(card.dataset.tplCard);
+    });
+  }
+
+  async function showDetail(tplId) {
+    const detail = $('tpl-detail');
+    detail.style.display = 'block';
+    detail.innerHTML = '<div style="color:var(--muted);padding:16px">Loading template...</div>';
+    detail.scrollIntoView({ behavior: 'smooth' });
+
+    try {
+      const tpl = await api('/templates/' + tplId);
+      detail.innerHTML = `
+        <div class="card" style="border-color:var(--primary);margin:0">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
+            <div>
+              <h3 style="margin:0 0 4px">${tpl.metadata.name}</h3>
+              <div style="font-size:12px;color:var(--muted)">${tpl.metadata.description || ''}</div>
+              ${tpl.metadata.author ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">By ${tpl.metadata.author}${tpl.metadata.license ? ' · ' + tpl.metadata.license : ''}</div>` : ''}
+            </div>
+            <button class="btn btn-primary" id="tpl-apply-btn">Use This Template</button>
+          </div>
+
+          ${tpl.models.map(m => `
+            <div style="margin-top:16px">
+              <div style="font-size:14px;font-weight:600;margin-bottom:4px">${m.name} <code style="font-size:11px;color:var(--muted)">${m.key}</code></div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+                ${m.geometryType || 'NONE'}${m.is3D ? ' 3D' : ''} · EPSG:${m.srid || 4326}
+                ${m.governance?.approvalMode === 'auto' ? ' · Auto-approve' : ''}
+              </div>
+              <table style="width:100%;font-size:12px;box-shadow:none;border-collapse:collapse">
+                <thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted)">Field</th><th style="text-align:left;padding:4px 8px;color:var(--muted)">Type</th><th style="text-align:left;padding:4px 8px;color:var(--muted)">Required</th></tr></thead>
+                <tbody>${m.fields.map(f => `
+                  <tr>
+                    <td style="padding:4px 8px"><code>${f.key}</code> <span style="color:var(--muted)">${f.label}</span></td>
+                    <td style="padding:4px 8px">${f.fieldType}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
+                    <td style="padding:4px 8px">${f.isRequired ? '✓' : ''}</td>
+                  </tr>
+                `).join('')}</tbody>
+              </table>
+            </div>
+          `).join('')}
+
+          ${tpl.dataset ? `<div style="margin-top:16px;padding:10px;background:var(--bg);border-radius:var(--radius);font-size:12px;color:var(--muted)">Recommended dataset: <strong>${tpl.dataset.name}</strong>${tpl.dataset.license ? ' (' + tpl.dataset.license + ')' : ''} — create manually in Publish \u2192 Datasets after applying</div>` : ''}
+        </div>`;
+
+      $('tpl-apply-btn').onclick = async () => {
+        // Pre-check: detect model key conflicts
+        const existingModels = await api('/definitions/models').catch(() => []);
+        const existingKeys = new Set(existingModels.map(m => m.key));
+
+        const promptFields = [];
+        for (const m of tpl.models) {
+          const conflict = existingKeys.has(m.key);
+          promptFields.push({ key: 'key_' + m.key, label: 'Model Key' + (conflict ? ' \u26a0 exists!' : ''), type: 'text', placeholder: m.key, value: m.key });
+          promptFields.push({ key: 'name_' + m.key, label: 'Model Name', type: 'text', placeholder: m.name, value: m.name });
+        }
+        const input = await modalPrompt('Apply: ' + tpl.metadata.name, promptFields);
+        if (!input) return;
+
+        // Validate: block if any final keys still conflict
+        const finalKeys = tpl.models.map(m => (input['key_' + m.key]?.trim()) || m.key);
+        const stillConflicting = finalKeys.filter(k => existingKeys.has(k));
+        if (stillConflicting.length) {
+          toast('Model key conflict: ' + stillConflicting.join(', ') + ' already exist. Change the keys or delete existing models first.', 'error');
+          return;
+        }
+
+        const overrides = {};
+        for (const m of tpl.models) {
+          const newKey = input['key_' + m.key]?.trim();
+          const newName = input['name_' + m.key]?.trim();
+          if (newKey && newKey !== m.key) overrides[m.key] = { key: newKey, name: newName || newKey };
+          else if (newName && newName !== m.name) overrides[m.key] = { name: newName };
+        }
+
+        try {
+          const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
+            api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId, overrides }) })
+          );
+          const msg = result.models.length + ' model(s) created';
+          toast(result.datasetHint
+            ? msg + '. Recommended dataset: create it in Publish \u2192 Datasets.'
+            : 'Template applied: ' + msg);
+          refreshModels();
+          setTimeout(() => {
+            if (result.models.length === 1) nav('define/models/' + result.models[0].id);
+            else nav('define/models');
+          }, 1500);
+        } catch (err) { toast(err.message, 'error'); }
+      };
+    } catch (err) {
+      detail.innerHTML = `<div class="card" style="color:var(--danger)">Failed to load: ${err.message}</div>`;
+    }
+  }
+
+  renderGrid();
+}
+
 // ─── Model Designer ────────────────────────────────
 async function viewModels(main) {
   setBreadcrumb(['Define'], ['Models']);
@@ -3777,8 +3936,10 @@ async function viewModels(main) {
   main.innerHTML = '';
   const header = h('div', { className: 'page-header' });
   header.append(h('h2', {}, 'Model Designer'));
-  const btn = h('button', { className: 'btn btn-primary', onclick: () => { $('md-create').style.display = 'block'; } }, '+ New Model');
-  header.append(btn); main.append(header);
+  const btnGroup = h('div', { style: { display: 'flex', gap: '8px' } });
+  btnGroup.append(h('button', { className: 'btn btn-primary', onclick: () => { $('md-create').style.display = 'block'; } }, '+ New Model'));
+  btnGroup.append(h('button', { className: 'btn btn-outline', onclick: () => nav('define/templates') }, 'From Template'));
+  header.append(btnGroup); main.append(header);
 
   const form = h('div', { id: 'md-create', className: 'card', style: { display: 'none' } });
   form.innerHTML = `<h3>New Model</h3>
