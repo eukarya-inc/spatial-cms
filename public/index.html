@@ -3879,13 +3879,72 @@ async function viewTemplateGallery(main) {
         const existingModels = await api('/definitions/models').catch(() => []);
         const existingKeys = new Set(existingModels.map(m => m.key));
 
-        const promptFields = [];
-        for (const m of tpl.models) {
-          const conflict = existingKeys.has(m.key);
-          promptFields.push({ key: 'key_' + m.key, label: 'Model Key' + (conflict ? ' \u26a0 exists!' : ''), type: 'text', placeholder: m.key, value: m.key });
-          promptFields.push({ key: 'name_' + m.key, label: 'Model Name', type: 'text', placeholder: m.name, value: m.name });
-        }
-        const input = await modalPrompt('Apply: ' + tpl.metadata.name, promptFields);
+        // Build grouped apply modal
+        const input = await new Promise(resolve => {
+          const overlay = document.createElement('div');
+          overlay.className = 'modal-overlay';
+          const modelCards = tpl.models.map(m => {
+            const conflict = existingKeys.has(m.key);
+            const geomBadge = m.geometryType && m.geometryType !== 'NONE'
+              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${m.geometryType}${m.is3D ? ' 3D' : ''}</span>` : '';
+            const sridBadge = m.srid && m.srid !== 4326
+              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${m.srid}</span>` : '';
+            const fieldCount = `<span style="font-size:11px;color:var(--muted)">${m.fields.length} fields</span>`;
+            const conflictBadge = conflict ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:#fef3c7;color:#92400e">\u26a0 key exists</span>` : '';
+            const desc = m.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.3">${m.description}</div>` : '';
+            return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--bg)">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+                <strong style="font-size:14px">${m.name}</strong>
+                ${geomBadge}${sridBadge}${fieldCount}${conflictBadge}
+              </div>
+              ${desc}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Key</label>
+                  <input id="_ta_key_${m.key}" type="text" value="${m.key}" placeholder="${m.key}" style="width:100%;padding:6px 8px;border:1px solid ${conflict ? '#f59e0b' : 'var(--border)'};border-radius:4px;font-size:13px;font-family:monospace">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Name</label>
+                  <input id="_ta_name_${m.key}" type="text" value="${m.name}" placeholder="${m.name}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+                </div>
+              </div>
+            </div>`;
+          }).join('');
+
+          const datasetHint = tpl.dataset
+            ? `<div style="font-size:12px;color:var(--muted);padding:8px 10px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">Recommended dataset: <strong>${tpl.dataset.name}</strong> — create manually in Publish \u2192 Datasets after applying</div>`
+            : '';
+
+          overlay.innerHTML = `<div class="modal-card" style="max-width:520px">
+            <h3 style="margin:0 0 4px">Apply Template</h3>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${tpl.metadata.name} \u2014 ${tpl.models.length} model(s)</div>
+            ${modelCards}
+            ${datasetHint}
+            <div class="modal-actions">
+              <button class="btn btn-outline" id="_ta_cancel">Cancel</button>
+              <button class="btn btn-primary" id="_ta_apply">Apply</button>
+            </div>
+          </div>`;
+          document.body.appendChild(overlay);
+
+          let escHandler;
+          const close = (val) => { document.removeEventListener('keydown', escHandler); document.body.removeChild(overlay); resolve(val); };
+          overlay.querySelector('#_ta_cancel').onclick = () => close(null);
+          overlay.querySelector('#_ta_apply').onclick = () => {
+            const result = {};
+            tpl.models.forEach(m => {
+              result['key_' + m.key] = overlay.querySelector('#_ta_key_' + m.key).value;
+              result['name_' + m.key] = overlay.querySelector('#_ta_name_' + m.key).value;
+            });
+            close(result);
+          };
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+          escHandler = (e) => { if (e.key === 'Escape') close(null); };
+          document.addEventListener('keydown', escHandler);
+          setTimeout(() => {
+            overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_ta_apply').click(); }; });
+          }, 150);
+        });
         if (!input) return;
 
         // Validate: block if any final keys still conflict
