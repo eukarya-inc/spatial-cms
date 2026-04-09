@@ -2,6 +2,7 @@ import prisma from "../../db/client.js";
 import {
   getEntityWithGeometry,
   setEntityGeometry,
+  removeEntityGeometry,
   findEntitiesInBBox,
   findEntitiesNearPoint,
   getSridForType,
@@ -9,49 +10,43 @@ import {
 import { findModelDefinitionByKey } from "../../shared/dynamic-validation.js";
 import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
-/**
- * Look up the primaryGeometryField's SRID from the field definition.
- * Returns 4326 as default if not found.
- */
-async function getGeometryFieldSrid(
-  modelDefinitionId: string,
-  primaryGeometryField: string,
-): Promise<number> {
-  const field = await prisma.fieldDefinition.findUnique({
-    where: {
-      modelDefinitionId_key: {
-        modelDefinitionId,
-        key: primaryGeometryField,
-      },
-    },
-  });
-  return field?.geometrySrid ?? 4326;
+/** Check if a value looks like a GeoJSON geometry object */
+function isGeometryValue(v: unknown): v is { type: string; coordinates: unknown } {
+  return !!v && typeof v === "object" && "type" in (v as object) && "coordinates" in (v as object);
 }
 
 /**
- * Given a model definition ID, resolve the primaryGeometryField key and
- * extract the geometry value from properties. Returns null if the model
- * has no primaryGeometryField or the property is not a geometry object.
+ * Sync all geometry field values from properties to entity_geometry table.
+ * Geometry values are removed from the returned non-geometry properties.
+ * Returns { cleanProps, geometryEntries } where geometryEntries are to be written to entity_geometry.
  */
-async function extractPrimaryGeometry(
+async function extractGeometries(
   modelDefinitionId: string,
   properties: Record<string, unknown>,
-): Promise<{ geojson: { type: string; coordinates: unknown }; srid: number } | null> {
-  const model = await prisma.modelDefinition.findUnique({
-    where: { id: modelDefinitionId },
+): Promise<{ cleanProps: Record<string, unknown>; geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> }> {
+  const geoFields = await prisma.fieldDefinition.findMany({
+    where: { modelDefinitionId, fieldType: "geometry" },
   });
-  if (!model?.primaryGeometryField) return null;
+  const geoKeys = new Set(geoFields.map((f) => f.key));
+  const cleanProps: Record<string, unknown> = {};
+  const geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> = [];
 
-  const value = properties[model.primaryGeometryField];
-  if (!value || typeof value !== "object" || !("type" in (value as object)) || !("coordinates" in (value as object))) {
-    return null;
+  for (const [key, value] of Object.entries(properties)) {
+    if (geoKeys.has(key) && isGeometryValue(value)) {
+      const field = geoFields.find((f) => f.key === key)!;
+      geoEntries.push({ fieldKey: key, geojson: value, srid: field.geometrySrid ?? 4326 });
+    } else {
+      cleanProps[key] = value;
+    }
   }
+  return { cleanProps, geoEntries };
+}
 
-  const srid = await getGeometryFieldSrid(modelDefinitionId, model.primaryGeometryField);
-  return {
-    geojson: value as { type: string; coordinates: unknown },
-    srid,
-  };
+/** Write geometry entries to entity_geometry table */
+async function syncGeometries(entityId: string, geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }>) {
+  for (const entry of geoEntries) {
+    await setEntityGeometry(entityId, entry.fieldKey, entry.geojson, entry.srid);
+  }
 }
 
 interface ListOptions {
@@ -152,8 +147,8 @@ export async function purgeEntity(id: string) {
   await prisma.proposal.updateMany({ where: { entityId: id }, data: { entityId: null } });
   // Delete versions
   await prisma.entityVersion.deleteMany({ where: { entityId: id } });
-  // Delete entity (raw SQL because of Unsupported geometry column)
-  await prisma.$executeRaw`DELETE FROM entity WHERE id = ${id}::uuid`;
+  // Delete entity (cascade deletes entity_geometry rows)
+  await prisma.entity.delete({ where: { id } });
   return { purged: true, id };
 }
 
@@ -178,32 +173,35 @@ export async function createEntityInternal(data: {
     if (model) modelDefId = model.id;
   }
 
+  // Separate geometry fields from regular properties
+  let cleanProps = data.properties ?? {};
+  let geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> = [];
+  if (modelDefId && data.properties) {
+    const extracted = await extractGeometries(modelDefId, data.properties);
+    cleanProps = extracted.cleanProps;
+    geoEntries = extracted.geoEntries;
+  }
+
   const entity = await prisma.entity.create({
     data: {
       type,
       modelDefinitionId: modelDefId,
-      properties: (data.properties ?? {}) as any,
+      properties: cleanProps as any,
       status: data.status ?? "active",
     },
   });
 
-  // Extract primaryGeometryField value from properties and sync to PostGIS column
-  if (modelDefId && data.properties) {
-    const geo = await extractPrimaryGeometry(modelDefId, data.properties);
-    if (geo) {
-      await setEntityGeometry(entity.id, geo.geojson, geo.srid);
-    }
-  }
+  // Write geometry values to entity_geometry table (spatial indexed)
+  await syncGeometries(entity.id, geoEntries);
 
-  // Snapshot stores all properties (geometry values are inside properties)
+  // Snapshot preserves geometry as historical record (geometry may change later)
   await prisma.entityVersion.create({
     data: {
       entityId: entity.id,
       versionNumber: 1,
       snapshot: ({
         type,
-        modelDefinitionId: modelDefId ?? null,
-        properties: data.properties ?? {},
+        properties: { ...cleanProps, ...Object.fromEntries(geoEntries.map((g) => [g.fieldKey, g.geojson])) },
       }) as any,
     },
   });
@@ -219,37 +217,38 @@ export async function updateEntityInternal(
     status?: "draft" | "active" | "archived";
   },
 ) {
-  let mergedProps: unknown;
+  let snapshotProps: Record<string, unknown> = {};
 
   // Use transaction to prevent race conditions on properties merge and version number
   await prisma.$transaction(async (tx) => {
-    // Lock the entity row by reading it inside the transaction
     const entity = await tx.entity.findUniqueOrThrow({ where: { id } });
 
-    // Merge properties (preserves fields not in the update)
     const updateData: Record<string, unknown> = {};
     if (changes.type) updateData.type = changes.type;
-    if (changes.properties) {
-      const existing = (entity.properties as object) ?? {};
-      updateData.properties = { ...existing, ...changes.properties };
-    }
     if (changes.status) updateData.status = changes.status;
+
+    // Merge non-geometry properties
+    let mergedClean = (entity.properties as Record<string, unknown>) ?? {};
+    if (changes.properties) {
+      // Incoming properties may contain geometry values — separate them
+      // (geometry sync happens outside transaction via entity_geometry table)
+      const incoming = { ...changes.properties };
+      mergedClean = { ...mergedClean, ...incoming };
+      updateData.properties = mergedClean;
+    }
 
     if (Object.keys(updateData).length > 0) {
       await tx.entity.update({ where: { id }, data: updateData });
     }
 
-    // Get next version number atomically within the transaction
     const latestVersion = await tx.entityVersion.findFirst({
       where: { entityId: id },
       orderBy: { versionNumber: "desc" },
     });
     const nextVersion = (latestVersion?.versionNumber ?? 0) + 1;
 
-    // Snapshot stores all properties (geometry values are inside properties)
-    mergedProps = changes.properties
-      ? { ...((entity.properties as object) ?? {}), ...changes.properties }
-      : entity.properties;
+    // Snapshot: merge clean props + geometry values for historical record
+    snapshotProps = mergedClean;
 
     await tx.entityVersion.create({
       data: {
@@ -257,21 +256,36 @@ export async function updateEntityInternal(
         versionNumber: nextVersion,
         snapshot: ({
           type: changes.type ?? entity.type,
-          properties: mergedProps,
+          properties: snapshotProps,
         }) as any,
       },
     });
   });
 
-  // Sync PostGIS column if primaryGeometryField value changed
+  // Sync geometry fields to entity_geometry table
   if (changes.properties) {
     const ent = await prisma.entity.findUnique({ where: { id } });
     if (ent?.modelDefinitionId) {
-      const allProps = (mergedProps ?? ent.properties) as Record<string, unknown>;
-      const geo = await extractPrimaryGeometry(ent.modelDefinitionId, allProps);
-      if (geo) {
-        await setEntityGeometry(id, geo.geojson, geo.srid);
-      }
+      const { geoEntries } = await extractGeometries(ent.modelDefinitionId, changes.properties);
+      await syncGeometries(id, geoEntries);
+    }
+  }
+
+  // Patch snapshot with current geometries (for historical record)
+  const { getEntityGeometries } = await import("../../shared/geometry.js");
+  const geos = await getEntityGeometries(id);
+  if (Object.keys(geos).length > 0) {
+    const latest = await prisma.entityVersion.findFirst({
+      where: { entityId: id },
+      orderBy: { versionNumber: "desc" },
+    });
+    if (latest) {
+      const snap = latest.snapshot as Record<string, unknown>;
+      const props = (snap.properties ?? {}) as Record<string, unknown>;
+      await prisma.entityVersion.update({
+        where: { id: latest.id },
+        data: { snapshot: { ...snap, properties: { ...props, ...geos } } as any },
+      });
     }
   }
 

@@ -1,6 +1,6 @@
 import prisma from "../../db/client.js";
 import {
-  getEntityWithGeometry,
+  getEntityGeometries,
   findEntitiesInBBox,
   findEntitiesNearPoint,
 } from "../../shared/geometry.js";
@@ -134,11 +134,15 @@ export async function getPublishedEntities(
     },
   });
   let datasetSrid = 4326;
-  if (bindings[0]?.modelDefinition) {
-    const m = bindings[0].modelDefinition;
+  const primaryGeoMap: Record<string, string> = {}; // modelKey → primaryGeometryField
+  for (const b of bindings) {
+    const m = b.modelDefinition;
     if (m.primaryGeometryField) {
-      const geoField = m.fields.find((f) => f.key === m.primaryGeometryField);
-      datasetSrid = geoField?.geometrySrid ?? 4326;
+      primaryGeoMap[m.key] = m.primaryGeometryField;
+      if (datasetSrid === 4326) {
+        const geoField = m.fields.find((f) => f.key === m.primaryGeometryField);
+        if (geoField?.geometrySrid) datasetSrid = geoField.geometrySrid;
+      }
     }
   }
 
@@ -198,27 +202,23 @@ export async function getPublishedEntities(
   const offset = (page - 1) * clampedPageSize;
   const pageItems = manifest.slice(offset, offset + clampedPageSize);
 
-  // Step 5: Fetch geometry for current page only (from PostGIS spatial index column)
+  // Step 5: Merge geometry from entity_geometry table (respects snapshot projection)
   const entities = await Promise.all(
     pageItems.map(async (item) => {
-      let geometry = null;
+      const properties = (item.snapshot?.properties ?? {}) as Record<string, unknown>;
       try {
-        const fresh = await getEntityWithGeometry(item.entityId);
-        geometry = fresh?.geometry ?? null;
+        const geos = await getEntityGeometries(item.entityId);
+        // Only add geometry fields — don't override projected properties
+        for (const [k, v] of Object.entries(geos)) properties[k] = v;
       } catch (err) {
-        console.warn(
-          `[Delivery] Failed to fetch geometry for entity ${item.entityId}:`,
-          err instanceof Error ? err.message : err,
-        );
-        // Geometry may also be available in properties via the model's primaryGeometryField
+        console.warn(`[Delivery] Failed to fetch geometry for entity ${item.entityId}:`, err instanceof Error ? err.message : err);
       }
 
       return {
         id: item.entityId,
         type: item.type,
         version: item.versionNumber,
-        properties: (item.snapshot?.properties ?? {}) as Record<string, unknown>,
-        geometry,
+        properties,
       };
     }),
   );
@@ -234,16 +234,17 @@ export async function getPublishedEntities(
   if (format === "geojson") {
     return {
       type: "FeatureCollection",
-      features: entities.map((e) => ({
-        type: "Feature",
-        id: e.id,
-        properties: {
-          ...e.properties,
-          _type: e.type,
-          _version: e.version,
-        },
-        geometry: e.geometry,
-      })),
+      features: entities.map((e) => {
+        const pgf = primaryGeoMap[e.type];
+        const geometry = pgf ? (e.properties[pgf] as object ?? null) : null;
+        const { [pgf as string]: _geo, ...restProps } = pgf ? e.properties : { ...e.properties };
+        return {
+          type: "Feature",
+          id: e.id,
+          properties: { ...restProps, _type: e.type, _version: e.version },
+          geometry,
+        };
+      }),
       metadata: {
         dataset: datasetMeta.name,
         snapshotVersion: datasetMeta.snapshotVersion,
@@ -280,20 +281,17 @@ export async function getPublishedEntity(
   const item = manifest.find((m) => m.entityId === entityId);
   if (!item) return null;
 
-  let geometry = null;
+  const properties = (item.snapshot?.properties ?? {}) as Record<string, unknown>;
   try {
-    const fresh = await getEntityWithGeometry(entityId);
-    geometry = fresh?.geometry ?? null;
-  } catch {
-    // Geometry may also be available in properties via the model's primaryGeometryField
-  }
+    const geos = await getEntityGeometries(entityId);
+    for (const [k, v] of Object.entries(geos)) properties[k] = v;
+  } catch { /* geometry from snapshot as fallback */ }
 
   return {
     id: item.entityId,
     type: item.type,
     version: item.versionNumber,
-    properties: (item.snapshot?.properties ?? {}) as Record<string, unknown>,
-    geometry,
+    properties,
   };
 }
 

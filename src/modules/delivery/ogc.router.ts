@@ -237,10 +237,16 @@ ogcRouter.get("/collections/:collectionId/items/:featureId", async (req, res, ne
     const entity = await deliveryService.getPublishedEntity(parsed.datasetId, featureId);
     if (!entity) return res.status(404).json({ error: "Feature not found in this collection" });
 
+    // Extract primary geometry from properties for GeoJSON Feature output
+    const pgfKey = parsed.modelKey; // need to look up primaryGeometryField
+    const model = await prisma.modelDefinition.findUnique({ where: { key: parsed.modelKey } });
+    const pgf = model?.primaryGeometryField;
+    const geometry = pgf ? (entity.properties[pgf] as object ?? null) : null;
+
     res.json({
       type: "Feature",
       id: entity.id,
-      geometry: entity.geometry || null,
+      geometry,
       properties: entity.properties,
       links: [
         { rel: "self", href: `${base}/collections/${req.params.collectionId}/items/${entity.id}`, type: "application/geo+json" },

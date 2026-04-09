@@ -89,7 +89,6 @@ model Entity {
   type              String
   modelDefinitionId String?           @map("model_definition_id") @db.Uuid
   properties        Json              @default("{}")
-  geometry          Unsupported("geometry")?
   status            EntityStatus      @default(draft)
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
@@ -97,11 +96,25 @@ model Entity {
   modelDefinition ModelDefinition? @relation(fields: [modelDefinitionId], references: [id])
   versions        EntityVersion[]
   proposals       Proposal[]
+  geometries      EntityGeometry[]
 
   @@index([type])
   @@index([status])
   @@index([modelDefinitionId])
   @@map("entity")
+}
+
+model EntityGeometry {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityId String @map("entity_id") @db.Uuid
+  fieldKey String @map("field_key")
+  geometry Unsupported("geometry")
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, fieldKey])
+  @@index([entityId])
+  @@map("entity_geometry")
 }
 
 model EntityVersion {
