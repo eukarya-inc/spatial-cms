@@ -227,11 +227,11 @@
   <div class="topbar">
     <div class="breadcrumb" id="breadcrumb"></div>
     <div class="workflow" id="workflow">
-      <span class="workflow-step wf-define" onclick="nav('define/models')">Define</span>
+      <span class="workflow-step wf-define" onclick="navWorkflow('define')">Define</span>
       <span class="workflow-arrow">&rarr;</span>
-      <span class="workflow-step wf-manage" onclick="nav('manage/records')">Manage</span>
+      <span class="workflow-step wf-manage" onclick="navWorkflow('manage')">Manage</span>
       <span class="workflow-arrow">&rarr;</span>
-      <span class="workflow-step wf-publish" onclick="nav('publish/datasets')">Publish</span>
+      <span class="workflow-step wf-publish" onclick="navWorkflow('publish')">Publish</span>
     </div>
     <div id="user-info" style="display:none;align-items:center;gap:8px;margin-left:auto"></div>
   </div>
@@ -669,6 +669,33 @@ function updateWorkflow() {
   if (hash.startsWith('define/')) document.querySelector('.wf-define')?.classList.add('wf-active');
   else if (hash.startsWith('manage/') || hash === 'dashboard') document.querySelector('.wf-manage')?.classList.add('wf-active');
   else if (hash.startsWith('publish/')) document.querySelector('.wf-publish')?.classList.add('wf-active');
+}
+
+// Context-aware workflow navigation: carry model context between Define ↔ Manage
+function navWorkflow(target) {
+  const hash = location.hash.slice(1) || '';
+  const parts = hash.split('/');
+
+  if (target === 'define') {
+    // From manage/records/{modelKey}[/{id}] or manage/new/{modelKey} → define/models/{modelId}
+    let modelKey = null;
+    if (parts[0] === 'manage' && parts[1] === 'records' && parts[2]) modelKey = parts[2];
+    else if (parts[0] === 'manage' && parts[1] === 'new' && parts[2]) modelKey = parts[2];
+    if (modelKey) {
+      const model = modelCache.find(m => m.key === modelKey);
+      if (model) { nav('define/models/' + model.id); return; }
+    }
+    nav('define/models');
+  } else if (target === 'manage') {
+    // From define/models/{id} → manage/records/{modelKey}
+    if (parts[0] === 'define' && parts[1] === 'models' && parts[2]) {
+      const model = modelCache.find(m => m.id === parts[2]);
+      if (model) { nav('manage/records/' + model.key); return; }
+    }
+    nav('manage/records');
+  } else {
+    nav('publish/datasets');
+  }
 }
 
 async function router() {
