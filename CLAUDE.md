@@ -22,27 +22,36 @@ Core invariant: **ALL data changes go through proposals. No direct entity writes
 # 1. Install dependencies
 npm install
 
-# 2. Start Docker services (PostGIS + Keycloak + Directus)
-docker compose up -d
+# 2. Start all services (Docker + Express + examples)
+./dev.sh start                 # Interactive: just run ./dev.sh
 
-# 3. Wait for services to be ready (~20 seconds)
-#    Check: curl http://localhost:8180/realms/spatial-cms
-
-# 4. Run database migrations
+# 3. Run database migrations (first time only)
 npx prisma migrate deploy
 npm run db:migrate:test        # Test database
 
-# 5. (Optional) Seed sample data
+# 4. (Optional) Seed sample data
 npx tsx scripts/seed-taito.ts
 
-# 6. Start the dev server
-npm run dev                    # Express on port 3001
-
-# 7. Open http://localhost:3001
+# 5. Open http://localhost:3001
 #    Login: admin / admin (Keycloak)
 ```
 
 Run tests: `npm test` (47 integration tests)
+
+### Dev Service Manager (`dev.sh`)
+
+Interactive TUI or CLI for managing all services:
+
+```bash
+./dev.sh                       # Interactive mode (press keys to control)
+./dev.sh start [service]       # Start all or one service
+./dev.sh stop [service]        # Stop all or one service
+./dev.sh restart [service]     # Restart all or one service
+./dev.sh status                # Show status table
+./dev.sh logs <service>        # Tail logs
+```
+
+Services: `db` `keycloak` `directus` `cms` `viewer` `workbench`
 
 ## Project Structure
 
@@ -102,6 +111,7 @@ examples/
     index.html                # Dedup + Cleanse + Validate + Transform tools
     server.js                 # Backend proxy (manage scope key)
     README.md                 # How to run, API endpoints used
+dev.sh                        # Dev service manager (interactive TUI + CLI)
 ```
 
 ## Key Patterns
@@ -304,6 +314,8 @@ Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `
 | PostgreSQL + PostGIS | 5434 |
 | Directus | 8055 |
 | Keycloak | 8180 |
+| Viewer Example | 8090 |
+| Workbench Example | 8095 |
 
 ## Credentials
 
