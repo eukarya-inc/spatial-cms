@@ -17,6 +17,9 @@ interface TemplateField {
   enumValues?: string[];
   validationJson?: object;
   referenceModelKey?: string;
+  geometryType?: string;
+  geometrySrid?: number;
+  geometryIs3D?: boolean;
   orderIndex?: number;
 }
 
@@ -24,9 +27,7 @@ interface TemplateModel {
   key: string;
   name: string;
   description?: string;
-  geometryType?: string;
-  is3D?: boolean;
-  srid?: number;
+  primaryGeometryField?: string;
   displayField?: string;
   governance?: { approvalMode?: string; publishMode?: string };
   fields: TemplateField[];
@@ -136,9 +137,7 @@ export async function applyTemplate(
           key: tm.key,
           name: tm.name,
           description: tm.description,
-          geometryType: (tm.geometryType as any) ?? "NONE",
-          is3D: tm.is3D ?? false,
-          srid: tm.srid ?? 4326,
+          primaryGeometryField: tm.primaryGeometryField,
           displayField: tm.displayField,
         },
         include: { fields: true },
@@ -165,6 +164,9 @@ export async function applyTemplate(
             enumValues: tf.enumValues as any,
             validationJson: tf.validationJson as any,
             referenceModelKey: tf.referenceModelKey,
+            geometryType: tf.geometryType as any,
+            geometrySrid: tf.geometrySrid,
+            geometryIs3D: tf.geometryIs3D,
             orderIndex: tf.orderIndex ?? 0,
           },
         });

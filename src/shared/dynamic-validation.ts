@@ -17,7 +17,6 @@ interface ValidationResult {
 export async function validateAgainstModel(
   modelDefinitionId: string | null | undefined,
   properties: Record<string, unknown>,
-  geometry: GeoJsonGeometry | null | undefined,
 ): Promise<ValidationResult> {
   if (!modelDefinitionId) return { valid: true, errors: [] };
 
@@ -104,39 +103,39 @@ export async function validateAgainstModel(
         // Any value is valid
         break;
 
-      case "geometry":
-        // Handled separately below
+      case "geometry": {
+        const geo = value as GeoJsonGeometry;
+        if (!geo.type || !geo.coordinates) {
+          errors.push(`Field "${field.key}" must be a valid GeoJSON geometry (requires "type" and "coordinates")`);
+        } else if (field.geometryType && field.geometryType !== "NONE") {
+          validateGeometryType(field.geometryType, field.key, geo, errors);
+        }
         break;
+      }
     }
   }
-
-  // Validate geometry against model's geometryType
-  validateGeometryType(model.geometryType, geometry, errors);
 
   return { valid: errors.length === 0, errors };
 }
 
 function validateGeometryType(
   geometryType: string,
-  geometry: GeoJsonGeometry | null | undefined,
+  fieldKey: string,
+  geometry: GeoJsonGeometry,
   errors: string[],
 ) {
   switch (geometryType) {
-    case "NONE":
-      if (geometry)
-        errors.push("This model does not support geometry");
-      break;
     case "POINT":
-      if (geometry && geometry.type !== "Point" && geometry.type !== "MultiPoint")
-        errors.push(`Geometry must be Point or MultiPoint, got ${geometry.type}`);
+      if (geometry.type !== "Point" && geometry.type !== "MultiPoint")
+        errors.push(`Field "${fieldKey}" must be Point or MultiPoint, got ${geometry.type}`);
       break;
     case "LINESTRING":
-      if (geometry && geometry.type !== "LineString" && geometry.type !== "MultiLineString")
-        errors.push(`Geometry must be LineString or MultiLineString, got ${geometry.type}`);
+      if (geometry.type !== "LineString" && geometry.type !== "MultiLineString")
+        errors.push(`Field "${fieldKey}" must be LineString or MultiLineString, got ${geometry.type}`);
       break;
     case "POLYGON":
-      if (geometry && geometry.type !== "Polygon" && geometry.type !== "MultiPolygon")
-        errors.push(`Geometry must be Polygon or MultiPolygon, got ${geometry.type}`);
+      if (geometry.type !== "Polygon" && geometry.type !== "MultiPolygon")
+        errors.push(`Field "${fieldKey}" must be Polygon or MultiPolygon, got ${geometry.type}`);
       break;
     case "MIXED":
       // Any geometry type is fine

@@ -65,16 +65,24 @@ ogcRouter.get("/collections", async (req, res, next) => {
     for (const d of datasets) {
       const bindings = await prisma.datasetModelBinding.findMany({
         where: { datasetDefinitionId: d.id },
-        include: { modelDefinition: true },
+        include: {
+          modelDefinition: {
+            include: { fields: true },
+          },
+        },
       });
       for (const b of bindings) {
-        const collectionId = `${d.id}_${b.modelDefinition.key}`;
-        // Count entities of this type in the manifest
-        const manifest = d.snapshot as any;
+        const m = b.modelDefinition;
+        const collectionId = `${d.id}_${m.key}`;
+        // Resolve SRID from primaryGeometryField
+        const geoField = m.primaryGeometryField
+          ? m.fields.find((f) => f.key === m.primaryGeometryField)
+          : null;
+        const srid = geoField?.geometrySrid ?? 4326;
         collections.push({
           id: collectionId,
-          title: b.modelDefinition.name,
-          description: d.description || `${b.modelDefinition.key} from ${d.name}`,
+          title: m.name,
+          description: d.description || `${m.key} from ${d.name}`,
           links: [
             { rel: "self", href: `${base}/collections/${collectionId}`, type: "application/json" },
             { rel: "items", href: `${base}/collections/${collectionId}/items`, type: "application/geo+json" },
@@ -82,7 +90,7 @@ ogcRouter.get("/collections", async (req, res, next) => {
           extent: {
             spatial: { bbox: [[-180, -90, 180, 90]] },
           },
-          storageCrs: `http://www.opengis.net/def/crs/EPSG/0/${b.modelDefinition.srid}`,
+          storageCrs: `http://www.opengis.net/def/crs/EPSG/0/${srid}`,
           ...(d.license ? { license: d.license } : {}),
         });
       }

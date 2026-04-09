@@ -117,10 +117,10 @@ dev.sh                        # Dev service manager (interactive TUI + CLI)
 ## Key Patterns
 
 ### Prisma + PostGIS
-Geometry column is unconstrained `geometry` type (accepts both 2D and 3D, SRID 4326 enforced via CHECK). All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
+Entity table has a single PostGIS `geometry` column used for spatial indexing. It stores only the **primary geometry field's** value. All other geometry field values live in the `properties` JSONB column as GeoJSON objects. All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
 
-### 3D Geometry Support
-`ModelDefinition.is3D` flag controls whether a model expects 2D or 3D geometry. 2D stores `[lon,lat]`, 3D stores `[lon,lat,z]`. No forced conversion — data stored as-is. CityJSON files can be imported via the Import Data page (frontend converts CityJSON boundaries to GeoJSON MultiPolygon with Z coordinates).
+### Geometry as a Field Type
+Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryIs3D`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.
 
 ### Prisma Migrations with Directus
 Directus creates its own tables in the same schema, causing Prisma drift detection. Use this workflow:
@@ -155,8 +155,8 @@ Set per model via UI (Model Designer > model detail > Governance Policy) or API.
 ### Properties Merge on Update
 Entity updates merge new properties with existing ones (not replace). Orphaned properties (from deleted field definitions) are preserved. The edit form also preserves orphaned fields when submitting update proposals.
 
-### Version Snapshot Geometry Patch
-Geometry is stored in PostGIS via raw SQL, outside Prisma transactions. After `updateEntityInternal` completes, it patches the latest version snapshot with actual geometry from PostGIS. This prevents snapshots from losing geometry on status-only or properties-only updates.
+### Version Snapshot Geometry
+Snapshots store all data in `{ type, properties }` format. Geometry values are inside properties (e.g. `properties.location`). The PostGIS column is synced separately after entity create/update by extracting the `primaryGeometryField` value from properties.
 
 ### Error Handling
 Custom `BusinessError` and `NotFoundError` classes (in `src/shared/errors.ts`) replace fragile string matching. Prisma errors are handled by code: P2002 → 409 (duplicate), P2025 → 404 (not found). Auto-approval failures are logged via `console.warn`.
@@ -227,8 +227,9 @@ Each dataset controls which APIs expose its data:
 - `POST /api/v1/proposals/approve-batch` — batch approve (all, by model filter, or by IDs)
 
 ### Definitions
-- `CRUD /api/v1/definitions/models` — model definitions
-- `CRUD /api/v1/definitions/models/:id/fields` — field definitions
+- `CRUD /api/v1/definitions/models` — model definitions (primaryGeometryField, displayField)
+- `CRUD /api/v1/definitions/models/:id/fields` — field definitions (geometry fields have geometryType/geometrySrid/geometryIs3D)
+- `PUT /api/v1/definitions/models/:id/fields/reorder` — batch reorder fields (`{ order: ["key1", "key2", ...] }`)
 - `GET /api/v1/definitions/models/:id/schema` — JSON schema for frontend
 - `CRUD /api/v1/definitions/datasets/:id/bindings` — model-dataset bindings
 - `CRUD /api/v1/definitions/governance/policies` — governance policies

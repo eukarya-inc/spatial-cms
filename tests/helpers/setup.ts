@@ -25,12 +25,22 @@ export async function createTestModel() {
     data: {
       key: `test_building_${suffix}`,
       name: "Test Building",
-      geometryType: "POINT",
+      primaryGeometryField: "location",
     },
   });
 
   await prisma.fieldDefinition.createMany({
     data: [
+      {
+        modelDefinitionId: model.id,
+        key: "location",
+        label: "Location",
+        fieldType: "geometry",
+        geometryType: "POINT",
+        geometrySrid: 4326,
+        isRequired: false,
+        orderIndex: -1,
+      },
       {
         modelDefinitionId: model.id,
         key: "name",

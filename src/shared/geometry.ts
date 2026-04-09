@@ -7,7 +7,8 @@ interface GeoJsonGeometry {
   coordinates: unknown;
 }
 
-/** Set geometry on an entity from GeoJSON (accepts both 2D and 3D, any SRID) */
+/** Set PRIMARY geometry on an entity from GeoJSON (accepts both 2D and 3D, any SRID).
+ *  The Entity.geometry column stores only the primary geometry field's value. */
 export async function setEntityGeometry(
   entityId: string,
   geojson: GeoJsonGeometry,
@@ -98,8 +99,16 @@ export async function findEntitiesNearPoint(
   return rows.map((r) => r.id);
 }
 
-/** Look up SRID for a model type */
+/** Look up SRID for a model type via its primary geometry field definition.
+ *  Returns 4326 if no primary geometry field is configured. */
 export async function getSridForType(type: string): Promise<number> {
-  const model = await prisma.modelDefinition.findUnique({ where: { key: type } });
-  return model?.srid ?? 4326;
+  const model = await prisma.modelDefinition.findUnique({
+    where: { key: type },
+    include: { fields: true },
+  });
+  if (!model?.primaryGeometryField) return 4326;
+  const geoField = model.fields.find(
+    (f) => f.key === model.primaryGeometryField,
+  );
+  return geoField?.geometrySrid ?? 4326;
 }

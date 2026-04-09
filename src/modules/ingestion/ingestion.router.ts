@@ -4,18 +4,8 @@ import * as ingestionService from "./ingestion.service.js";
 
 export const ingestionRouter = Router();
 
-const geoJsonSchema = z.object({
-  type: z.enum([
-    "Point",
-    "MultiPoint",
-    "LineString",
-    "MultiLineString",
-    "Polygon",
-    "MultiPolygon",
-    "GeometryCollection",
-  ]),
-  coordinates: z.unknown(),
-});
+// Geometry values now live inside properties (as geometry-typed fields).
+// No top-level geometry field in import/proposal schemas.
 
 const importSchema = z.object({
   entities: z
@@ -23,7 +13,6 @@ const importSchema = z.object({
       z.object({
         type: z.string().min(1),
         properties: z.record(z.unknown()),
-        geometry: geoJsonSchema.nullish(),
       }),
     )
     .min(1),
@@ -41,7 +30,6 @@ const validateSchema = z.object({
     .array(
       z.object({
         properties: z.record(z.unknown()),
-        geometry: geoJsonSchema.nullish(),
       }),
     )
     .min(1),
@@ -57,7 +45,6 @@ const proposalSetSchema = z.object({
           data: z.object({
             type: z.string().min(1).optional(),
             properties: z.record(z.unknown()).optional(),
-            geometry: geoJsonSchema.nullish(),
             status: z.enum(["draft", "active", "archived"]).optional(),
           }),
         }),

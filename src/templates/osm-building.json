@@ -13,9 +13,7 @@
       "key": "osm_building",
       "name": "OSM Building",
       "description": "Buildings from OpenStreetMap with standard tags",
-      "geometryType": "POLYGON",
-      "is3D": false,
-      "srid": 4326,
+      "primaryGeometryField": "footprint",
       "displayField": "name",
       "governance": { "approvalMode": "auto", "publishMode": "manual" },
       "fields": [
@@ -26,7 +24,8 @@
         { "key": "levels", "label": "Levels", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 4 },
         { "key": "addr_full", "label": "Address", "fieldType": "string", "isRequired": false, "orderIndex": 5 },
         { "key": "addr_housenumber", "label": "House Number", "fieldType": "string", "isRequired": false, "orderIndex": 6 },
-        { "key": "addr_postcode", "label": "Postal Code", "fieldType": "string", "isRequired": false, "orderIndex": 7 }
+        { "key": "addr_postcode", "label": "Postal Code", "fieldType": "string", "isRequired": false, "orderIndex": 7 },
+        { "key": "footprint", "label": "Footprint", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 4326, "geometryIs3D": false, "isRequired": false, "orderIndex": 8 }
       ]
     }
   ]

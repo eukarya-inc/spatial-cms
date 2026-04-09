@@ -11,7 +11,7 @@ interface ManifestItem {
   type: string;
   modelDefinitionId: string;
   versionNumber: number;
-  snapshot: { properties?: Record<string, unknown>; geometry?: object } | null;
+  snapshot: { properties?: Record<string, unknown> } | null;
 }
 
 interface QueryOptions {
@@ -124,12 +124,23 @@ export async function getPublishedEntities(
     manifest = manifest.filter((item) => item.type === modelKey);
   }
 
-  // Resolve SRID from dataset's bound models (use first model's SRID)
+  // Resolve SRID from dataset's bound models (use first model's primary geometry field SRID)
   const bindings = await prisma.datasetModelBinding.findMany({
     where: { datasetDefinitionId },
-    include: { modelDefinition: true },
+    include: {
+      modelDefinition: {
+        include: { fields: true },
+      },
+    },
   });
-  const datasetSrid = bindings[0]?.modelDefinition?.srid ?? 4326;
+  let datasetSrid = 4326;
+  if (bindings[0]?.modelDefinition) {
+    const m = bindings[0].modelDefinition;
+    if (m.primaryGeometryField) {
+      const geoField = m.fields.find((f) => f.key === m.primaryGeometryField);
+      datasetSrid = geoField?.geometrySrid ?? 4326;
+    }
+  }
 
   // Step 1: Spatial filtering (bbox or near point)
   if (bbox || near) {
@@ -187,7 +198,7 @@ export async function getPublishedEntities(
   const offset = (page - 1) * clampedPageSize;
   const pageItems = manifest.slice(offset, offset + clampedPageSize);
 
-  // Step 5: Fetch geometry for current page only
+  // Step 5: Fetch geometry for current page only (from PostGIS spatial index column)
   const entities = await Promise.all(
     pageItems.map(async (item) => {
       let geometry = null;
@@ -199,7 +210,7 @@ export async function getPublishedEntities(
           `[Delivery] Failed to fetch geometry for entity ${item.entityId}:`,
           err instanceof Error ? err.message : err,
         );
-        geometry = (item.snapshot?.geometry as object) ?? null;
+        // Geometry may also be available in properties via the model's primaryGeometryField
       }
 
       return {
@@ -274,7 +285,7 @@ export async function getPublishedEntity(
     const fresh = await getEntityWithGeometry(entityId);
     geometry = fresh?.geometry ?? null;
   } catch {
-    geometry = (item.snapshot?.geometry as object) ?? null;
+    // Geometry may also be available in properties via the model's primaryGeometryField
   }
 
   return {
@@ -296,18 +307,30 @@ export async function listPublishedDatasetModels(datasetDefinitionId: string) {
 
   const bindings = await prisma.datasetModelBinding.findMany({
     where: { datasetDefinitionId },
-    include: { modelDefinition: true },
+    include: {
+      modelDefinition: {
+        include: { fields: true },
+      },
+    },
   });
 
-  return bindings.map((b) => ({
-    key: b.modelDefinition.key,
-    name: b.modelDefinition.name,
-    geometryType: b.modelDefinition.geometryType,
-    is3D: b.modelDefinition.is3D,
-    srid: b.modelDefinition.srid,
-    crs: `EPSG:${b.modelDefinition.srid}`,
-    hasProjection: !!(b.projectionJson as any)?.fields?.length,
-  }));
+  return bindings.map((b) => {
+    const m = b.modelDefinition;
+    const geoField = m.primaryGeometryField
+      ? m.fields.find((f) => f.key === m.primaryGeometryField)
+      : null;
+    const srid = geoField?.geometrySrid ?? 4326;
+    return {
+      key: m.key,
+      name: m.name,
+      primaryGeometryField: m.primaryGeometryField,
+      geometryType: geoField?.geometryType ?? null,
+      is3D: geoField?.geometryIs3D ?? false,
+      srid,
+      crs: `EPSG:${srid}`,
+      hasProjection: !!(b.projectionJson as any)?.fields?.length,
+    };
+  });
 }
 
 /** Get schema for a single model in a published dataset */
@@ -319,7 +342,11 @@ export async function getPublishedModelSchema(datasetDefinitionId: string, model
 
   const bindings = await prisma.datasetModelBinding.findMany({
     where: { datasetDefinitionId },
-    include: { modelDefinition: true },
+    include: {
+      modelDefinition: {
+        include: { fields: true },
+      },
+    },
   });
   const binding = bindings.find((b) => b.modelDefinition.key === modelKey);
   if (!binding) return null;
@@ -337,7 +364,14 @@ export async function getPublishedModelSchema(datasetDefinitionId: string, model
     }
   }
 
-  return { ...schema, crs: `EPSG:${binding.modelDefinition.srid}` };
+  // Resolve CRS from the model's primary geometry field
+  const m = binding.modelDefinition;
+  const geoField = m.primaryGeometryField
+    ? m.fields.find((f) => f.key === m.primaryGeometryField)
+    : null;
+  const srid = geoField?.geometrySrid ?? 4326;
+
+  return { ...schema, crs: `EPSG:${srid}` };
 }
 
 /** Get schema for all models bound to a published dataset */

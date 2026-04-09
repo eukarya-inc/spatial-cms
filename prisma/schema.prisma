@@ -202,16 +202,14 @@ model ActiveReleaseState {
 // ─── Definition Kernel Models ────────────────────────
 
 model ModelDefinition {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key          String       @unique
-  name         String
-  description  String?
-  geometryType GeometryType @default(NONE) @map("geometry_type")
-  is3D         Boolean      @default(false) @map("is_3d")
-  srid         Int          @default(4326)
-  displayField String?      @map("display_field")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key                  String   @unique
+  name                 String
+  description          String?
+  primaryGeometryField String?  @map("primary_geometry_field")
+  displayField         String?  @map("display_field")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   fields          FieldDefinition[]
   datasetBindings DatasetModelBinding[]
@@ -221,17 +219,20 @@ model ModelDefinition {
 }
 
 model FieldDefinition {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  modelDefinitionId String    @map("model_definition_id") @db.Uuid
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modelDefinitionId String       @map("model_definition_id") @db.Uuid
   key               String
   label             String
-  fieldType         FieldType @map("field_type")
-  isRequired        Boolean   @default(false) @map("is_required")
-  defaultValue      Json?     @map("default_value")
-  enumValues        Json?     @map("enum_values")
-  validationJson    Json?     @map("validation_json")
-  referenceModelKey String?   @map("reference_model_key")
-  orderIndex        Int       @default(0) @map("order_index")
+  fieldType         FieldType    @map("field_type")
+  isRequired        Boolean      @default(false) @map("is_required")
+  defaultValue      Json?        @map("default_value")
+  enumValues        Json?        @map("enum_values")
+  validationJson    Json?        @map("validation_json")
+  referenceModelKey String?      @map("reference_model_key")
+  geometryType      GeometryType? @map("geometry_type")
+  geometrySrid      Int?         @map("geometry_srid")
+  geometryIs3D      Boolean?     @map("geometry_is_3d")
+  orderIndex        Int          @default(0) @map("order_index")
 
   modelDefinition ModelDefinition @relation(fields: [modelDefinitionId], references: [id], onDelete: Cascade)
 

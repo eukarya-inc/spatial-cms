@@ -39,8 +39,7 @@ describe("Delivery API", () => {
             action: "create",
             data: {
               type: modelKey,
-              properties: { name: `Building ${i + 1}`, height: (i + 1) * 50 },
-              geometry: { type: "Point", coordinates: coords[i] },
+              properties: { name: `Building ${i + 1}`, height: (i + 1) * 50, location: { type: "Point", coordinates: coords[i] } },
             },
           },
         },
@@ -141,6 +140,6 @@ describe("Delivery API", () => {
     );
     assert.ok(data.id);
     assert.ok(data.properties);
-    assert.ok(data.geometry);
+    assert.ok(data.properties.location, "geometry should be in properties");
   });
 });

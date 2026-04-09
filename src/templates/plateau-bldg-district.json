@@ -13,9 +13,7 @@
       "key": "p_district",
       "name": "District",
       "description": "Administrative district (行政区)",
-      "geometryType": "POLYGON",
-      "is3D": false,
-      "srid": 4326,
+      "primaryGeometryField": "boundary",
       "displayField": "name",
       "governance": { "approvalMode": "manual", "publishMode": "manual" },
       "fields": [
@@ -23,16 +21,15 @@
         { "key": "name", "label": "Name", "fieldType": "string", "isRequired": true, "orderIndex": 1 },
         { "key": "name_en", "label": "Name (English)", "fieldType": "string", "orderIndex": 2 },
         { "key": "prefecture", "label": "Prefecture", "fieldType": "string", "orderIndex": 3 },
-        { "key": "area_sqm", "label": "Area (sqm)", "fieldType": "number", "orderIndex": 4 }
+        { "key": "area_sqm", "label": "Area (sqm)", "fieldType": "number", "orderIndex": 4 },
+        { "key": "boundary", "label": "Boundary", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 4326, "geometryIs3D": false, "isRequired": false, "orderIndex": 5 }
       ]
     },
     {
       "key": "p_building",
       "name": "Building",
       "description": "Building with district reference (bldg:Building)",
-      "geometryType": "POLYGON",
-      "is3D": true,
-      "srid": 6668,
+      "primaryGeometryField": "footprint",
       "displayField": "gml_id",
       "governance": { "approvalMode": "manual", "publishMode": "manual" },
       "fields": [
@@ -41,7 +38,8 @@
         { "key": "measured_height", "label": "Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 2 },
         { "key": "usage", "label": "Usage Code", "fieldType": "string", "orderIndex": 3 },
         { "key": "year_built", "label": "Year Built", "fieldType": "number", "orderIndex": 4 },
-        { "key": "district", "label": "District", "fieldType": "reference", "referenceModelKey": "p_district", "orderIndex": 5 }
+        { "key": "district", "label": "District", "fieldType": "reference", "referenceModelKey": "p_district", "orderIndex": 5 },
+        { "key": "footprint", "label": "Footprint", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 6668, "geometryIs3D": true, "isRequired": false, "orderIndex": 6 }
       ]
     }
   ],
