@@ -1170,8 +1170,10 @@ async function viewEntityDetail(main, entityId) {
         if (geoFields.length) {
           geoDisplay.innerHTML = geoFields.map(gf => {
             const gv = e.properties?.[gf.key];
-            if (!gv) return `<div style="font-size:13px;color:var(--muted)">${gf.label || gf.key}: None</div>`;
-            return `<div style="font-size:13px;margin-bottom:4px"><strong>${gf.label || gf.key}</strong> <span class="badge badge-none">${gv.type || gf.geometryType}</span>${gf.geometryIs3D ? ' <span style="font-size:11px;color:var(--muted)">3D</span>' : ''} <span style="color:var(--muted)">${gv.type === 'Point' ? `[${gv.coordinates[0]}, ${gv.coordinates[1]}${gv.coordinates[2] !== undefined ? ', ' + gv.coordinates[2] : ''}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(gv, null, 2)}</pre>`;
+            const isPrimary = gf.key === schema.primaryGeometryField;
+            const primaryBadge = isPrimary ? ' <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff;margin-left:6px">PRIMARY</span>' : '';
+            if (!gv) return `<div style="font-size:13px;color:var(--muted)">${gf.label || gf.key}${primaryBadge}: None</div>`;
+            return `<div style="font-size:13px;margin-bottom:4px"><strong>${gf.label || gf.key}</strong>${primaryBadge} <span class="badge badge-none">${gv.type || gf.geometryType}</span>${gf.geometryIs3D ? ' <span style="font-size:11px;color:var(--muted)">3D</span>' : ''} <span style="color:var(--muted)">${gv.type === 'Point' ? `[${gv.coordinates[0]}, ${gv.coordinates[1]}${gv.coordinates[2] !== undefined ? ', ' + gv.coordinates[2] : ''}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(gv, null, 2)}</pre>`;
           }).join('');
         }
       }
@@ -2197,6 +2199,16 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?filter[height][\$gte]=100&sort=
 curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,36"</pre>
       </div>
 
+      <div class="card" style="margin-top:16px">
+        <h3>Geometry Fields</h3>
+        <p>Entities can have multiple geometry fields (e.g. <code>boundary</code>, <code>centroid</code>, <code>entrance</code>). Each is stored as a GeoJSON object in <code>properties</code>.</p>
+        <ul style="font-size:14px;line-height:1.8">
+          <li>Spatial queries (<code>bbox</code>, <code>near</code>) search the <strong>primary geometry field</strong> by default</li>
+          <li>Use <code>?geometryField=entrance</code> to query a specific geometry field</li>
+          <li>In GeoJSON output (<code>?format=geojson</code>): the primary geometry becomes <code>geometry</code>, others stay in <code>properties</code></li>
+        </ul>
+      </div>
+
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:12px;font-weight:700;color:var(--success);background:#dcfce7;padding:2px 8px;border-radius:4px">GET</span>
@@ -2326,6 +2338,7 @@ async function viewImportData(main) {
           <label>Model</label>
           <select id="fi-model" onchange="updateCrsHint()">${models.map(m => { const g = getModelGeometry(m); return `<option value="${m.key}" data-id="${m.id}" data-srid="${g?.srid || 4326}" data-pgf="${m.primaryGeometryField || ''}">${m.name} (${m.key})</option>`; }).join('')}</select>
           <div id="fi-crs-hint"></div>
+          <div id="import-geo-hint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
         </div>
         <div class="form-group" style="flex:1">
           <label>Import Mode</label>
@@ -2416,13 +2429,11 @@ async function viewImportApi(main) {
   "entities": [
     {
       "type": "building",
-      "properties": { "name": "Tokyo Tower", "height": 333 },
-      "geometry": { "type": "Point", "coordinates": [139.7454, 35.6586] }
+      "properties": { "name": "Tokyo Tower", "height": 333, "location": { "type": "Point", "coordinates": [139.7454, 35.6586] } }
     },
     {
       "type": "building",
-      "properties": { "name": "Sky Tree", "height": 634 },
-      "geometry": { "type": "Point", "coordinates": [139.8107, 35.7101] }
+      "properties": { "name": "Sky Tree", "height": 634, "location": { "type": "Point", "coordinates": [139.8107, 35.7101] } }
     }
   ],
   "source": "import_"
@@ -2442,14 +2453,14 @@ async function viewImportApi(main) {
         "action": "create",
         "data": {
           "type": "building",
-          "properties": { "name": "New Building", "height": 100 },
-          "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+          "properties": { "name": "New Building", "height": 100, "location": { "type": "Point", "coordinates": [139.7, 35.6] } }
         }
       }
     }
   ],
   "source": "machine"
 }</pre>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
     </div>
 
@@ -2810,6 +2821,9 @@ function updateCrsHint() {
   } else {
     hint.innerHTML = '';
   }
+  const pgf = sel.selectedOptions[0]?.dataset.pgf;
+  const geoHint = $('import-geo-hint');
+  if (geoHint) geoHint.textContent = pgf ? 'GeoJSON geometry \u2192 ' + pgf : 'This model has no geometry fields';
 }
 
 function setupFileImport(models) {
@@ -3114,11 +3128,11 @@ async function viewManagementApi(main) {
     "action": "create",
     "data": {
       "type": "building",
-      "properties": { "name": "New Building", "height": 50 },
-      "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+      "properties": { "name": "New Building", "height": 50, "location": { "type": "Point", "coordinates": [139.7, 35.6] } }
     }
   }
 }</pre>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
     </div>
 
@@ -3420,6 +3434,9 @@ curl "${baseUrl}/collections/{COLLECTION_ID}/items?bbox=139,35,140,36"
 
 # Single feature
 curl ${baseUrl}/collections/{COLLECTION_ID}/items/{FEATURE_ID}</pre>
+      <div style="font-size:13px;color:var(--muted);margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius)">
+        OGC Feature output uses the model's <strong>primary geometry field</strong> as the GeoJSON <code>geometry</code>. Secondary geometry fields are included in <code>properties</code>.
+      </div>
     </div>`;
 
   // Load actual OGC collections
@@ -3636,7 +3653,7 @@ const apiEndpoints = [
   { group: 'Proposals', endpoints: [
     { method: 'GET', path: '/proposals', desc: 'List proposals', params: [{ key: 'status', hint: 'pending/approved/rejected', where: 'query' }] },
     { method: 'GET', path: '/proposals/:id', desc: 'Get proposal detail', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
-    { method: 'POST', path: '/proposals', desc: 'Create proposal', params: [{ key: 'body', where: 'body', hint: '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"Test"}}}}'  }] },
+    { method: 'POST', path: '/proposals', desc: 'Create proposal', params: [{ key: 'body', where: 'body', hint: '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"Test","location":{"type":"Point","coordinates":[139.7,35.6]}}}}}'  }] },
     { method: 'POST', path: '/proposals/:id/approve', desc: 'Approve proposal', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
     { method: 'POST', path: '/proposals/:id/reject', desc: 'Reject proposal', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
   ]},
