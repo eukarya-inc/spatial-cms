@@ -2920,12 +2920,25 @@ function setupFileImport(models) {
               <div style="color:var(--muted)">→</div>
               <div><select class="fi-mapping" data-file-key="${fk}" style="width:100%;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
                 <option value="">— skip —</option>
-                ${schemaFields.map(sf => `<option value="${sf.key}" ${mapping[fk] === sf.key ? 'selected' : ''}>${sf.label} (${sf.key})</option>`).join('')}
+                ${schemaFields.filter(sf => sf.fieldType !== 'geometry').map(sf => `<option value="${sf.key}" ${mapping[fk] === sf.key ? 'selected' : ''}>${sf.label} (${sf.key})</option>`).join('')}
               </select></div>
             `).join('')}
           </div>
           ${latKey && lonKey ? `<div style="margin-top:8px;font-size:12px;color:var(--success)">&#10003; Detected coordinates: ${latKey} + ${lonKey} → Point geometry</div>` : ''}
           ${!isCSV && records.some(r => r._geometry) ? `<div style="margin-top:8px;font-size:12px;color:var(--success)">&#10003; GeoJSON geometry detected</div>` : ''}
+          ${(() => {
+            const geoFields = schemaFields.filter(f => f.fieldType === 'geometry');
+            const hasGeo = (latKey && lonKey) || (!isCSV && records.some(r => r._geometry));
+            if (!hasGeo) return '';
+            if (!geoFields.length) return '<div style="margin-top:8px;font-size:12px;color:var(--warning)">&#9888; This model has no geometry fields. Geometry data will be ignored.</div>';
+            const pgf = schema?.primaryGeometryField || '';
+            return `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:13px">
+              <span>Map geometry to:</span>
+              <select id="fi-geo-target" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+                ${geoFields.map(f => `<option value="${f.key}" ${f.key === pgf ? 'selected' : ''}>${f.label} (${f.key})${f.key === pgf ? ' — primary' : ''}</option>`).join('')}
+              </select>
+            </div>`;
+          })()}
         </div>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -3008,9 +3021,10 @@ function setupFileImport(models) {
     const latKey = window._fiLatKey;
     const lonKey = window._fiLonKey;
     const isCSV = window._fiIsCSV;
-    // Get primaryGeometryField from selected model
+    // Get target geometry field from the mapping dropdown (falls back to primaryGeometryField)
+    const geoTarget = $('fi-geo-target');
     const modelSel = $('fi-model');
-    const pgf = modelSel?.selectedOptions[0]?.dataset.pgf || '';
+    const pgf = geoTarget?.value || modelSel?.selectedOptions[0]?.dataset.pgf || '';
 
     return records.map(r => {
       const properties = {};
