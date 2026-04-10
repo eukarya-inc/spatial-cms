@@ -108,7 +108,7 @@ examples/
     index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
     README.md
   workbench/                  # Data quality workbench (Management API)
-    index.html                # Dedup + Cleanse + Validate + Transform tools
+    index.html                # Dedup + Cleanse + Compute (derived geometry) tools
     server.js                 # Backend proxy (manage scope key)
     README.md                 # How to run, API endpoints used
 dev.sh                        # Dev service manager (interactive TUI + CLI)
@@ -117,7 +117,7 @@ dev.sh                        # Dev service manager (interactive TUI + CLI)
 ## Key Patterns
 
 ### Prisma + PostGIS
-Entity table has a single PostGIS `geometry` column used for spatial indexing. It stores only the **primary geometry field's** value. All other geometry field values live in the `properties` JSONB column as GeoJSON objects. All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
+Geometry is stored in a separate `entity_geometry` table (not on the entity table). Each geometry field value gets its own row with a GIST spatial index, enabling spatial queries on any geometry field. The entity table's `properties` JSONB stores non-geometry field values only; geometry is merged back into properties at read time. All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
 
 ### Geometry as a Field Type
 Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryIs3D`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.

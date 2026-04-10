@@ -90,17 +90,22 @@ Clean and standardize field values:
 - **Fill empty values** — set defaults for null/empty fields
 - Preview before/after → stage changes → commit
 
+### Compute
+Compute derived geometry from existing geometry fields:
+- **Centroid** — polygon/any → center point
+- **Bounding Box** — any → envelope polygon
+- **Point on Surface** — polygon → interior-guaranteed point
+- Select source field, operation, target field → preview → commit
+- Validates "CMS manages data, external tools compute" architecture
+
 ### Validate (coming soon)
 Data quality audit: completeness, type checking, pattern validation.
-
-### Transform (coming soon)
-Batch transformation pipelines with before/after preview.
 
 ## Data Flow
 
 ```
 1. Select model → Load all entities into memory
-2. Use tools (Dedup, Cleanse) to analyze and stage changes
+2. Use tools (Dedup, Cleanse, Compute) to analyze and stage changes
 3. Changes accumulate in the Commit Bar (bottom)
 4. Click "Create Proposals" → progress modal → proposals sent to CMS
 5. Go to CMS Review Queue to approve/reject changes

@@ -1,6 +1,7 @@
 import prisma from "../../db/client.js";
 import {
   getEntityWithGeometry,
+  getEntityGeometries,
   setEntityGeometry,
   removeEntityGeometry,
   findEntitiesInBBox,
@@ -113,7 +114,7 @@ export async function listEntities(options: ListOptions = {}) {
   });
 
   // Merge geometry from entity_geometry table into properties
-  const { getEntityGeometries } = await import("../../shared/geometry.js");
+  // getEntityGeometries imported at top of file
   const entities = await Promise.all(
     rawEntities.map(async (e) => {
       const geos = await getEntityGeometries(e.id);
@@ -282,7 +283,7 @@ export async function updateEntityInternal(
   }
 
   // Patch snapshot with current geometries (for historical record)
-  const { getEntityGeometries } = await import("../../shared/geometry.js");
+  // getEntityGeometries imported at top of file
   const geos = await getEntityGeometries(id);
   if (Object.keys(geos).length > 0) {
     const latest = await prisma.entityVersion.findFirst({
