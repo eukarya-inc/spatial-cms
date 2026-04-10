@@ -158,8 +158,8 @@ export async function purgeEntity(id: string) {
   await prisma.proposal.updateMany({ where: { entityId: id }, data: { entityId: null } });
   // Delete versions
   await prisma.entityVersion.deleteMany({ where: { entityId: id } });
-  // Delete entity (cascade deletes entity_geometry rows)
-  await prisma.entity.delete({ where: { id } });
+  // Delete entity via raw SQL (triggers CASCADE on entity_geometry)
+  await prisma.$executeRaw`DELETE FROM entity WHERE id = ${id}::uuid`;
   return { purged: true, id };
 }
 
