@@ -9,7 +9,6 @@ import { createProposal } from "../proposal/proposal.service.js";
 interface ImportEntity {
   type: string;
   properties: Record<string, unknown>;
-  geometry?: { type: string; coordinates: unknown };
 }
 
 interface ImportOptions {
@@ -22,7 +21,7 @@ interface ImportOptions {
  */
 export async function validateBulk(
   modelKey: string,
-  entities: Array<{ properties: Record<string, unknown>; geometry?: { type: string; coordinates: unknown } }>,
+  entities: Array<{ properties: Record<string, unknown> }>,
 ) {
   const model = await findModelDefinitionByKey(modelKey);
   const modelDefId = model?.id ?? null;
@@ -34,7 +33,6 @@ export async function validateBulk(
     const result = await validateAgainstModel(
       modelDefId,
       entities[i].properties,
-      entities[i].geometry ?? null,
     );
     if (result.valid) {
       valid++;
@@ -65,14 +63,12 @@ export async function bulkImport(
 ) {
   const { skipInvalid = false } = options;
 
-  // Resolve modelDefinitionId and SRID for each entity type
+  // Resolve modelDefinitionId for each entity type
   const modelCache: Record<string, string | null> = {};
-  const sridCache: Record<string, number> = {};
   for (const item of entities) {
     if (!(item.type in modelCache)) {
       const model = await findModelDefinitionByKey(item.type);
       modelCache[item.type] = model?.id ?? null;
-      sridCache[item.type] = model?.srid ?? 4326;
     }
   }
 
@@ -84,7 +80,6 @@ export async function bulkImport(
     const result = await validateAgainstModel(
       modelDefId,
       item.properties,
-      item.geometry ?? null,
     );
     if (!result.valid) {
       validationErrors.push({ index: i, errors: result.errors });
@@ -122,11 +117,22 @@ export async function bulkImport(
       },
     });
 
-    if (item.geometry) {
-      const srid = sridCache[item.type] ?? 4326;
-      await setEntityGeometry(entity.id, item.geometry, srid);
+    // Extract primaryGeometryField value from properties and sync to PostGIS column
+    if (modelDefId) {
+      const model = await prisma.modelDefinition.findUnique({ where: { id: modelDefId } });
+      if (model?.primaryGeometryField) {
+        const geoValue = item.properties[model.primaryGeometryField];
+        if (geoValue && typeof geoValue === "object" && "type" in (geoValue as object) && "coordinates" in (geoValue as object)) {
+          const geoField = await prisma.fieldDefinition.findUnique({
+            where: { modelDefinitionId_key: { modelDefinitionId: modelDefId, key: model.primaryGeometryField } },
+          });
+          const srid = geoField?.geometrySrid ?? 4326;
+          await setEntityGeometry(entity.id, model.primaryGeometryField, geoValue as { type: string; coordinates: unknown }, srid);
+        }
+      }
     }
 
+    // Snapshot stores all properties (geometry values are inside properties)
     await prisma.entityVersion.create({
       data: {
         entityId: entity.id,
@@ -135,7 +141,6 @@ export async function bulkImport(
           type: item.type,
           modelDefinitionId: modelDefId ?? null,
           properties: item.properties,
-          geometry: item.geometry ?? null,
         }) as any,
       },
     });
@@ -148,7 +153,6 @@ export async function bulkImport(
           data: {
             type: item.type,
             properties: item.properties,
-            geometry: item.geometry ?? null,
           },
         }) as any,
         source,
@@ -179,7 +183,6 @@ export async function createProposalSet(
       data: {
         type?: string;
         properties?: Record<string, unknown>;
-        geometry?: { type: string; coordinates: unknown };
         status?: "draft" | "active" | "archived";
       };
     };
@@ -226,7 +229,6 @@ export async function governedImport(
     const result = await validateAgainstModel(
       modelCache[entities[i].type],
       entities[i].properties,
-      entities[i].geometry ?? null,
     );
     if (!result.valid) {
       validationErrors.push({ index: i, errors: result.errors });
@@ -261,7 +263,6 @@ export async function governedImport(
           data: {
             type: item.type,
             properties: item.properties,
-            geometry: item.geometry,
           },
         },
         source,

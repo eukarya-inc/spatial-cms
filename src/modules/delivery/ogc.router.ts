@@ -65,16 +65,24 @@ ogcRouter.get("/collections", async (req, res, next) => {
     for (const d of datasets) {
       const bindings = await prisma.datasetModelBinding.findMany({
         where: { datasetDefinitionId: d.id },
-        include: { modelDefinition: true },
+        include: {
+          modelDefinition: {
+            include: { fields: true },
+          },
+        },
       });
       for (const b of bindings) {
-        const collectionId = `${d.id}_${b.modelDefinition.key}`;
-        // Count entities of this type in the manifest
-        const manifest = d.snapshot as any;
+        const m = b.modelDefinition;
+        const collectionId = `${d.id}_${m.key}`;
+        // Resolve SRID from primaryGeometryField
+        const geoField = m.primaryGeometryField
+          ? m.fields.find((f) => f.key === m.primaryGeometryField)
+          : null;
+        const srid = geoField?.geometrySrid ?? 4326;
         collections.push({
           id: collectionId,
-          title: b.modelDefinition.name,
-          description: d.description || `${b.modelDefinition.key} from ${d.name}`,
+          title: m.name,
+          description: d.description || `${m.key} from ${d.name}`,
           links: [
             { rel: "self", href: `${base}/collections/${collectionId}`, type: "application/json" },
             { rel: "items", href: `${base}/collections/${collectionId}/items`, type: "application/geo+json" },
@@ -82,7 +90,7 @@ ogcRouter.get("/collections", async (req, res, next) => {
           extent: {
             spatial: { bbox: [[-180, -90, 180, 90]] },
           },
-          storageCrs: `http://www.opengis.net/def/crs/EPSG/0/${b.modelDefinition.srid}`,
+          storageCrs: `http://www.opengis.net/def/crs/EPSG/0/${srid}`,
           ...(d.license ? { license: d.license } : {}),
         });
       }
@@ -229,10 +237,16 @@ ogcRouter.get("/collections/:collectionId/items/:featureId", async (req, res, ne
     const entity = await deliveryService.getPublishedEntity(parsed.datasetId, featureId);
     if (!entity) return res.status(404).json({ error: "Feature not found in this collection" });
 
+    // Extract primary geometry from properties for GeoJSON Feature output
+    const pgfKey = parsed.modelKey; // need to look up primaryGeometryField
+    const model = await prisma.modelDefinition.findUnique({ where: { key: parsed.modelKey } });
+    const pgf = model?.primaryGeometryField;
+    const geometry = pgf ? (entity.properties[pgf] as object ?? null) : null;
+
     res.json({
       type: "Feature",
       id: entity.id,
-      geometry: entity.geometry || null,
+      geometry,
       properties: entity.properties,
       links: [
         { rel: "self", href: `${base}/collections/${req.params.collectionId}/items/${entity.id}`, type: "application/geo+json" },

@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import prisma from "../db/client.js";
 
 // GeoJSON geometry type (simplified)
@@ -7,99 +6,144 @@ interface GeoJsonGeometry {
   coordinates: unknown;
 }
 
-/** Set geometry on an entity from GeoJSON (accepts both 2D and 3D, any SRID) */
+/** Upsert a geometry value for an entity field into entity_geometry table */
 export async function setEntityGeometry(
   entityId: string,
+  fieldKey: string,
   geojson: GeoJsonGeometry,
   srid: number = 4326,
 ): Promise<void> {
   await prisma.$executeRaw`
-    UPDATE entity
-    SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), ${srid}::int)
-    WHERE id = ${entityId}::uuid
+    INSERT INTO entity_geometry (id, entity_id, field_key, geometry)
+    VALUES (gen_random_uuid(), ${entityId}::uuid, ${fieldKey},
+            ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), ${srid}::int))
+    ON CONFLICT (entity_id, field_key)
+    DO UPDATE SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), ${srid}::int)
   `;
 }
 
-/** Get entity geometry as GeoJSON, returns null if no geometry */
+/** Remove a geometry field from an entity */
+export async function removeEntityGeometry(
+  entityId: string,
+  fieldKey: string,
+): Promise<void> {
+  await prisma.$executeRaw`
+    DELETE FROM entity_geometry WHERE entity_id = ${entityId}::uuid AND field_key = ${fieldKey}
+  `;
+}
+
+/** Get a single geometry field as GeoJSON */
 export async function getEntityGeometry(
   entityId: string,
+  fieldKey: string,
 ): Promise<GeoJsonGeometry | null> {
   const result = await prisma.$queryRaw<{ geojson: string | null }[]>`
     SELECT ST_AsGeoJSON(geometry) as geojson
-    FROM entity
-    WHERE id = ${entityId}::uuid
+    FROM entity_geometry
+    WHERE entity_id = ${entityId}::uuid AND field_key = ${fieldKey}
   `;
   if (!result[0]?.geojson) return null;
   return JSON.parse(result[0].geojson);
 }
 
-/** Get entity with geometry as GeoJSON */
-export async function getEntityWithGeometry(entityId: string) {
-  const rows = await prisma.$queryRaw<
-    {
-      id: string;
-      type: string;
-      model_definition_id: string | null;
-      properties: Prisma.JsonValue;
-      status: string;
-      geojson: string | null;
-      created_at: Date;
-      updated_at: Date;
-    }[]
-  >`
-    SELECT id, type, model_definition_id, properties, status,
-           ST_AsGeoJSON(geometry) as geojson,
-           created_at, updated_at
-    FROM entity
-    WHERE id = ${entityId}::uuid
+/** Get all geometries for an entity as { fieldKey: GeoJSON } */
+export async function getEntityGeometries(
+  entityId: string,
+): Promise<Record<string, GeoJsonGeometry>> {
+  const rows = await prisma.$queryRaw<{ field_key: string; geojson: string }[]>`
+    SELECT field_key, ST_AsGeoJSON(geometry) as geojson
+    FROM entity_geometry
+    WHERE entity_id = ${entityId}::uuid
   `;
-  if (!rows[0]) return null;
-  const row = rows[0];
+  const result: Record<string, GeoJsonGeometry> = {};
+  for (const row of rows) {
+    if (row.geojson) result[row.field_key] = JSON.parse(row.geojson);
+  }
+  return result;
+}
+
+/** Get entity with all geometries merged into properties */
+export async function getEntityWithGeometry(entityId: string) {
+  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entity) return null;
+  const geometries = await getEntityGeometries(entityId);
+  const properties = { ...((entity.properties as object) ?? {}), ...geometries };
   return {
-    id: row.id,
-    type: row.type,
-    modelDefinitionId: row.model_definition_id,
-    properties: row.properties,
-    status: row.status,
-    geometry: row.geojson ? JSON.parse(row.geojson) : null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: entity.id,
+    type: entity.type,
+    modelDefinitionId: entity.modelDefinitionId,
+    properties,
+    status: entity.status,
+    geometry: null as GeoJsonGeometry | null, // legacy compat — use properties instead
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt,
   };
 }
 
-/** Find entities within a bounding box [min1, min2, max1, max2] with configurable SRID */
+/** Find entities with geometry matching a bounding box.
+ *  fieldKey filters which geometry field to query (default: all). */
 export async function findEntitiesInBBox(
   bbox: [number, number, number, number],
   srid: number = 4326,
+  fieldKey?: string,
 ): Promise<string[]> {
   const [min1, min2, max1, max2] = bbox;
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM entity
+  if (fieldKey) {
+    const rows = await prisma.$queryRaw<{ entity_id: string }[]>`
+      SELECT DISTINCT entity_id FROM entity_geometry
+      WHERE field_key = ${fieldKey}
+        AND geometry && ST_MakeEnvelope(${min1}, ${min2}, ${max1}, ${max2}, ${srid}::int)
+    `;
+    return rows.map((r) => r.entity_id);
+  }
+  const rows = await prisma.$queryRaw<{ entity_id: string }[]>`
+    SELECT DISTINCT entity_id FROM entity_geometry
     WHERE geometry && ST_MakeEnvelope(${min1}, ${min2}, ${max1}, ${max2}, ${srid}::int)
   `;
-  return rows.map((r) => r.id);
+  return rows.map((r) => r.entity_id);
 }
 
-/** Find entities within a radius (meters) of a point with configurable SRID */
+/** Find entities within a radius (meters) of a point.
+ *  fieldKey filters which geometry field to query (default: all). */
 export async function findEntitiesNearPoint(
   x: number,
   y: number,
   radiusMeters: number,
   srid: number = 4326,
+  fieldKey?: string,
 ): Promise<string[]> {
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM entity
+  if (fieldKey) {
+    const rows = await prisma.$queryRaw<{ entity_id: string }[]>`
+      SELECT DISTINCT entity_id FROM entity_geometry
+      WHERE field_key = ${fieldKey}
+        AND ST_DWithin(
+          geometry::geography,
+          ST_SetSRID(ST_MakePoint(${x}, ${y}), ${srid}::int)::geography,
+          ${radiusMeters}
+        )
+    `;
+    return rows.map((r) => r.entity_id);
+  }
+  const rows = await prisma.$queryRaw<{ entity_id: string }[]>`
+    SELECT DISTINCT entity_id FROM entity_geometry
     WHERE ST_DWithin(
       geometry::geography,
       ST_SetSRID(ST_MakePoint(${x}, ${y}), ${srid}::int)::geography,
       ${radiusMeters}
     )
   `;
-  return rows.map((r) => r.id);
+  return rows.map((r) => r.entity_id);
 }
 
-/** Look up SRID for a model type */
+/** Look up SRID for a model type via its primary geometry field definition. */
 export async function getSridForType(type: string): Promise<number> {
-  const model = await prisma.modelDefinition.findUnique({ where: { key: type } });
-  return model?.srid ?? 4326;
+  const model = await prisma.modelDefinition.findUnique({
+    where: { key: type },
+    include: { fields: true },
+  });
+  if (!model?.primaryGeometryField) return 4326;
+  const geoField = model.fields.find(
+    (f) => f.key === model.primaryGeometryField,
+  );
+  return geoField?.geometrySrid ?? 4326;
 }

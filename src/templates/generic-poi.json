@@ -13,9 +13,7 @@
       "key": "poi",
       "name": "Point of Interest",
       "description": "Generic point features with name, category, and description",
-      "geometryType": "POINT",
-      "is3D": false,
-      "srid": 4326,
+      "primaryGeometryField": "location",
       "displayField": "name",
       "governance": { "approvalMode": "manual", "publishMode": "manual" },
       "fields": [
@@ -24,7 +22,8 @@
         { "key": "description", "label": "Description", "fieldType": "string", "isRequired": false, "orderIndex": 2 },
         { "key": "address", "label": "Address", "fieldType": "string", "isRequired": false, "orderIndex": 3 },
         { "key": "phone", "label": "Phone", "fieldType": "string", "isRequired": false, "orderIndex": 4 },
-        { "key": "website", "label": "Website", "fieldType": "string", "isRequired": false, "orderIndex": 5 }
+        { "key": "website", "label": "Website", "fieldType": "string", "isRequired": false, "orderIndex": 5 },
+        { "key": "location", "label": "Location", "fieldType": "geometry", "geometryType": "POINT", "geometrySrid": 4326, "geometryIs3D": false, "isRequired": false, "orderIndex": 6 }
       ]
     }
   ]

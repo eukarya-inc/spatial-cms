@@ -28,8 +28,7 @@ describe("Publish channels, field projection, metadata", () => {
             action: "create",
             data: {
               type: modelKey,
-              properties: { name: `Building ${i}`, height: (i + 1) * 10 },
-              geometry: { type: "Point", coordinates: [139.7 + i * 0.01, 35.6] },
+              properties: { name: `Building ${i}`, height: (i + 1) * 10, location: { type: "Point", coordinates: [139.7 + i * 0.01, 35.6] } },
             },
           },
         },

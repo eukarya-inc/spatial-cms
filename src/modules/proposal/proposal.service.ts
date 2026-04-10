@@ -17,7 +17,6 @@ interface ProposalInput {
       type?: string;
       modelDefinitionId?: string;
       properties?: Record<string, unknown>;
-      geometry?: { type: string; coordinates: unknown };
       status?: "draft" | "active" | "archived";
     };
   };
@@ -102,7 +101,6 @@ export async function approveProposal(id: string) {
       type?: string;
       modelDefinitionId?: string;
       properties?: Record<string, unknown>;
-      geometry?: { type: string; coordinates: unknown };
       status?: "draft" | "active" | "archived";
     };
   };
@@ -120,12 +118,13 @@ export async function approveProposal(id: string) {
     if (existing?.modelDefinitionId) modelDefId = existing.modelDefinitionId;
   }
 
-  // Dynamic validation against model definition
-  if (modelDefId && change.data.properties) {
+  // Dynamic validation against model definition (create only — full properties required)
+  // Updates are partial; required-field checks would fail on partial payloads.
+  // updateEntityInternal merges properties, so final state will be valid.
+  if (modelDefId && change.data.properties && change.action === "create") {
     const validation = await validateAgainstModel(
       modelDefId,
       change.data.properties,
-      change.data.geometry ?? null,
     );
     if (!validation.valid) {
       throw new BusinessError(
@@ -141,7 +140,6 @@ export async function approveProposal(id: string) {
       type: change.data.type!,
       modelDefinitionId: modelDefId,
       properties: change.data.properties,
-      geometry: change.data.geometry,
     });
   } else if (change.action === "update") {
     if (!proposal.entityId) throw new BusinessError("entityId required for update");

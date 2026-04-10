@@ -13,9 +13,7 @@
       "key": "plateau_building",
       "name": "PLATEAU Building",
       "description": "Building features from PLATEAU 3D city model (bldg:Building)",
-      "geometryType": "POLYGON",
-      "is3D": true,
-      "srid": 6668,
+      "primaryGeometryField": "footprint",
       "displayField": "gml_id",
       "governance": { "approvalMode": "manual", "publishMode": "manual" },
       "fields": [
@@ -27,7 +25,8 @@
         { "key": "storeys_above_ground", "label": "Storeys Above Ground", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 5 },
         { "key": "year_of_construction", "label": "Year of Construction", "fieldType": "number", "orderIndex": 6 },
         { "key": "roof_type", "label": "Roof Type", "fieldType": "string", "isRequired": false, "orderIndex": 7 },
-        { "key": "lod", "label": "LoD Level", "fieldType": "string", "isRequired": false, "orderIndex": 8 }
+        { "key": "lod", "label": "LoD Level", "fieldType": "string", "isRequired": false, "orderIndex": 8 },
+        { "key": "footprint", "label": "Footprint", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 6668, "geometryIs3D": true, "isRequired": false, "orderIndex": 9 }
       ]
     }
   ]

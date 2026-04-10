@@ -14,18 +14,14 @@ const createModelSchema = z.object({
   key: z.string().min(1).regex(/^[a-z][a-z0-9_]*$/, "key must be lowercase snake_case"),
   name: z.string().min(1),
   description: z.string().optional(),
-  geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
-  is3D: z.boolean().optional(),
-  srid: z.number().int().optional(),
+  primaryGeometryField: z.string().optional(),
   displayField: z.string().optional(),
 });
 
 const updateModelSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
-  is3D: z.boolean().optional(),
-  srid: z.number().int().optional(),
+  primaryGeometryField: z.string().nullable().optional(),
   displayField: z.string().optional(),
 });
 
@@ -38,6 +34,9 @@ const createFieldSchema = z.object({
   enumValues: z.array(z.string()).optional(),
   validationJson: z.record(z.unknown()).optional(),
   referenceModelKey: z.string().optional(),
+  geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
+  geometrySrid: z.number().int().optional(),
+  geometryIs3D: z.boolean().optional(),
   orderIndex: z.number().int().optional(),
 });
 
@@ -134,6 +133,16 @@ definitionRouter.post("/models/:id/fields", adminOnly, async (req, res, next) =>
       const field = await defService.addField(id, data);
       res.status(201).json(field);
     }
+  } catch (err) { next(err); }
+});
+
+// PUT /api/v1/definitions/models/:modelId/fields/reorder (must be before :fieldId)
+definitionRouter.put("/models/:modelId/fields/reorder", adminOnly, async (req, res, next) => {
+  try {
+    const modelId = z.string().uuid().parse(req.params.modelId);
+    const { order } = z.object({ order: z.array(z.string()) }).parse(req.body);
+    await defService.reorderFields(modelId, order);
+    res.json({ reordered: true });
   } catch (err) { next(err); }
 });
 

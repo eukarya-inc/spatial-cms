@@ -24,7 +24,6 @@ export const createProposalSchema = z.object({
     data: z.object({
       type: z.string().min(1).optional(),
       properties: z.record(z.unknown()).optional(),
-      geometry: geoJsonGeometrySchema.nullish(),
       status: z.enum(["draft", "active", "archived"]).optional(),
     }),
   }),

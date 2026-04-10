@@ -7,9 +7,7 @@ export async function createModelDefinition(data: {
   key: string;
   name: string;
   description?: string;
-  geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
-  is3D?: boolean;
-  srid?: number;
+  primaryGeometryField?: string;
   displayField?: string;
 }) {
   const model = await prisma.modelDefinition.create({
@@ -17,9 +15,7 @@ export async function createModelDefinition(data: {
       key: data.key,
       name: data.name,
       description: data.description,
-      geometryType: data.geometryType ?? "NONE",
-      is3D: data.is3D ?? false,
-      srid: data.srid ?? 4326,
+      primaryGeometryField: data.primaryGeometryField,
       displayField: data.displayField,
     },
     include: { fields: true },
@@ -62,9 +58,7 @@ export async function updateModelDefinition(
   data: {
     name?: string;
     description?: string;
-    geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
-    is3D?: boolean;
-    srid?: number;
+    primaryGeometryField?: string | null;
     displayField?: string;
   },
 ) {
@@ -120,6 +114,9 @@ export async function addField(
     enumValues?: string[];
     validationJson?: object;
     referenceModelKey?: string;
+    geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
+    geometrySrid?: number;
+    geometryIs3D?: boolean;
     orderIndex?: number;
   },
 ) {
@@ -134,6 +131,9 @@ export async function addField(
       enumValues: data.enumValues ?? undefined,
       validationJson: data.validationJson ?? undefined,
       referenceModelKey: data.referenceModelKey ?? undefined,
+      geometryType: data.geometryType ?? undefined,
+      geometrySrid: data.geometrySrid ?? undefined,
+      geometryIs3D: data.geometryIs3D ?? undefined,
       orderIndex: data.orderIndex ?? 0,
     },
   });
@@ -148,6 +148,9 @@ export async function updateField(
     defaultValue?: unknown;
     enumValues?: string[];
     validationJson?: object;
+    geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
+    geometrySrid?: number;
+    geometryIs3D?: boolean;
     orderIndex?: number;
   },
 ) {
@@ -158,6 +161,9 @@ export async function updateField(
   if (data.defaultValue !== undefined) updateData.defaultValue = data.defaultValue;
   if (data.enumValues !== undefined) updateData.enumValues = data.enumValues;
   if (data.validationJson !== undefined) updateData.validationJson = data.validationJson;
+  if (data.geometryType !== undefined) updateData.geometryType = data.geometryType;
+  if (data.geometrySrid !== undefined) updateData.geometrySrid = data.geometrySrid;
+  if (data.geometryIs3D !== undefined) updateData.geometryIs3D = data.geometryIs3D;
   if (data.orderIndex !== undefined) updateData.orderIndex = data.orderIndex;
 
   return prisma.fieldDefinition.update({
@@ -168,6 +174,17 @@ export async function updateField(
 
 export async function removeField(fieldId: string) {
   return prisma.fieldDefinition.delete({ where: { id: fieldId } });
+}
+
+export async function reorderFields(modelDefinitionId: string, fieldKeys: string[]) {
+  await prisma.$transaction(
+    fieldKeys.map((key, i) =>
+      prisma.fieldDefinition.updateMany({
+        where: { modelDefinitionId, key },
+        data: { orderIndex: i },
+      }),
+    ),
+  );
 }
 
 // ─── Model Schema (for frontend form generation) ─────
@@ -185,7 +202,7 @@ export async function getModelSchema(modelDefinitionId: string) {
     id: model.id,
     key: model.key,
     name: model.name,
-    geometryType: model.geometryType,
+    primaryGeometryField: model.primaryGeometryField,
     fields: model.fields.map((f) => ({
       key: f.key,
       label: f.label,
@@ -195,6 +212,13 @@ export async function getModelSchema(modelDefinitionId: string) {
       enumValues: f.enumValues,
       validation: f.validationJson,
       referenceModelKey: f.referenceModelKey,
+      ...(f.fieldType === "geometry"
+        ? {
+            geometryType: f.geometryType,
+            geometrySrid: f.geometrySrid,
+            geometryIs3D: f.geometryIs3D,
+          }
+        : {}),
     })),
   };
 }

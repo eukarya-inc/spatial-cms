@@ -1,10 +1,10 @@
 /**
  * Test: Version snapshots preserve geometry correctly.
  *
- * Regression test for bug where updating only status (without geometry)
- * caused the version snapshot to lose geometry data. Root cause was that
- * geometry is stored in PostGIS via raw SQL outside the Prisma transaction,
- * so the snapshot inside the transaction had geometry: null.
+ * Geometry is now a field type stored in properties (e.g. properties.location).
+ * The primary geometry field's value is also synced to the PostGIS column
+ * for spatial indexing. This test verifies snapshots preserve geometry
+ * through status-only and properties-only updates.
  */
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert";
@@ -34,7 +34,7 @@ describe("Version snapshot geometry preservation", () => {
   });
 
   it("should include geometry in initial version snapshot", async () => {
-    // Create entity with geometry via proposal (auto-approved)
+    // Create entity with geometry in properties (auto-approved)
     const { data: proposal } = await apiRequest("/proposals", {
       method: "POST",
       body: {
@@ -42,40 +42,41 @@ describe("Version snapshot geometry preservation", () => {
           action: "create",
           data: {
             type: modelKey,
-            properties: { name: "Tower A", height: 100 },
-            geometry: { type: "Point", coordinates: [139.7, 35.6] },
+            properties: {
+              name: "Tower A",
+              height: 100,
+              location: { type: "Point", coordinates: [139.7, 35.6] },
+            },
           },
         },
       },
     });
     assert.strictEqual(proposal.status, "approved");
 
-    // Get the entity ID from a list query
     const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
     const entityId = entitiesResult.entities[0].id;
 
-    // Check version snapshot has geometry
+    // Check version snapshot has geometry in properties
     const { data: versions } = await apiRequest(
       `/entities/${entityId}/versions`,
     );
     assert.strictEqual(versions.length, 1);
     assert.ok(
-      versions[0].snapshot.geometry,
-      "v1 snapshot should have geometry",
+      versions[0].snapshot.properties.location,
+      "v1 snapshot should have location geometry in properties",
     );
-    assert.strictEqual(versions[0].snapshot.geometry.type, "Point");
+    assert.strictEqual(versions[0].snapshot.properties.location.type, "Point");
   });
 
   it("should preserve geometry when only status is updated", async () => {
-    // Get entity
     const { data: entitiesResult } = await apiRequest(
       `/entities?type=${modelKey}`,
     );
     const entityId = entitiesResult.entities[0].id;
 
-    // Update status only (no geometry in the change)
+    // Update status only (no geometry change)
     const { data: statusProp } = await apiRequest("/proposals", {
       method: "POST",
       body: {
@@ -88,17 +89,16 @@ describe("Version snapshot geometry preservation", () => {
     });
     assert.strictEqual(statusProp.status, "approved");
 
-    // Check new version snapshot still has geometry
     const { data: versions } = await apiRequest(
       `/entities/${entityId}/versions`,
     );
-    const latest = versions[0]; // most recent first
+    const latest = versions[0];
     assert.ok(
-      latest.snapshot.geometry,
-      "Version snapshot should preserve geometry after status-only update",
+      latest.snapshot.properties.location,
+      "Snapshot should preserve geometry after status-only update",
     );
-    assert.strictEqual(latest.snapshot.geometry.type, "Point");
-    assert.deepStrictEqual(latest.snapshot.geometry.coordinates, [139.7, 35.6]);
+    assert.strictEqual(latest.snapshot.properties.location.type, "Point");
+    assert.deepStrictEqual(latest.snapshot.properties.location.coordinates, [139.7, 35.6]);
   });
 
   it("should preserve geometry when only properties are updated", async () => {
@@ -107,7 +107,7 @@ describe("Version snapshot geometry preservation", () => {
     );
     const entityId = entitiesResult.entities[0].id;
 
-    // Update properties only
+    // Update non-geometry properties only
     const { data: propProp } = await apiRequest("/proposals", {
       method: "POST",
       body: {
@@ -120,14 +120,13 @@ describe("Version snapshot geometry preservation", () => {
     });
     assert.strictEqual(propProp.status, "approved");
 
-    // Check version snapshot
     const { data: versions } = await apiRequest(
       `/entities/${entityId}/versions`,
     );
     const latest = versions[0];
     assert.ok(
-      latest.snapshot.geometry,
-      "Version snapshot should preserve geometry after properties-only update",
+      latest.snapshot.properties.location,
+      "Snapshot should preserve geometry after properties-only update",
     );
     assert.strictEqual(latest.snapshot.properties.name, "Tower A Renamed");
   });
@@ -138,7 +137,7 @@ describe("Version snapshot geometry preservation", () => {
     );
     const entityId = entitiesResult.entities[0].id;
 
-    // Update geometry
+    // Update geometry via properties
     const { data: geoProp } = await apiRequest("/proposals", {
       method: "POST",
       body: {
@@ -146,19 +145,20 @@ describe("Version snapshot geometry preservation", () => {
         proposedChange: {
           action: "update",
           data: {
-            geometry: { type: "Point", coordinates: [140.0, 36.0] },
+            properties: {
+              location: { type: "Point", coordinates: [140.0, 36.0] },
+            },
           },
         },
       },
     });
     assert.strictEqual(geoProp.status, "approved");
 
-    // Check new coordinates
     const { data: versions } = await apiRequest(
       `/entities/${entityId}/versions`,
     );
     const latest = versions[0];
-    assert.ok(latest.snapshot.geometry);
-    assert.deepStrictEqual(latest.snapshot.geometry.coordinates, [140.0, 36.0]);
+    assert.ok(latest.snapshot.properties.location);
+    assert.deepStrictEqual(latest.snapshot.properties.location.coordinates, [140.0, 36.0]);
   });
 });

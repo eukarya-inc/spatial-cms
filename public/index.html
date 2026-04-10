@@ -621,6 +621,24 @@ function badge(status) {
   const tip = SCOPE_TIPS[status];
   return `<span class="badge badge-${status}"${tip ? ` title="${tip}" style="cursor:help"` : ''}>${status}</span>`;
 }
+// Get primary geometry field info from a model (fields-based geometry)
+function getModelGeometry(model) {
+  if (!model?.primaryGeometryField || !model?.fields) return null;
+  const field = model.fields.find(f => f.key === model.primaryGeometryField);
+  if (!field || field.fieldType !== 'geometry') return null;
+  return { key: field.key, geometryType: field.geometryType || 'MIXED', srid: field.geometrySrid || 4326, is3D: field.geometryIs3D || false };
+}
+// Get geometry fields from a schema (returned by /definitions/models/:id/schema)
+function getSchemaGeometryFields(schema) {
+  if (!schema?.fields) return [];
+  return schema.fields.filter(f => f.fieldType === 'geometry');
+}
+function getPrimaryGeometryField(schema) {
+  if (!schema?.primaryGeometryField || !schema?.fields) return null;
+  const field = schema.fields.find(f => f.key === schema.primaryGeometryField);
+  if (!field || field.fieldType !== 'geometry') return null;
+  return field;
+}
 function setBreadcrumb(...parts) {
   $('breadcrumb').innerHTML = parts.map((p, i) =>
     i < parts.length - 1
@@ -1109,7 +1127,7 @@ async function viewEntityDetail(main, entityId) {
         <h4 style="margin:0 0 8px;font-size:14px;color:var(--muted)">Properties</h4>
         <div id="entity-props-display"></div>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">Geometry</h4>
-        ${e.geometry ? `<div style="font-size:13px;margin-bottom:4px"><span class="badge badge-none">${e.geometry.type}</span> <span style="color:var(--muted)">${e.geometry.type === 'Point' ? `[${e.geometry.coordinates[0]}, ${e.geometry.coordinates[1]}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(e.geometry, null, 2)}</pre>` : '<span style="color:var(--muted)">None</span>'}
+        <div id="entity-geometry-display">${e.geometry ? `<div style="font-size:13px;margin-bottom:4px"><span class="badge badge-none">${e.geometry.type}</span> <span style="color:var(--muted)">${e.geometry.type === 'Point' ? `[${e.geometry.coordinates[0]}, ${e.geometry.coordinates[1]}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(e.geometry, null, 2)}</pre>` : '<span style="color:var(--muted)">None</span>'}</div>
       </div>
     </div>
     <div class="meta-sidebar">
@@ -1132,7 +1150,7 @@ async function viewEntityDetail(main, entityId) {
   if (e.modelDefinitionId) {
     try {
       const schema = await api(`/definitions/models/${e.modelDefinitionId}/schema`);
-      propsEl.innerHTML = schema.fields.map(f => {
+      propsEl.innerHTML = schema.fields.filter(f => f.fieldType !== 'geometry').map(f => {
         const val = e.properties?.[f.key];
         let display;
         if (val === null || val === undefined) display = '<span style="color:var(--muted)">—</span>';
@@ -1145,6 +1163,20 @@ async function viewEntityDetail(main, entityId) {
           <div style="font-size:14px">${display}</div>
         </div>`;
       }).join('');
+      // Update geometry display from properties (geometry-as-field)
+      const geoDisplay = $('entity-geometry-display');
+      if (geoDisplay) {
+        const geoFields = getSchemaGeometryFields(schema);
+        if (geoFields.length) {
+          geoDisplay.innerHTML = geoFields.map(gf => {
+            const gv = e.properties?.[gf.key];
+            const isPrimary = gf.key === schema.primaryGeometryField;
+            const primaryBadge = isPrimary ? ' <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff;margin-left:6px">PRIMARY</span>' : '';
+            if (!gv) return `<div style="font-size:13px;color:var(--muted)">${gf.label || gf.key}${primaryBadge}: None</div>`;
+            return `<div style="font-size:13px;margin-bottom:4px"><strong>${gf.label || gf.key}</strong>${primaryBadge} <span class="badge badge-none">${gv.type || gf.geometryType}</span>${gf.geometryIs3D ? ' <span style="font-size:11px;color:var(--muted)">3D</span>' : ''} <span style="color:var(--muted)">${gv.type === 'Point' ? `[${gv.coordinates[0]}, ${gv.coordinates[1]}${gv.coordinates[2] !== undefined ? ', ' + gv.coordinates[2] : ''}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(gv, null, 2)}</pre>`;
+          }).join('');
+        }
+      }
       // Show any extra properties not in schema
       const schemaKeys = new Set(schema.fields.map(f => f.key));
       const extraKeys = Object.keys(e.properties || {}).filter(k => !schemaKeys.has(k));
@@ -1216,7 +1248,7 @@ async function viewEntityDetail(main, entityId) {
             <h4 style="margin:0 0 8px;font-size:14px;color:var(--muted)">Properties</h4>
             <pre>${JSON.stringify(snap.properties || {}, null, 2)}</pre>
             <h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">Geometry</h4>
-            <pre>${snap.geometry ? JSON.stringify(snap.geometry, null, 2) : 'None'}</pre>`;
+            <pre>${(() => { const props = snap.properties || {}; const geoVals = Object.entries(props).filter(([,v]) => v && typeof v === 'object' && 'type' in v && 'coordinates' in v); return geoVals.length ? geoVals.map(([k,v]) => k + ': ' + JSON.stringify(v, null, 2)).join('\n') : (snap.geometry ? JSON.stringify(snap.geometry, null, 2) : 'None'); })()}</pre>`;
           $('back-to-current').onclick = () => reload();
         };
       });
@@ -1236,8 +1268,21 @@ async function viewEntityDetail(main, entityId) {
           <button class="btn btn-outline btn-sm" id="ef-cancel">Cancel</button>
         </div>`;
 
-        // Dynamic form fields
+        // Dynamic form fields (including geometry fields)
         for (const f of schema.fields) {
+          if (f.fieldType === 'geometry') {
+            // Geometry fields: POINT → lon/lat inputs, others → GeoJSON textarea
+            const geomType = f.geometryType || 'MIXED';
+            formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''} <span class="badge badge-none" style="font-size:10px">${geomType}</span></label>`;
+            if (geomType === 'POINT' || geomType === 'MIXED') {
+              formHtml += `<div class="form-row"><div class="form-group"><label style="font-size:12px">Longitude</label><input id="ef-geo-lon-${f.key}" type="number" step="any"></div><div class="form-group"><label style="font-size:12px">Latitude</label><input id="ef-geo-lat-${f.key}" type="number" step="any"></div></div>`;
+              if (geomType === 'MIXED') formHtml += `<div style="font-size:11px;color:var(--muted);margin-top:4px">For non-Point geometry:</div><textarea id="ef-geo-json-${f.key}" rows="3" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea>`;
+            } else {
+              formHtml += `<textarea id="ef-geo-json-${f.key}" rows="4" placeholder='{"type":"${geomType === 'POLYGON' ? 'Polygon' : geomType === 'LINESTRING' ? 'LineString' : 'Geometry'}","coordinates":[...]}'></textarea>`;
+            }
+            formHtml += '</div>';
+            continue;
+          }
           formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
           switch (f.fieldType) {
             case 'string': formHtml += `<input id="ef-${f.key}" type="text">`; break;
@@ -1253,15 +1298,6 @@ async function viewEntityDetail(main, entityId) {
             default: formHtml += `<input id="ef-${f.key}" type="text">`;
           }
           formHtml += '</div>';
-        }
-
-        // Geometry
-        if (schema.geometryType !== 'NONE') {
-          if (schema.geometryType === 'POINT' || schema.geometryType === 'MIXED') {
-            formHtml += `<div class="form-row"><div class="form-group"><label>Longitude</label><input id="ef-geo-lon" type="number" step="any"></div><div class="form-group"><label>Latitude</label><input id="ef-geo-lat" type="number" step="any"></div></div>`;
-          } else {
-            formHtml += `<div class="form-group"><label>Geometry (GeoJSON)</label><textarea id="ef-geo-json" rows="4"></textarea></div>`;
-          }
         }
 
         formHtml += `<div style="margin-top:20px;display:flex;gap:8px"><button class="btn btn-primary" id="ef-submit">Submit Edit Proposal</button></div>`;
@@ -1290,11 +1326,14 @@ async function viewEntityDetail(main, entityId) {
           else if (f.fieldType === 'json') el.value = JSON.stringify(val, null, 2);
           else el.value = String(val);
         }
-        // Pre-fill geometry
-        if (e.geometry?.coordinates) {
-          const lonEl = $('ef-geo-lon'), latEl = $('ef-geo-lat'), geoEl = $('ef-geo-json');
-          if (lonEl && e.geometry.type === 'Point') { lonEl.value = e.geometry.coordinates[0]; latEl.value = e.geometry.coordinates[1]; }
-          else if (geoEl) geoEl.value = JSON.stringify(e.geometry, null, 2);
+        // Pre-fill geometry from properties (geometry-as-field)
+        for (const f of schema.fields) {
+          if (f.fieldType !== 'geometry') continue;
+          const gv = e.properties?.[f.key];
+          if (!gv) continue;
+          const lonEl = $(`ef-geo-lon-${f.key}`), latEl = $(`ef-geo-lat-${f.key}`), geoEl = $(`ef-geo-json-${f.key}`);
+          if (lonEl && gv.type === 'Point' && gv.coordinates) { lonEl.value = gv.coordinates[0]; latEl.value = gv.coordinates[1]; }
+          else if (geoEl) geoEl.value = JSON.stringify(gv, null, 2);
         }
 
         $('ef-cancel').onclick = () => reload();
@@ -1319,14 +1358,17 @@ async function viewEntityDetail(main, entityId) {
               }
               else { properties[f.key] = el.value || null; }
             }
-            let geometry = null;
-            const lonEl = $('ef-geo-lon'), latEl = $('ef-geo-lat'), geoEl = $('ef-geo-json');
-            if (lonEl?.value && latEl?.value) geometry = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
-            else if (geoEl?.value) try { geometry = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON', 'error'); return; }
+            // Collect geometry field values into properties
+            for (const f of schema.fields) {
+              if (f.fieldType !== 'geometry') continue;
+              const lonEl = $(`ef-geo-lon-${f.key}`), latEl = $(`ef-geo-lat-${f.key}`), geoEl = $(`ef-geo-json-${f.key}`);
+              if (lonEl?.value && latEl?.value) properties[f.key] = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
+              else if (geoEl?.value) try { properties[f.key] = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON in ' + f.key, 'error'); return; }
+            }
 
             const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({
               entityId: e.id,
-              proposedChange: { action: 'update', data: { type: e.type, properties, geometry } }
+              proposedChange: { action: 'update', data: { type: e.type, properties } }
             })});
             if (prop.status === 'approved') { toast('Edit applied!'); reload(); }
             else { toast('Edit proposal created. Go to Review Queue to approve.'); refreshPendingCount(); reload(); }
@@ -1350,6 +1392,18 @@ async function viewNewRecord(main, modelKey) {
   let html = `<div class="page-header"><div><h2>New ${modelName}</h2><div class="sub">Fill in the fields below. This will create a proposal for review.</div></div></div><div class="card">`;
 
   for (const f of schema.fields) {
+    if (f.fieldType === 'geometry') {
+      const geomType = f.geometryType || 'MIXED';
+      html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''} <span class="badge badge-none" style="font-size:10px">${geomType}</span></label>`;
+      if (geomType === 'POINT' || geomType === 'MIXED') {
+        html += `<div class="form-row"><div class="form-group"><label style="font-size:12px">Longitude</label><input id="rf-geo-lon-${f.key}" type="number" step="any" placeholder="139.7454"></div><div class="form-group"><label style="font-size:12px">Latitude</label><input id="rf-geo-lat-${f.key}" type="number" step="any" placeholder="35.6586"></div></div>`;
+        if (geomType === 'MIXED') html += `<div style="font-size:11px;color:var(--muted);margin-top:4px">For non-Point geometry:</div><textarea id="rf-geo-json-${f.key}" rows="3" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea>`;
+      } else {
+        html += `<textarea id="rf-geo-json-${f.key}" rows="4" placeholder='{"type":"${geomType === 'POLYGON' ? 'Polygon' : geomType === 'LINESTRING' ? 'LineString' : 'Geometry'}","coordinates":[...]}'></textarea>`;
+      }
+      html += '</div>';
+      continue;
+    }
     html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
     switch (f.fieldType) {
       case 'string': html += `<input id="rf-${f.key}" type="text">`; break;
@@ -1367,14 +1421,6 @@ async function viewNewRecord(main, modelKey) {
     html += '</div>';
   }
 
-  if (schema.geometryType !== 'NONE') {
-    if (schema.geometryType === 'POINT' || schema.geometryType === 'MIXED') {
-      html += `<div class="form-row"><div class="form-group"><label>Longitude</label><input id="rf-geo-lon" type="number" step="any" placeholder="139.7454"></div><div class="form-group"><label>Latitude</label><input id="rf-geo-lat" type="number" step="any" placeholder="35.6586"></div></div>`;
-    } else {
-      html += `<div class="form-group"><label>Geometry (GeoJSON)</label><textarea id="rf-geo-json" rows="4" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea></div>`;
-    }
-  }
-
   html += `<div style="margin-top:20px;display:flex;gap:8px"><button class="btn btn-primary" id="rf-submit">Submit as Proposal</button><button class="btn btn-outline" onclick="nav('manage/records/${modelKey}')">Cancel</button></div></div>`;
   main.innerHTML = html;
   await populateReferenceSelects(main);
@@ -1383,6 +1429,13 @@ async function viewNewRecord(main, modelKey) {
     try {
       const properties = {};
       for (const f of schema.fields) {
+        if (f.fieldType === 'geometry') {
+          // Collect geometry field values into properties
+          const lonEl = $(`rf-geo-lon-${f.key}`), latEl = $(`rf-geo-lat-${f.key}`), geoEl = $(`rf-geo-json-${f.key}`);
+          if (lonEl?.value && latEl?.value) properties[f.key] = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
+          else if (geoEl?.value) try { properties[f.key] = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON in ' + f.key, 'error'); return; }
+          continue;
+        }
         const el = $(`rf-${f.key}`);
         if (!el) continue;
         if (f.fieldType === 'reference') { if (el._refValue) properties[f.key] = el._refValue; }
@@ -1391,12 +1444,8 @@ async function viewNewRecord(main, modelKey) {
         else if (f.fieldType === 'json') { if (el.value) try { properties[f.key] = JSON.parse(el.value); } catch { toast('Invalid JSON in ' + f.key, 'error'); return; } }
         else { if (el.value) properties[f.key] = el.value; }
       }
-      let geometry = null;
-      const lonEl = $('rf-geo-lon'), latEl = $('rf-geo-lat'), geoEl = $('rf-geo-json');
-      if (lonEl?.value && latEl?.value) geometry = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
-      else if (geoEl?.value) try { geometry = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON', 'error'); return; }
 
-      const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({ proposedChange: { action: 'create', data: { type: schema.key, properties, geometry } } }) });
+      const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({ proposedChange: { action: 'create', data: { type: schema.key, properties } } }) });
       if (prop.status === 'approved') {
         toast('Record created and auto-approved!');
       } else {
@@ -2150,6 +2199,16 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?filter[height][\$gte]=100&sort=
 curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,36"</pre>
       </div>
 
+      <div class="card" style="margin-top:16px">
+        <h3>Geometry Fields</h3>
+        <p>Entities can have multiple geometry fields (e.g. <code>boundary</code>, <code>centroid</code>, <code>entrance</code>). Each is stored as a GeoJSON object in <code>properties</code>.</p>
+        <ul style="font-size:14px;line-height:1.8">
+          <li>Spatial queries (<code>bbox</code>, <code>near</code>) search the <strong>primary geometry field</strong> by default</li>
+          <li>Use <code>?geometryField=entrance</code> to query a specific geometry field</li>
+          <li>In GeoJSON output (<code>?format=geojson</code>): the primary geometry becomes <code>geometry</code>, others stay in <code>properties</code></li>
+        </ul>
+      </div>
+
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:12px;font-weight:700;color:var(--success);background:#dcfce7;padding:2px 8px;border-radius:4px">GET</span>
@@ -2186,7 +2245,7 @@ const { dataset, entities } = await response.json();
 console.log(\`Dataset v\${dataset.snapshotVersion}: \${entities.length} entities\`);
 
 entities.forEach(entity => {
-  console.log(entity.properties.name, entity.geometry);
+  console.log(entity.properties.name, entity.geometry || entity.properties);
 });</pre>
     </div>`;
 
@@ -2219,7 +2278,7 @@ entities.forEach(entity => {
               <tbody>${entities.map((e, i) => `<tr>
                 <td>${entityDisplayName(e, modelCache.find(m => m.key === e.type))}</td>
                 <td><code style="font-size:12px">${e.type}</code></td>
-                <td>${e.geometry ? `<span class="badge badge-none">${e.geometry.type}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+                <td>${e.geometry ? `<span class="badge badge-none">${e.geometry.type}</span>` : (() => { const geoProps = Object.values(e.properties || {}).find(v => v && typeof v === 'object' && 'type' in v && 'coordinates' in v); return geoProps ? `<span class="badge badge-none">${geoProps.type}</span>` : '<span style="color:var(--muted)">—</span>'; })()}</td>
                 <td style="color:var(--muted)">v${e.version}</td>
                 <td><button class="btn btn-ghost btn-sm" data-expand-entity="${dsId}-${i}">Expand</button></td>
               </tr>
@@ -2277,8 +2336,9 @@ async function viewImportData(main) {
       <div class="form-row" style="margin-bottom:12px">
         <div class="form-group" style="flex:1">
           <label>Model</label>
-          <select id="fi-model" onchange="updateCrsHint()">${models.map(m => `<option value="${m.key}" data-id="${m.id}" data-srid="${m.srid || 4326}">${m.name} (${m.key})</option>`).join('')}</select>
+          <select id="fi-model" onchange="updateCrsHint()">${models.map(m => { const g = getModelGeometry(m); return `<option value="${m.key}" data-id="${m.id}" data-srid="${g?.srid || 4326}" data-pgf="${m.primaryGeometryField || ''}">${m.name} (${m.key})</option>`; }).join('')}</select>
           <div id="fi-crs-hint"></div>
+          <div id="import-geo-hint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
         </div>
         <div class="form-group" style="flex:1">
           <label>Import Mode</label>
@@ -2369,13 +2429,11 @@ async function viewImportApi(main) {
   "entities": [
     {
       "type": "building",
-      "properties": { "name": "Tokyo Tower", "height": 333 },
-      "geometry": { "type": "Point", "coordinates": [139.7454, 35.6586] }
+      "properties": { "name": "Tokyo Tower", "height": 333, "location": { "type": "Point", "coordinates": [139.7454, 35.6586] } }
     },
     {
       "type": "building",
-      "properties": { "name": "Sky Tree", "height": 634 },
-      "geometry": { "type": "Point", "coordinates": [139.8107, 35.7101] }
+      "properties": { "name": "Sky Tree", "height": 634, "location": { "type": "Point", "coordinates": [139.8107, 35.7101] } }
     }
   ],
   "source": "import_"
@@ -2395,14 +2453,14 @@ async function viewImportApi(main) {
         "action": "create",
         "data": {
           "type": "building",
-          "properties": { "name": "New Building", "height": 100 },
-          "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+          "properties": { "name": "New Building", "height": 100, "location": { "type": "Point", "coordinates": [139.7, 35.6] } }
         }
       }
     }
   ],
   "source": "machine"
 }</pre>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
     </div>
 
@@ -2503,12 +2561,16 @@ cat buildings.geojson | jq '{
       }
 
       const entity = { properties: props };
-      // Add geometry for models that support it
-      if (schema.geometryType === 'POINT' || schema.geometryType === 'MIXED') {
-        if (!isError || Math.random() > 0.3) {
-          entity.geometry = { type: 'Point', coordinates: [135 + Math.random() * 5, 34 + Math.random() * 2] };
-        } else {
-          entity.geometry = { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] }; // wrong type
+      // Add geometry into properties for models that have a primary geometry field
+      const pgf = getPrimaryGeometryField(schema);
+      if (pgf) {
+        const gt = pgf.geometryType || 'POINT';
+        if (gt === 'POINT' || gt === 'MIXED') {
+          if (!isError || Math.random() > 0.3) {
+            props[pgf.key] = { type: 'Point', coordinates: [135 + Math.random() * 5, 34 + Math.random() * 2] };
+          } else {
+            props[pgf.key] = { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] }; // wrong type
+          }
         }
       }
       items.push(entity);
@@ -2582,7 +2644,7 @@ cat buildings.geojson | jq '{
     let items;
     try { items = JSON.parse($('ing-data').value); } catch { toast('Invalid JSON', 'error'); return; }
 
-    const entities = items.map(item => ({ type: modelKey, properties: item.properties, geometry: item.geometry }));
+    const entities = items.map(item => ({ type: modelKey, properties: item.properties || {} }));
     resultEl.innerHTML = `<span style="color:var(--muted)">Processing ${entities.length} records (${mode} mode)...</span>`;
 
     try {
@@ -2618,7 +2680,7 @@ cat buildings.geojson | jq '{
           </div>`;
 
       } else if (mode === 'proposal') {
-        const proposals = items.map(item => ({ proposedChange: { action: 'create', data: { type: modelKey, properties: item.properties, geometry: item.geometry } } }));
+        const proposals = items.map(item => ({ proposedChange: { action: 'create', data: { type: modelKey, properties: item.properties || {} } } }));
         result = await api('/ingestion/proposal-set', { method: 'POST', body: JSON.stringify({ proposals, source: 'machine' }) });
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
         resultEl.innerHTML = `
@@ -2759,6 +2821,9 @@ function updateCrsHint() {
   } else {
     hint.innerHTML = '';
   }
+  const pgf = sel.selectedOptions[0]?.dataset.pgf;
+  const geoHint = $('import-geo-hint');
+  if (geoHint) geoHint.textContent = pgf ? 'GeoJSON geometry \u2192 ' + pgf : 'This model has no geometry fields';
 }
 
 function setupFileImport(models) {
@@ -2855,12 +2920,25 @@ function setupFileImport(models) {
               <div style="color:var(--muted)">→</div>
               <div><select class="fi-mapping" data-file-key="${fk}" style="width:100%;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px">
                 <option value="">— skip —</option>
-                ${schemaFields.map(sf => `<option value="${sf.key}" ${mapping[fk] === sf.key ? 'selected' : ''}>${sf.label} (${sf.key})</option>`).join('')}
+                ${schemaFields.filter(sf => sf.fieldType !== 'geometry').map(sf => `<option value="${sf.key}" ${mapping[fk] === sf.key ? 'selected' : ''}>${sf.label} (${sf.key})</option>`).join('')}
               </select></div>
             `).join('')}
           </div>
           ${latKey && lonKey ? `<div style="margin-top:8px;font-size:12px;color:var(--success)">&#10003; Detected coordinates: ${latKey} + ${lonKey} → Point geometry</div>` : ''}
           ${!isCSV && records.some(r => r._geometry) ? `<div style="margin-top:8px;font-size:12px;color:var(--success)">&#10003; GeoJSON geometry detected</div>` : ''}
+          ${(() => {
+            const geoFields = schemaFields.filter(f => f.fieldType === 'geometry');
+            const hasGeo = (latKey && lonKey) || (!isCSV && records.some(r => r._geometry));
+            if (!hasGeo) return '';
+            if (!geoFields.length) return '<div style="margin-top:8px;font-size:12px;color:var(--warning)">&#9888; This model has no geometry fields. Geometry data will be ignored.</div>';
+            const pgf = schema?.primaryGeometryField || '';
+            return `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:13px">
+              <span>Map geometry to:</span>
+              <select id="fi-geo-target" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+                ${geoFields.map(f => `<option value="${f.key}" ${f.key === pgf ? 'selected' : ''}>${f.label} (${f.key})${f.key === pgf ? ' — primary' : ''}</option>`).join('')}
+              </select>
+            </div>`;
+          })()}
         </div>
 
         <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -2890,7 +2968,7 @@ function setupFileImport(models) {
         const report = $('fi-report');
         report.innerHTML = '<span style="color:var(--muted)">Validating...</span>';
         try {
-          const result = await api('/ingestion/validate', { method: 'POST', body: JSON.stringify({ modelKey, entities: entities.map(e => ({ properties: e.properties, geometry: e.geometry })) }) });
+          const result = await api('/ingestion/validate', { method: 'POST', body: JSON.stringify({ modelKey, entities: entities.map(e => ({ properties: e.properties })) }) });
           report.innerHTML = `<div style="display:flex;gap:12px;margin-bottom:8px">
             <div style="padding:8px 16px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #bbf7d0;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--success)">${result.valid}</div><div style="font-size:11px;color:var(--muted)">Valid</div></div>
             ${result.invalid > 0 ? `<div style="padding:8px 16px;background:#fee2e2;border-radius:var(--radius);border:1px solid #fecaca;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--danger)">${result.invalid}</div><div style="font-size:11px;color:var(--muted)">Invalid</div></div>` : ''}
@@ -2909,7 +2987,7 @@ function setupFileImport(models) {
         const report = $('fi-report');
         try {
           const t0 = Date.now();
-          const apiEntities = entities.map(e => ({ type: modelKey, properties: e.properties, geometry: e.geometry }));
+          const apiEntities = entities.map(e => ({ type: modelKey, properties: e.properties }));
           let result;
           if (mode === 'governed') {
             result = await withProcessingModal('Importing Data', `${apiEntities.length} records (governed mode)`, () =>
@@ -2943,6 +3021,10 @@ function setupFileImport(models) {
     const latKey = window._fiLatKey;
     const lonKey = window._fiLonKey;
     const isCSV = window._fiIsCSV;
+    // Get target geometry field from the mapping dropdown (falls back to primaryGeometryField)
+    const geoTarget = $('fi-geo-target');
+    const modelSel = $('fi-model');
+    const pgf = geoTarget?.value || modelSel?.selectedOptions[0]?.dataset.pgf || '';
 
     return records.map(r => {
       const properties = {};
@@ -2954,13 +3036,17 @@ function setupFileImport(models) {
           properties[modelKey] = val;
         }
       }
+      // Put geometry into properties[primaryGeometryField]
       let geometry = null;
       if (r._geometry) {
         geometry = r._geometry;
       } else if (latKey && lonKey && r[latKey] && r[lonKey]) {
         geometry = { type: 'Point', coordinates: [parseFloat(r[lonKey]), parseFloat(r[latKey])] };
       }
-      return { properties, geometry };
+      if (geometry && pgf) {
+        properties[pgf] = geometry;
+      }
+      return { properties };
     });
   }
 }
@@ -3056,11 +3142,11 @@ async function viewManagementApi(main) {
     "action": "create",
     "data": {
       "type": "building",
-      "properties": { "name": "New Building", "height": 50 },
-      "geometry": { "type": "Point", "coordinates": [139.7, 35.6] }
+      "properties": { "name": "New Building", "height": 50, "location": { "type": "Point", "coordinates": [139.7, 35.6] } }
     }
   }
 }</pre>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
     </div>
 
@@ -3362,6 +3448,9 @@ curl "${baseUrl}/collections/{COLLECTION_ID}/items?bbox=139,35,140,36"
 
 # Single feature
 curl ${baseUrl}/collections/{COLLECTION_ID}/items/{FEATURE_ID}</pre>
+      <div style="font-size:13px;color:var(--muted);margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius)">
+        OGC Feature output uses the model's <strong>primary geometry field</strong> as the GeoJSON <code>geometry</code>. Secondary geometry fields are included in <code>properties</code>.
+      </div>
     </div>`;
 
   // Load actual OGC collections
@@ -3578,7 +3667,7 @@ const apiEndpoints = [
   { group: 'Proposals', endpoints: [
     { method: 'GET', path: '/proposals', desc: 'List proposals', params: [{ key: 'status', hint: 'pending/approved/rejected', where: 'query' }] },
     { method: 'GET', path: '/proposals/:id', desc: 'Get proposal detail', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
-    { method: 'POST', path: '/proposals', desc: 'Create proposal', params: [{ key: 'body', where: 'body', hint: '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"Test"}}}}'  }] },
+    { method: 'POST', path: '/proposals', desc: 'Create proposal', params: [{ key: 'body', where: 'body', hint: '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"Test","location":{"type":"Point","coordinates":[139.7,35.6]}}}}}'  }] },
     { method: 'POST', path: '/proposals/:id/approve', desc: 'Approve proposal', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
     { method: 'POST', path: '/proposals/:id/reject', desc: 'Reject proposal', params: [{ key: 'id', hint: 'Proposal UUID', where: 'path', required: true }] },
   ]},
@@ -3586,7 +3675,7 @@ const apiEndpoints = [
     { method: 'GET', path: '/definitions/models', desc: 'List all model definitions' },
     { method: 'GET', path: '/definitions/models/:id', desc: 'Get model with fields & relations', params: [{ key: 'id', hint: 'Model UUID', where: 'path', required: true }] },
     { method: 'GET', path: '/definitions/models/:id/schema', desc: 'Get model schema (for forms)', params: [{ key: 'id', hint: 'Model UUID', where: 'path', required: true }] },
-    { method: 'POST', path: '/definitions/models', desc: 'Create model', params: [{ key: 'body', where: 'body', hint: '{"key":"test","name":"Test","geometryType":"POINT"}' }] },
+    { method: 'POST', path: '/definitions/models', desc: 'Create model', params: [{ key: 'body', where: 'body', hint: '{"key":"test","name":"Test"}' }] },
     { method: 'POST', path: '/definitions/models/:id/fields', desc: 'Add field to model', params: [{ key: 'id', hint: 'Model UUID', where: 'path', required: true }, { key: 'body', where: 'body', hint: '{"key":"name","label":"Name","fieldType":"string","isRequired":true}' }] },
     { method: 'GET', path: '/definitions/datasets/:datasetId/bindings', desc: 'List dataset model bindings', params: [{ key: 'datasetId', hint: 'Dataset UUID', where: 'path', required: true }] },
     { method: 'GET', path: '/definitions/governance/policies/:targetType/:targetId', desc: 'Get governance policy', params: [{ key: 'targetType', hint: 'model or dataset', where: 'path', required: true }, { key: 'targetId', hint: 'UUID', where: 'path', required: true }] },
@@ -3882,7 +3971,7 @@ async function viewTemplateGallery(main) {
             <div style="margin-top:16px">
               <div style="font-size:14px;font-weight:600;margin-bottom:4px">${m.name} <code style="font-size:11px;color:var(--muted)">${m.key}</code></div>
               <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-                ${m.geometryType || 'NONE'}${m.is3D ? ' 3D' : ''} · EPSG:${m.srid || 4326}
+                ${(() => { const gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null; return gf ? `${gf.geometryType || 'MIXED'}${gf.geometryIs3D ? ' 3D' : ''} · EPSG:${gf.geometrySrid || 4326}` : 'No geometry'; })()}
                 ${m.governance?.approvalMode === 'auto' ? ' · Auto-approve' : ''}
               </div>
               <table style="width:100%;font-size:12px;box-shadow:none;border-collapse:collapse">
@@ -3890,7 +3979,7 @@ async function viewTemplateGallery(main) {
                 <tbody>${m.fields.map(f => `
                   <tr>
                     <td style="padding:4px 8px"><code>${f.key}</code> <span style="color:var(--muted)">${f.label}</span></td>
-                    <td style="padding:4px 8px">${f.fieldType}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
+                    <td style="padding:4px 8px">${f.fieldType}${f.fieldType === 'geometry' ? ` (${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}${f.geometrySrid && f.geometrySrid !== 4326 ? ' EPSG:' + f.geometrySrid : ''})` : ''}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
                     <td style="padding:4px 8px">${f.isRequired ? '✓' : ''}</td>
                   </tr>
                 `).join('')}</tbody>
@@ -3912,10 +4001,11 @@ async function viewTemplateGallery(main) {
           overlay.className = 'modal-overlay';
           const modelCards = tpl.models.map(m => {
             const conflict = existingKeys.has(m.key);
-            const geomBadge = m.geometryType && m.geometryType !== 'NONE'
-              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${m.geometryType}${m.is3D ? ' 3D' : ''}</span>` : '';
-            const sridBadge = m.srid && m.srid !== 4326
-              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${m.srid}</span>` : '';
+            const _gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null;
+            const geomBadge = _gf
+              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${_gf.geometryType || 'MIXED'}${_gf.geometryIs3D ? ' 3D' : ''}</span>` : '';
+            const sridBadge = _gf && _gf.geometrySrid && _gf.geometrySrid !== 4326
+              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${_gf.geometrySrid}</span>` : '';
             const fieldCount = `<span style="font-size:11px;color:var(--muted)">${m.fields.length} fields</span>`;
             const conflictBadge = conflict ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:#fef3c7;color:#92400e">\u26a0 key exists</span>` : '';
             const desc = m.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.3">${m.description}</div>` : '';
@@ -4029,15 +4119,8 @@ async function viewModels(main) {
 
   const form = h('div', { id: 'md-create', className: 'card', style: { display: 'none' } });
   form.innerHTML = `<h3>New Model</h3>
-    <div class="form-row"><div class="form-group"><label>Key</label><input id="md-key" placeholder="e.g. restaurant"></div><div class="form-group"><label>Name</label><input id="md-name" placeholder="e.g. Restaurant"></div><div class="form-group"><label>Geometry Type</label><select id="md-geom"><option value="NONE">NONE</option><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div></div>
-    <details style="margin:8px 0">
-      <summary style="cursor:pointer;font-size:13px;color:var(--primary);font-weight:500">Advanced options</summary>
-      <div class="form-row" style="margin-top:8px">
-        <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="md-is3d"> Yes</label></div></div>
-        <div class="form-group"><label>Coordinate Reference System</label><select id="md-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Japan Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">Most GeoJSON data uses WGS84. Change only if your source data uses a different CRS.</div>
-    </details>
+    <div class="form-row"><div class="form-group"><label>Key</label><input id="md-key" placeholder="e.g. restaurant"></div><div class="form-group"><label>Name</label><input id="md-name" placeholder="e.g. Restaurant"></div></div>
+    <div style="font-size:12px;color:var(--muted);margin:8px 0">Geometry is configured per-field. After creating the model, add a field with type "geometry".</div>
     <div style="display:flex;gap:8px"><button class="btn btn-primary" id="md-create-btn">Create</button><button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='none'">Cancel</button></div>`;
   main.append(form);
 
@@ -4045,7 +4128,7 @@ async function viewModels(main) {
     const createBtn = $('md-create-btn');
     if (createBtn) createBtn.onclick = async () => {
       try {
-        await api('/definitions/models', { method: 'POST', body: JSON.stringify({ key: $('md-key').value, name: $('md-name').value, geometryType: $('md-geom').value, is3D: $('md-is3d').checked, srid: parseInt($('md-srid').value) }) });
+        await api('/definitions/models', { method: 'POST', body: JSON.stringify({ key: $('md-key').value, name: $('md-name').value }) });
         toast('Model created'); refreshModels(); nav('define/models');
       } catch (err) { toast(err.message, 'error'); }
     };
@@ -4065,7 +4148,7 @@ async function viewModels(main) {
         const publish = pol ? pol.publishMode : 'manual';
         return `<tr>
           <td><code>${m.key}</code></td><td>${m.name}</td>
-          <td><span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span>${(m.srid || 4326) !== 4326 ? ` <span style="font-size:10px;color:var(--warning)">EPSG:${m.srid}</span>` : ''}</td>
+          <td>${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.is3D ? ' 3D' : ''}</span>${g.srid !== 4326 ? ` <span style="font-size:10px;color:var(--warning)">EPSG:${g.srid}</span>` : ''}` : '<span style="color:var(--muted)">—</span>'; })()}</td>
           <td>${m.fields.length}</td><td>${m._count?.entities ?? 0}</td>
           <td><span style="font-size:12px;color:${approval === 'auto' ? 'var(--success)' : 'var(--muted)'}">${approval}</span></td>
           <td><span style="font-size:12px;color:${publish === 'auto' ? 'var(--success)' : 'var(--muted)'}">${publish}</span></td>
@@ -4095,7 +4178,7 @@ async function viewModelDetail(main, modelId) {
 
   main.innerHTML = `
     <div class="page-header">
-      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; <span class="badge badge-none">${m.geometryType}${m.is3D ? ' 3D' : ''}</span> &middot; ${(m.srid || 4326) === 4326 ? 'WGS84' : 'EPSG:' + (m.srid || 4326)} &middot; ${m.fields.length} fields</div></div>
+      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; ${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.is3D ? ' 3D' : ''}</span> &middot; ${g.srid === 4326 ? 'WGS84' : 'EPSG:' + g.srid}` : '<span style="color:var(--muted)">No geometry</span>'; })()} &middot; ${m.fields.length} fields</div></div>
       <button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-model-btn">Delete Model</button>
     </div>
 
@@ -4119,7 +4202,7 @@ async function viewModelDetail(main, modelId) {
           <div class="form-group">
             <label>Field Type <span style="color:var(--danger)">*</span></label>
             <select id="af-type" onchange="onFieldTypeChange()">
-              ${Object.entries(fieldTypeInfo).filter(([k])=>k!=='geometry').map(([k,v]) => `<option value="${k}">${v.icon} ${k === 'enum_' ? 'enum' : k} — ${v.desc}</option>`).join('')}
+              ${Object.entries(fieldTypeInfo).map(([k,v]) => `<option value="${k}">${v.icon} ${k === 'enum_' ? 'enum' : k} — ${v.desc}</option>`).join('')}
             </select>
           </div>
           <div class="form-group" style="flex:0;min-width:120px">
@@ -4149,6 +4232,18 @@ async function viewModelDetail(main, modelId) {
           ${m.fields.filter(f => f.fieldType === 'string').map(f => `<option value="${f.key}" ${m.displayField === f.key ? 'selected' : ''}>${f.label} (${f.key})</option>`).join('')}
         </select>
         <button class="btn btn-outline btn-sm" id="md-save-display">Save</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Primary Geometry Field</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which geometry field is synced to PostGIS for spatial queries (bbox, near).</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="md-pgf" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+          <option value="">None</option>
+          ${m.fields.filter(f => f.fieldType === 'geometry').map(f => `<option value="${f.key}" ${m.primaryGeometryField === f.key ? 'selected' : ''}>${f.label} (${f.key})</option>`).join('')}
+        </select>
+        <button class="btn btn-outline btn-sm" id="md-save-pgf">Save</button>
       </div>
     </div>
 
@@ -4227,17 +4322,37 @@ async function viewModelDetail(main, modelId) {
         if (minLenEl?.value) body.validationJson.minLength = parseInt(minLenEl.value);
         if (maxLenEl?.value) body.validationJson.maxLength = parseInt(maxLenEl.value);
       }
+      // Geometry field config
+      const geomTypeEl = $('af-geom-type'), geomSridEl = $('af-geom-srid'), geom3dEl = $('af-geom-3d'), geomPrimaryEl = $('af-geom-primary');
+      if (geomTypeEl?.value && body.fieldType === 'geometry') {
+        body.geometryType = geomTypeEl.value;
+        if (geomSridEl?.value) body.geometrySrid = parseInt(geomSridEl.value);
+        if (geom3dEl) body.geometryIs3D = geom3dEl.checked;
+      }
       await api(`/definitions/models/${modelId}/fields`, { method: 'POST', body: JSON.stringify(body) });
+      // Auto-set primaryGeometryField if checkbox checked
+      if (geomPrimaryEl?.checked && body.fieldType === 'geometry') {
+        await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ primaryGeometryField: body.key }) });
+      }
       toast('Field added');
       reload();
     } catch (err) { toast(err.message, 'error'); }
   };
 
-  // Delete model handler
+  // Save display field
   $('md-save-display').onclick = async () => {
     try {
       await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ displayField: $('md-display-field').value }) });
       toast('Display field saved');
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  // Save primary geometry field
+  $('md-save-pgf').onclick = async () => {
+    try {
+      const val = $('md-pgf').value || null;
+      await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ primaryGeometryField: val }) });
+      toast('Primary geometry field saved');
     } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -4297,6 +4412,69 @@ async function viewModelDetail(main, modelId) {
       } catch (err) { toast(err.message, 'error'); }
     };
   });
+
+  // Drag & drop reorder (container-level with insertion indicator)
+  const fieldList = $('field-list');
+  if (fieldList) {
+    let dragItem = null;
+    // Insertion indicator line
+    const indicator = document.createElement('div');
+    indicator.style.cssText = 'height:3px;background:var(--primary);border-radius:2px;margin:0 0 8px;display:none;pointer-events:none;transition:none';
+
+    fieldList.querySelectorAll('.field-item').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        dragItem = item;
+        requestAnimationFrame(() => { item.style.opacity = '0.4'; });
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragend', () => {
+        item.style.opacity = '1';
+        indicator.style.display = 'none';
+        indicator.remove();
+        dragItem = null;
+      });
+    });
+
+    fieldList.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!dragItem) return;
+      const items = [...fieldList.querySelectorAll('.field-item')];
+      let insertBefore = null;
+      for (const item of items) {
+        if (item === dragItem) continue;
+        const rect = item.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) { insertBefore = item; break; }
+      }
+      // Place indicator
+      indicator.style.display = 'block';
+      if (insertBefore) fieldList.insertBefore(indicator, insertBefore);
+      else fieldList.appendChild(indicator);
+    });
+
+    fieldList.addEventListener('dragleave', (e) => {
+      if (!fieldList.contains(e.relatedTarget)) {
+        indicator.style.display = 'none';
+        indicator.remove();
+      }
+    });
+
+    fieldList.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (!dragItem) return;
+      // Insert at indicator position
+      if (indicator.parentNode) fieldList.insertBefore(dragItem, indicator);
+      indicator.style.display = 'none';
+      indicator.remove();
+      dragItem.style.opacity = '1';
+      // Persist
+      const newOrder = [...fieldList.querySelectorAll('.field-item')].map(el => el.dataset.fieldKey);
+      dragItem = null;
+      try {
+        await api(`/definitions/models/${modelId}/fields/reorder`, { method: 'PUT', body: JSON.stringify({ order: newOrder }) });
+      } catch (err) { toast(err.message, 'error'); reload(); }
+    });
+  }
 }
 
 function renderFieldItem(f, modelId, index) {
@@ -4304,6 +4482,11 @@ function renderFieldItem(f, modelId, index) {
   const constraints = [];
   if (f.isRequired) constraints.push('required');
   if (f.enumValues) constraints.push(`options: ${f.enumValues.join(', ')}`);
+  if (f.fieldType === 'geometry') {
+    if (f.geometryType) constraints.push(f.geometryType);
+    if (f.geometrySrid && f.geometrySrid !== 4326) constraints.push(`EPSG:${f.geometrySrid}`);
+    if (f.geometryIs3D) constraints.push('3D');
+  }
   if (f.validationJson) {
     const v = f.validationJson;
     if (v.min !== undefined) constraints.push(`min: ${v.min}`);
@@ -4312,7 +4495,8 @@ function renderFieldItem(f, modelId, index) {
     if (v.maxLength !== undefined) constraints.push(`maxLength: ${v.maxLength}`);
   }
 
-  return `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff">
+  return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
+    <div class="drag-handle" style="cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;padding:0 2px;user-select:none" title="Drag to reorder">⠿</div>
     <div style="width:36px;height:36px;border-radius:8px;background:${info.color}15;color:${info.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${info.icon}</div>
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:8px">
@@ -4336,6 +4520,11 @@ function renderFieldItem(f, modelId, index) {
       <div class="form-group" style="flex:0;min-width:100px"><label>Required</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="ef-req-${f.id}" ${f.isRequired ? 'checked' : ''}> Yes</label></div></div>
     </div>
     ${f.fieldType === 'enum_' ? `<div class="form-group"><label>Enum Values (comma separated)</label><input id="ef-enums-${f.id}" value="${(f.enumValues || []).join(', ')}"></div>` : ''}
+    ${f.fieldType === 'geometry' ? `<div style="display:flex;gap:12px;margin-bottom:8px">
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Geometry Type</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryType || 'MIXED'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">SRID</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">EPSG:${f.geometrySrid || 4326}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">3D</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryIs3D ? 'Yes' : 'No'}</div></div>
+    </div>` : ''}
     <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
   </div>`;
 }
@@ -4351,6 +4540,13 @@ function onFieldTypeChange() {
     extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div><div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div></div>`;
   } else if (type === 'reference') {
     extra.innerHTML = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
+  } else if (type === 'geometry') {
+    extra.innerHTML = `<div class="form-row">
+      <div class="form-group"><label>Geometry Type <span style="color:var(--danger)">*</span></label><select id="af-geom-type"><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div>
+      <div class="form-group"><label>CRS (SRID)</label><select id="af-geom-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
+      <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="af-geom-3d"> Yes</label></div></div>
+    </div>
+    <div class="form-group"><label><input type="checkbox" id="af-geom-primary"> Set as primary geometry field</label><div style="font-size:12px;color:var(--muted);margin-top:4px">Primary geometry is synced to the PostGIS column for spatial queries</div></div>`;
   } else {
     extra.innerHTML = '';
   }
