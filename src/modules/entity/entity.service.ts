@@ -105,12 +105,22 @@ export async function listEntities(options: ListOptions = {}) {
     }
   }
 
-  const entities = await prisma.entity.findMany({
+  const rawEntities = await prisma.entity.findMany({
     where,
     orderBy,
     skip: (page - 1) * pageSize,
     take: pageSize,
   });
+
+  // Merge geometry from entity_geometry table into properties
+  const { getEntityGeometries } = await import("../../shared/geometry.js");
+  const entities = await Promise.all(
+    rawEntities.map(async (e) => {
+      const geos = await getEntityGeometries(e.id);
+      if (Object.keys(geos).length === 0) return e;
+      return { ...e, properties: { ...((e.properties as object) ?? {}), ...geos } };
+    }),
+  );
 
   return {
     entities,
