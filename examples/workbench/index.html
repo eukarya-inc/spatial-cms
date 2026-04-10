@@ -103,8 +103,8 @@
   <div class="tab-bar">
     <div class="tab-btn active" data-tab="dedup">Dedup</div>
     <div class="tab-btn" data-tab="cleanse">Cleanse</div>
+    <div class="tab-btn" data-tab="compute">Compute</div>
     <div class="tab-btn" data-tab="validate" style="opacity:0.4;cursor:default" title="Coming soon">Validate</div>
-    <div class="tab-btn" data-tab="transform" style="opacity:0.4;cursor:default" title="Coming soon">Transform</div>
   </div>
 
   <!-- Tab panels -->
@@ -175,6 +175,34 @@
     </div>
     <div class="main" id="cleanse-results">
       <div class="empty"><h4>Select a field and operation</h4><p>Preview changes before applying.</p></div>
+    </div>
+  </div>
+
+  <div id="tab-compute" class="tab-panel">
+    <div class="sidebar">
+      <h3>Compute Geometry</h3>
+      <div class="group">
+        <div class="field-label">Source geometry field</div>
+        <select id="compute-source"></select>
+      </div>
+      <div class="group">
+        <div class="field-label">Operation</div>
+        <select id="compute-op">
+          <option value="centroid">Centroid (Polygon → Point)</option>
+          <option value="bbox">Bounding Box (Any → Polygon)</option>
+          <option value="pointOnSurface">Point on Surface (Polygon → Point)</option>
+        </select>
+      </div>
+      <div class="group">
+        <div class="field-label">Target geometry field</div>
+        <select id="compute-target"></select>
+      </div>
+      <button class="btn btn-primary" id="compute-run" style="width:100%;margin-bottom:12px" disabled>Run</button>
+      <div id="compute-stats" class="stats"></div>
+      <button class="btn btn-success" id="compute-apply" style="width:100%;margin-top:8px" disabled>Apply to Commit</button>
+    </div>
+    <div class="main" id="compute-results">
+      <div class="empty"><h4>Compute derived geometry</h4><p>Select a source field, operation, and target field. The operation reads geometry from the source, computes the result, and writes it to the target field.</p></div>
     </div>
   </div>
 
@@ -256,6 +284,10 @@ async function init() {
   // Cleanse buttons
   document.getElementById('cleanse-preview').onclick = previewCleanse;
   document.getElementById('cleanse-apply').onclick = applyCleanse;
+
+  // Compute buttons
+  document.getElementById('compute-run').onclick = runCompute;
+  document.getElementById('compute-apply').onclick = applyCompute;
 }
 
 async function loadEntities() {
@@ -280,9 +312,17 @@ async function loadEntities() {
   document.getElementById('dedup-field').innerHTML = stringFields.map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('');
   document.getElementById('cleanse-field').innerHTML = modelFields.map(f => `<option value="${f.key}">${f.label} (${f.key}) — ${f.fieldType}</option>`).join('');
 
+  // Populate compute geometry field selectors
+  const geoFields = modelFields.filter(f => f.fieldType === 'geometry');
+  document.getElementById('compute-source').innerHTML = geoFields.map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('') || '<option value="">No geometry fields</option>';
+  document.getElementById('compute-target').innerHTML = geoFields.map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('') || '<option value="">No geometry fields</option>';
+  // Default: target to second geometry field if available
+  if (geoFields.length > 1) document.getElementById('compute-target').value = geoFields[1].key;
+
   // Enable buttons
   document.getElementById('dedup-run').disabled = false;
   document.getElementById('cleanse-preview').disabled = false;
+  document.getElementById('compute-run').disabled = geoFields.length < 1;
 }
 
 // ─── Dedup ─────────────────────────────────────────
@@ -469,6 +509,131 @@ function applyCleanse() {
   document.getElementById('cleanse-results').innerHTML = '<div class="empty"><h4>Changes staged</h4><p>Check the commit bar below.</p></div>';
   document.getElementById('cleanse-stats').innerHTML = '';
   document.getElementById('cleanse-apply').disabled = true;
+}
+
+// ─── Compute Derived Geometry ─────────────────────
+
+let computeResults = [];
+
+function flattenCoords(geojson) {
+  const coords = [];
+  function walk(c) { if (typeof c[0] === 'number') coords.push(c); else c.forEach(walk); }
+  walk(geojson.coordinates);
+  return coords;
+}
+
+function geoCenter(geojson) {
+  if (geojson.type === 'Point') return geojson;
+  const coords = flattenCoords(geojson);
+  if (!coords.length) return null;
+  let cx = 0, cy = 0, cz = 0;
+  coords.forEach(c => { cx += c[0]; cy += c[1]; if (c[2] !== undefined) cz += c[2]; });
+  const n = coords.length;
+  const result = [cx / n, cy / n];
+  if (geojson.coordinates?.[0]?.[0]?.[2] !== undefined) result.push(cz / n);
+  return { type: 'Point', coordinates: result };
+}
+
+function geoBbox(geojson) {
+  const coords = flattenCoords(geojson);
+  if (!coords.length) return null;
+  const lons = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+  const [minLon, maxLon] = [Math.min(...lons), Math.max(...lons)];
+  const [minLat, maxLat] = [Math.min(...lats), Math.max(...lats)];
+  return { type: 'Polygon', coordinates: [[[minLon,minLat],[maxLon,minLat],[maxLon,maxLat],[minLon,maxLat],[minLon,minLat]]] };
+}
+
+function pointInPoly(pt, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function geoPointOnSurface(geojson) {
+  const centroid = geoCenter(geojson);
+  if (!centroid) return null;
+  if (geojson.type === 'Polygon' && !pointInPoly(centroid.coordinates, geojson.coordinates[0])) {
+    return { type: 'Point', coordinates: geojson.coordinates[0][0] };
+  }
+  return centroid;
+}
+
+function runCompute() {
+  const sourceKey = document.getElementById('compute-source').value;
+  const targetKey = document.getElementById('compute-target').value;
+  const op = document.getElementById('compute-op').value;
+  if (!sourceKey || !targetKey) return;
+
+  const opFn = { centroid: geoCenter, bbox: geoBbox, pointOnSurface: geoPointOnSurface }[op];
+  computeResults = [];
+
+  allEntities.forEach(e => {
+    const src = e.properties?.[sourceKey];
+    if (!src || typeof src !== 'object' || !src.type) {
+      computeResults.push({ entityId: e.id, name: e.properties?.name || e.id.slice(0,8), source: null, computed: null, status: 'skip' });
+      return;
+    }
+    try {
+      const computed = opFn(src);
+      computeResults.push({ entityId: e.id, name: e.properties?.name || e.id.slice(0,8), source: src, computed, status: computed ? 'ok' : 'error', include: true });
+    } catch (err) {
+      computeResults.push({ entityId: e.id, name: e.properties?.name || e.id.slice(0,8), source: src, computed: null, status: 'error' });
+    }
+  });
+
+  // Render results
+  const ok = computeResults.filter(r => r.status === 'ok');
+  const skip = computeResults.filter(r => r.status === 'skip');
+  const err = computeResults.filter(r => r.status === 'error');
+
+  document.getElementById('compute-stats').innerHTML = `
+    <div class="stat-row"><span class="stat-label">Computed</span><span class="stat-value">${ok.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Skipped (no source)</span><span class="stat-value">${skip.length}</span></div>
+    <div class="stat-row"><span class="stat-label">Errors</span><span class="stat-value">${err.length}</span></div>`;
+
+  const fmtCoord = (g) => {
+    if (!g) return '—';
+    if (g.type === 'Point') return `(${g.coordinates[0].toFixed(6)}, ${g.coordinates[1].toFixed(6)})`;
+    return g.type;
+  };
+
+  document.getElementById('compute-results').innerHTML = ok.length ? `
+    <div style="font-size:13px;color:#94a3b8;margin-bottom:12px">${op} : ${sourceKey} → ${targetKey}</div>
+    <table class="data-table">
+      <thead><tr><th></th><th>Entity</th><th>Source (${sourceKey})</th><th>Result (${targetKey})</th></tr></thead>
+      <tbody>${ok.map((r, i) => `<tr>
+        <td><input type="checkbox" data-cidx="${i}" checked></td>
+        <td>${r.name}</td>
+        <td style="font-family:monospace;font-size:11px;color:#64748b">${r.source?.type || '—'}</td>
+        <td style="font-family:monospace;font-size:11px" class="changed">${fmtCoord(r.computed)}</td>
+      </tr>`).join('')}</tbody>
+    </table>` : '<div class="empty"><h4>No results</h4><p>No entities have a valid source geometry.</p></div>';
+
+  document.getElementById('compute-apply').disabled = ok.length === 0;
+
+  // Checkbox toggle
+  document.querySelectorAll('#compute-results input[type="checkbox"]').forEach(cb => {
+    cb.onchange = () => { computeResults.filter(r => r.status === 'ok')[parseInt(cb.dataset.cidx)].include = cb.checked; };
+  });
+}
+
+function applyCompute() {
+  const targetKey = document.getElementById('compute-target').value;
+  const toApply = computeResults.filter(r => r.status === 'ok' && r.include);
+  toApply.forEach(r => {
+    pendingChanges.push({
+      entityId: r.entityId,
+      action: 'update',
+      data: { properties: { [targetKey]: r.computed } },
+      source: 'compute'
+    });
+  });
+  updateCommitBar();
+  document.getElementById('compute-apply').disabled = true;
+  document.getElementById('compute-stats').innerHTML += `<div class="stat-row" style="margin-top:8px"><span class="stat-label" style="color:#4ade80">Staged</span><span class="stat-value" style="color:#4ade80">${toApply.length}</span></div>`;
 }
 
 // ─── Commit Bar ────────────────────────────────────
