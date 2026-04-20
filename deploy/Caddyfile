@@ -1,0 +1,23 @@
+{$DOMAIN} {
+    # Keycloak 认证路径（OAuth 流程需要）
+    handle /realms/* {
+        reverse_proxy keycloak:8180
+    }
+    handle /resources/* {
+        reverse_proxy keycloak:8180
+    }
+    handle /js/* {
+        reverse_proxy keycloak:8180
+    }
+
+    # CMS（默认，所有其他请求）
+    handle {
+        reverse_proxy cms:3001
+    }
+
+    # 日志
+    log {
+        output stdout
+        format console
+    }
+}

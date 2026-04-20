@@ -112,6 +112,13 @@ examples/
     server.js                 # Backend proxy (manage scope key)
     README.md                 # How to run, API endpoints used
 dev.sh                        # Dev service manager (interactive TUI + CLI)
+deploy/                       # AWS deployment kit (single-tenant, per-team)
+  README.md                   # Step-by-step deployment guide (Lightsail VM + RDS)
+  docker-compose.deploy.yml   # Production compose (cms + keycloak + caddy only)
+  Caddyfile                   # Reverse proxy with auto Let's Encrypt HTTPS
+  .env.example                # Environment variables template
+  scripts/setup-rds.sh        # RDS init (create DBs, enable PostGIS)
+  scripts/deploy.sh           # One-command VM deploy/update
 ```
 
 ## Key Patterns

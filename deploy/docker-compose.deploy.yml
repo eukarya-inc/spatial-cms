@@ -1,0 +1,62 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start --optimized --import-realm --hostname https://${DOMAIN}
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://${RDS_HOST}:5432/keycloak
+      KC_DB_USERNAME: ${RDS_USER}
+      KC_DB_PASSWORD: ${RDS_PASSWORD}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: "8180"
+      KC_PROXY_HEADERS: xforwarded
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ../docker/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8180 && echo -e 'GET /realms/master HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  cms:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${RDS_USER}:${RDS_PASSWORD}@${RDS_HOST}:5432/spatial_cms?schema=public
+      PORT: "3001"
+      DELIVERY_API_KEY_REQUIRED: "true"
+      KEYCLOAK_URL: https://${DOMAIN}
+      KEYCLOAK_REALM: spatial-cms
+    depends_on:
+      keycloak:
+        condition: service_started
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [cms, keycloak]
+    restart: always
+
+volumes:
+  caddy_data:
+  caddy_config:
