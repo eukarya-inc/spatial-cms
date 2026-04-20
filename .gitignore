@@ -4,3 +4,7 @@ dist/
 *.db
 *.db-journal
 .dev-logs/
+
+# SSH keys (never commit)
+*.pem
+deploy/.keycloak_admin_password.txt
