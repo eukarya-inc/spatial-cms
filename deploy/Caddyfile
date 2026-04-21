@@ -9,6 +9,10 @@
     handle /js/* {
         reverse_proxy keycloak:8180
     }
+    # Keycloak admin console
+    handle /admin/* {
+        reverse_proxy keycloak:8180
+    }
 
     # CMS（默认，所有其他请求）
     handle {
