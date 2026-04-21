@@ -1,7 +1,7 @@
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start --optimized --import-realm --hostname https://${DOMAIN}
+    command: start --import-realm --hostname https://${DOMAIN}
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://${RDS_HOST}:5432/keycloak
