@@ -246,6 +246,78 @@ cli_logs() {
   fi
 }
 
+# ─── Production Deployment (AWS) ────────────────────────
+# Configurable via environment variables or edit defaults
+PROD_HOST=${PROD_HOST:-13.112.67.185}
+PROD_USER=${PROD_USER:-ubuntu}
+PROD_SSH_KEY=${PROD_SSH_KEY:-$HOME/.ssh/lightsail-tokyo.pem}
+PROD_DOMAIN=${PROD_DOMAIN:-cms.surreal.tools}
+
+cli_deploy_prod() {
+  if [[ ! -f "$PROD_SSH_KEY" ]]; then
+    echo -e "${R}SSH key not found: $PROD_SSH_KEY${N}"
+    echo "Set PROD_SSH_KEY env var or place key at that path."
+    exit 1
+  fi
+
+  echo -e "${B}Deploying master → production (${PROD_DOMAIN})${N}"
+  echo -e "${D}Host: ${PROD_USER}@${PROD_HOST}${N}"
+  echo ""
+
+  ssh -i "$PROD_SSH_KEY" -o StrictHostKeyChecking=no "${PROD_USER}@${PROD_HOST}" \
+    'cd ~/spatial-cms && ./deploy/scripts/deploy.sh' || {
+    echo -e "${R}Deploy failed.${N}"
+    exit 1
+  }
+
+  echo ""
+  echo -e "${B}Verifying...${N}"
+  sleep 3
+  local health
+  health=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://${PROD_DOMAIN}/health")
+  if [[ "$health" == "200" ]]; then
+    echo -e "  ${G}✓${N} https://${PROD_DOMAIN}/health → 200"
+  else
+    echo -e "  ${R}✗${N} https://${PROD_DOMAIN}/health → ${health}"
+  fi
+}
+
+cli_prod_status() {
+  echo -e "${B}Production status${N}  (${PROD_DOMAIN})"
+  echo ""
+
+  local health auth_config
+  health=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://${PROD_DOMAIN}/health")
+  auth_config=$(curl -s --max-time 10 "https://${PROD_DOMAIN}/api/v1/auth/config")
+
+  printf "  %-12s " "Health:"
+  [[ "$health" == "200" ]] && echo -e "${G}200 OK${N}" || echo -e "${R}${health}${N}"
+
+  printf "  %-12s " "Env:"
+  if echo "$auth_config" | grep -q '"isDevelopment":false'; then
+    echo -e "${G}production${N}"
+  elif echo "$auth_config" | grep -q '"isDevelopment":true'; then
+    echo -e "${Y}development${N}"
+  else
+    echo -e "${R}unknown${N}"
+  fi
+
+  printf "  %-12s " "SSH:"
+  if ssh -i "$PROD_SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+    "${PROD_USER}@${PROD_HOST}" 'echo ok' > /dev/null 2>&1; then
+    echo -e "${G}reachable${N}"
+  else
+    echo -e "${R}unreachable${N}"
+  fi
+  echo ""
+}
+
+cli_prod_logs() {
+  local svc=${1:-cms}
+  ssh -i "$PROD_SSH_KEY" -o StrictHostKeyChecking=no "${PROD_USER}@${PROD_HOST}" \
+    "cd ~/spatial-cms && sudo docker compose --env-file deploy/.env -f deploy/docker-compose.deploy.yml logs -f --tail=100 $svc"
+}
+
 # ─── Entry ──────────────────────────────────────────────
 
 cmd=${1:-}
@@ -261,16 +333,31 @@ case "$cmd" in
   restart) cli_stop "$arg"; sleep 1; cli_start "$arg" ;;
   status|st) print_status_table ;;
   logs|log) cli_logs "$arg" ;;
+  deploy-prod|deploy)  cli_deploy_prod ;;
+  prod-status|pst)     cli_prod_status ;;
+  prod-logs|plog)      cli_prod_logs "$arg" ;;
   *)
     echo -e "${B}Spatial CMS Dev Manager${N}"
     echo ""
-    echo "  ./dev.sh                    Interactive mode"
-    echo "  ./dev.sh start [service]    Start all or one"
-    echo "  ./dev.sh stop  [service]    Stop all or one"
-    echo "  ./dev.sh restart [service]  Restart"
-    echo "  ./dev.sh status             Show status"
-    echo "  ./dev.sh logs <service>     Tail logs"
+    echo "  Local:"
+    echo "    ./dev.sh                    Interactive mode"
+    echo "    ./dev.sh start [service]    Start all or one"
+    echo "    ./dev.sh stop  [service]    Stop all or one"
+    echo "    ./dev.sh restart [service]  Restart"
+    echo "    ./dev.sh status             Show status"
+    echo "    ./dev.sh logs <service>     Tail logs"
+    echo ""
+    echo "  Production (AWS):"
+    echo "    ./dev.sh deploy-prod        Deploy master → production VM"
+    echo "    ./dev.sh prod-status        Check production health"
+    echo "    ./dev.sh prod-logs [svc]    Tail production logs (default: cms)"
     echo ""
     echo "  Services: ${SVC_NAMES[*]}"
+    echo ""
+    echo "  Production env vars (optional overrides):"
+    echo "    PROD_HOST     (default: ${PROD_HOST})"
+    echo "    PROD_USER     (default: ${PROD_USER})"
+    echo "    PROD_SSH_KEY  (default: ${PROD_SSH_KEY})"
+    echo "    PROD_DOMAIN   (default: ${PROD_DOMAIN})"
     echo "" ;;
 esac
