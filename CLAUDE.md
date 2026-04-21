@@ -309,8 +309,10 @@ Organized by product workflow: **Define → Manage → Publish**
 | `#integrate/import` | Integrate | File import (GeoJSON/CSV/CityJSON + field mapping) |
 | `#integrate/api` | Integrate | Ingestion API docs + test data generator + validate/import |
 | `#integrate/management` | Integrate | Management API docs + integration examples |
-| `#dev/api` | Dev Only | Interactive API endpoint explorer |
-| `#dev/console` | Dev Only | One-page publish workflow testing |
+| `#dev/api` | Dev Only | Interactive API endpoint explorer (dev env only) |
+| `#dev/console` | Dev Only | One-page publish workflow testing (dev env only) |
+
+**Dev-Only routes are gated by environment**: the sidebar section `#dev-section` is hidden unless `NODE_ENV !== "production"`, and the router redirects `#dev/*` routes to `#dashboard` in production. Backend signals environment via `GET /api/v1/auth/config` → `{ isDevelopment }`. To set production mode, set `NODE_ENV=production` (done automatically in `deploy/docker-compose.deploy.yml`).
 
 Old routes (`#content`, `#models`, `#proposals`, `#datasets`, `#publications`, `#api-playground`, `#publish-console`, `#integrate/ingestion`) auto-redirect to new paths.
 

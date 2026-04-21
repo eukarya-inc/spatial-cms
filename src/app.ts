@@ -31,19 +31,20 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-// Auth config (public, no auth needed — frontend uses this to discover Keycloak)
+// Auth config (public, no auth needed — frontend uses this to discover Keycloak + environment)
 app.get("/api/v1/auth/config", (req, res) => {
   let keycloakUrl = process.env.KEYCLOAK_URL;
   const keycloakRealm = process.env.KEYCLOAK_REALM;
+  const isDevelopment = process.env.NODE_ENV !== "production";
   if (keycloakUrl && keycloakRealm) {
     // Replace localhost with request host for LAN access
     if (keycloakUrl.includes("localhost")) {
       const host = req.get("host")?.split(":")[0] || "localhost";
       keycloakUrl = keycloakUrl.replace("localhost", host);
     }
-    res.json({ keycloakUrl, keycloakRealm, clientId: "spatial-cms-ui" });
+    res.json({ keycloakUrl, keycloakRealm, clientId: "spatial-cms-ui", isDevelopment });
   } else {
-    res.json({ keycloakUrl: null, keycloakRealm: null });
+    res.json({ keycloakUrl: null, keycloakRealm: null, isDevelopment });
   }
 });
 

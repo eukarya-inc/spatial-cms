@@ -219,9 +219,11 @@
     <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/management')" data-nav="integrate/management"><span>Management API</span></div>
     <div class="sidebar-item" data-section="integrate" onclick="nav('integrate/api-keys')" data-nav="integrate/api-keys"><span>API Keys</span></div>
 
-    <div class="sidebar-section" data-section="integrate" style="opacity:0.5;font-size:9px">Dev Only</div>
-    <div class="sidebar-item" data-section="integrate" onclick="nav('dev/api')" data-nav="dev/api" style="opacity:0.5"><span>API Explorer</span></div>
-    <div class="sidebar-item" data-section="integrate" onclick="nav('dev/console')" data-nav="dev/console" style="opacity:0.5"><span>Publish Console</span></div>
+    <div id="dev-section" style="display:none">
+      <div class="sidebar-section" data-section="integrate" style="opacity:0.5;font-size:9px">Dev Only</div>
+      <div class="sidebar-item" data-section="integrate" onclick="nav('dev/api')" data-nav="dev/api" style="opacity:0.5"><span>API Explorer</span></div>
+      <div class="sidebar-item" data-section="integrate" onclick="nav('dev/console')" data-nav="dev/console" style="opacity:0.5"><span>Publish Console</span></div>
+    </div>
   </aside>
 
   <div class="topbar">
@@ -258,21 +260,29 @@ let keycloakInstance = null;
 async function initKeycloak() {
   const overlay = document.getElementById('auth-overlay');
 
-  // Detect Keycloak URL from server config
+  // Detect Keycloak URL + environment from server config
   let kcUrl, kcRealm;
+  window.__isDevelopment = true; // conservative default
   try {
     const configRes = await fetch(`${API}/auth/config`);
     if (configRes.ok) {
       const config = await configRes.json();
       kcUrl = config.keycloakUrl;
       kcRealm = config.keycloakRealm;
+      window.__isDevelopment = config.isDevelopment ?? true;
     }
   } catch {}
+
+  // Show Dev-Only sidebar section only in development
+  if (window.__isDevelopment) {
+    const devSection = document.getElementById('dev-section');
+    if (devSection) devSection.style.display = '';
+  }
 
   if (!kcUrl) {
     // Keycloak not configured — run without auth (dev mode)
     overlay.style.display = 'none';
-    console.log('Keycloak not configured, running without auth');
+    console.warn('Keycloak not configured, running without auth');
     startApp();
     return;
   }
@@ -762,8 +772,14 @@ async function router() {
     else if (route === 'integrate/management') await viewManagementApi(main);
     else if (route === 'integrate/api-keys') await viewApiKeys(main);
     else if (route === 'integrate/ingestion') await viewImportData(main); // legacy redirect
-    else if (route === 'dev/api') await viewApiPlayground(main);
-    else if (route === 'dev/console') await viewPublishConsole(main);
+    else if (route === 'dev/api') {
+      if (!window.__isDevelopment) { nav('dashboard'); return; }
+      await viewApiPlayground(main);
+    }
+    else if (route === 'dev/console') {
+      if (!window.__isDevelopment) { nav('dashboard'); return; }
+      await viewPublishConsole(main);
+    }
     else await viewContentAll(main);
   } catch (err) {
     main.innerHTML = `<div class="card"><h3>Error</h3><p>${err.message}</p></div>`;
