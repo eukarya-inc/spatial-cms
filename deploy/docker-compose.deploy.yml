@@ -28,6 +28,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
+      NODE_ENV: production
       DATABASE_URL: postgresql://${RDS_USER}:${RDS_PASSWORD}@${RDS_HOST}:5432/spatial_cms?schema=public
       PORT: "3001"
       DELIVERY_API_KEY_REQUIRED: "true"

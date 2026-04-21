@@ -104,8 +104,10 @@ export async function triggerPublishHook(datasetSnapshotId: string) {
     },
   };
 
-  // Simulate sending to Serve (log for now)
-  console.log("[PublishHook] Sending to Serve:", JSON.stringify(payload));
+  // Simulate sending to Serve (log payload only when DEBUG is set)
+  if (process.env.DEBUG) {
+    console.log("[PublishHook] Sending to Serve:", JSON.stringify(payload));
+  }
 
   return { sent: true, payload };
 }
