@@ -210,6 +210,13 @@
     /* MapLibre & Mapbox Draw control polish */
     .geometry-card .maplibregl-ctrl-group button { width: 30px; height: 30px; }
     .geometry-card .mapboxgl-ctrl-group button { width: 30px; height: 30px; }
+    /* Cursor overrides — Mapbox Draw sets these classes when entering a draw mode */
+    .geometry-card .mapboxgl-canvas-container.mouse-add,
+    .geometry-card .maplibregl-canvas-container.mouse-add { cursor: crosshair; }
+    .geometry-card .mapboxgl-canvas-container.mouse-pointer,
+    .geometry-card .maplibregl-canvas-container.mouse-pointer { cursor: pointer; }
+    .geometry-card .mapboxgl-canvas-container.mouse-move,
+    .geometry-card .maplibregl-canvas-container.mouse-move { cursor: move; }
   </style>
 </head>
 <body>
@@ -716,6 +723,34 @@ function loadMapLibs() {
   return __mapLibsPromise;
 }
 
+// Polyfill: alias maplibregl-* CSS classes to mapboxgl-* so that Mapbox Draw v1.4
+// (which hardcodes mapboxgl-* selectors internally) can find map elements.
+// Without this, Draw's controls render but cursor stays as grab and clicks don't trigger.
+// See https://github.com/mapbox/mapbox-gl-draw/issues/1182
+function applyMapboxClassPolyfill(map) {
+  const root = map.getContainer();
+  if (!root) return;
+  const ensure = (el, cls) => { if (el && !el.classList.contains(cls)) el.classList.add(cls); };
+
+  ensure(root, 'mapboxgl-map');
+  ensure(map.getCanvas(), 'mapboxgl-canvas');
+
+  const aliases = [
+    ['.maplibregl-canvas-container', 'mapboxgl-canvas-container'],
+    ['.maplibregl-control-container', 'mapboxgl-control-container'],
+    ['.maplibregl-ctrl-top-left', 'mapboxgl-ctrl-top-left'],
+    ['.maplibregl-ctrl-top-right', 'mapboxgl-ctrl-top-right'],
+    ['.maplibregl-ctrl-bottom-left', 'mapboxgl-ctrl-bottom-left'],
+    ['.maplibregl-ctrl-bottom-right', 'mapboxgl-ctrl-bottom-right'],
+  ];
+  aliases.forEach(([sel, cls]) => {
+    root.querySelectorAll(sel).forEach(el => ensure(el, cls));
+  });
+  // Each control wrapper / button group gets both class names
+  root.querySelectorAll('.maplibregl-ctrl').forEach(el => ensure(el, 'mapboxgl-ctrl'));
+  root.querySelectorAll('.maplibregl-ctrl-group').forEach(el => ensure(el, 'mapboxgl-ctrl-group'));
+}
+
 // Strip Z from a GeoJSON geometry (recurse coordinate arrays)
 function geomTo2D(geo) {
   if (!geo || !geo.type) return geo;
@@ -912,6 +947,9 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         }
       }
 
+      // Apply CSS class polyfill so Mapbox Draw can find DOM elements via mapboxgl-* selectors
+      applyMapboxClassPolyfill(map);
+
       // Set up Mapbox Draw
       const cfg = drawConfigFor(geomType);
       draw = new MapboxDraw({
@@ -920,6 +958,9 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         defaultMode: 'simple_select',
       });
       map.addControl(draw, 'top-left');
+
+      // Re-apply polyfill after addControl (new control DOM nodes also need the alias classes)
+      applyMapboxClassPolyfill(map);
 
       // Hide our static feature layer when draw is active (Draw renders its own)
       map.setLayoutProperty('feature-fill', 'visibility', 'none');
