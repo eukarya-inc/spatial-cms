@@ -210,13 +210,18 @@
     /* Custom mode toolbar above map (we drive Mapbox Draw modes ourselves
        because Draw's built-in control buttons + cursor handling don't work
        reliably on MapLibre 4 without forking the library). */
-    .geometry-card .gc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
-    .geometry-card .gc-tool { padding: 5px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
-    .geometry-card .gc-tool:hover { background: var(--bg); }
+    .geometry-card .gc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+    .geometry-card .gc-tool { padding: 5px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; transition: background 0.1s, color 0.1s, border-color 0.1s; }
+    .geometry-card .gc-tool:hover:not([disabled]) { background: var(--bg); }
     .geometry-card .gc-tool.is-active { background: var(--primary); color: #fff; border-color: var(--primary); }
-    .geometry-card .gc-tool[disabled] { opacity: 0.4; cursor: not-allowed; }
+    .geometry-card .gc-tool[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+    .geometry-card .gc-tool-edit { color: var(--primary); }
+    .geometry-card .gc-tool-edit.is-active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    /* Replace mode (existing geometry will be replaced) — orange warning visual */
+    .geometry-card .gc-tool-draw.gc-tool-replace { background: rgba(245,158,11,0.1); color: #92400e; border-color: rgba(245,158,11,0.4); }
+    .geometry-card .gc-tool-draw.gc-tool-replace.is-active { background: #f59e0b; color: #fff; border-color: #f59e0b; }
     .geometry-card .gc-tool-clear { margin-left: auto; color: var(--danger); }
-    .geometry-card .gc-tool-clear:hover { background: rgba(239,68,68,0.1); }
+    .geometry-card .gc-tool-clear:hover:not([disabled]) { background: rgba(239,68,68,0.1); }
     /* Cursor — explicit by mode, !important to beat MapLibre's default cursor rule */
     .geometry-card .gc-map .maplibregl-canvas-container,
     .geometry-card .gc-map .mapboxgl-canvas-container { cursor: grab !important; }
@@ -224,6 +229,8 @@
     .geometry-card .gc-map .mapboxgl-canvas-container:active { cursor: grabbing !important; }
     .geometry-card .gc-map.is-drawing .maplibregl-canvas-container,
     .geometry-card .gc-map.is-drawing .mapboxgl-canvas-container { cursor: crosshair !important; }
+    /* Edit mode — show user we're in vertex-editing context with a primary-colored inset border */
+    .geometry-card .gc-map.is-editing { box-shadow: inset 0 0 0 2px var(--primary); }
     /* Hide Mapbox Draw's built-in toolbar — we use our own */
     .geometry-card .mapboxgl-ctrl-group:has(.mapbox-gl-draw_ctrl-draw-btn),
     .geometry-card .maplibregl-ctrl-group:has(.mapbox-gl-draw_ctrl-draw-btn) { display: none !important; }
@@ -834,11 +841,11 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
   // Build initial JSON string for textarea
   const initialJson = value ? JSON.stringify(value, null, 2) : '';
 
-  // Toolbar buttons differ by geometry type (only valid mode shown)
-  const drawLabel = (geomType === 'POINT') ? '✏️ Place Point'
-                   : (geomType === 'LINESTRING') ? '✏️ Draw Line'
-                   : (geomType === 'POLYGON') ? '✏️ Draw Polygon'
-                   : '✏️ Draw';
+  // Toolbar button labels differ by geometry type
+  const drawLabelBase = (geomType === 'POINT') ? 'Place Point'
+                       : (geomType === 'LINESTRING') ? 'Draw Line'
+                       : (geomType === 'POLYGON') ? 'Draw Polygon'
+                       : 'Draw';
 
   // Compose DOM
   containerEl.innerHTML = `
@@ -852,8 +859,9 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         ${!isLatLng ? `<div class="gc-srid-warning">⚠ Map preview unavailable for EPSG:${srid}. Edit GeoJSON directly below.</div>` : ''}
         ${isLatLng && mode === 'edit' ? `<div class="gc-toolbar">
           <button type="button" class="gc-tool gc-tool-pan is-active" data-tool="pan" title="Pan / move map">✋ Pan</button>
-          <button type="button" class="gc-tool gc-tool-draw" data-tool="draw" title="Draw a new shape">${drawLabel}</button>
-          <button type="button" class="gc-tool gc-tool-clear" data-tool="clear" title="Remove geometry">🗑 Clear</button>
+          <button type="button" class="gc-tool gc-tool-draw" data-tool="draw" title="Draw a new shape"><span class="gc-draw-icon">✏️</span> <span class="gc-draw-text">${drawLabelBase}</span></button>
+          <button type="button" class="gc-tool gc-tool-edit" data-tool="edit" disabled title="Edit vertices of existing shape">🔧 Edit</button>
+          <button type="button" class="gc-tool gc-tool-clear" data-tool="clear" disabled title="Remove geometry">🗑 Clear</button>
         </div>` : ''}
         ${isLatLng ? `<div class="gc-map-wrapper"><div class="gc-map ${value ? '' : 'gc-empty'}"></div></div>` : ''}
         ${isLatLng && mode === 'edit' ? `<div class="gc-hint" style="display:${value ? 'none' : ''}"></div>` : ''}
@@ -992,17 +1000,59 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         draw.add({ type: 'Feature', geometry: drawValue, properties: {} });
       }
 
-      // Toolbar: Pan / Draw / Clear
+      // Toolbar: Pan / Draw|Replace / Edit / Clear
       const toolbar = cardEl.querySelector('.gc-toolbar');
       const panBtn = toolbar?.querySelector('[data-tool="pan"]');
       const drawBtn = toolbar?.querySelector('[data-tool="draw"]');
+      const editBtn = toolbar?.querySelector('[data-tool="edit"]');
       const clearBtn = toolbar?.querySelector('[data-tool="clear"]');
 
       const setActiveTool = (tool) => {
         toolbar?.querySelectorAll('.gc-tool').forEach(b => b.classList.remove('is-active'));
         if (tool === 'pan') panBtn?.classList.add('is-active');
         else if (tool === 'draw') drawBtn?.classList.add('is-active');
+        else if (tool === 'edit') editBtn?.classList.add('is-active');
         mapEl.classList.toggle('is-drawing', tool === 'draw');
+        mapEl.classList.toggle('is-editing', tool === 'edit');
+      };
+
+      // Update Edit/Clear enabled state and Draw button label/style based on currentValue
+      const updateButtonStates = () => {
+        const has = !!currentValue;
+        if (clearBtn) clearBtn.disabled = !has;
+        if (editBtn) editBtn.disabled = !has;
+        if (drawBtn) {
+          const iconEl = drawBtn.querySelector('.gc-draw-icon');
+          const textEl = drawBtn.querySelector('.gc-draw-text');
+          if (has) {
+            drawBtn.classList.add('gc-tool-replace');
+            if (iconEl) iconEl.textContent = '🔄';
+            if (textEl) textEl.textContent = 'Replace';
+            drawBtn.title = 'Replace existing geometry by drawing new one';
+          } else {
+            drawBtn.classList.remove('gc-tool-replace');
+            if (iconEl) iconEl.textContent = '✏️';
+            if (textEl) textEl.textContent = drawLabelBase;
+            drawBtn.title = 'Draw a new shape';
+          }
+        }
+      };
+
+      const updateHint = (tool) => {
+        if (!hintEl) return;
+        const t = geomType.toUpperCase();
+        if (tool === 'draw') {
+          hintEl.textContent = t === 'POINT' ? 'Click on the map to place a point.'
+            : t === 'LINESTRING' ? 'Click to add points, double-click to finish.'
+            : 'Click to add vertices. Click first point or double-click to close.';
+          hintEl.style.display = '';
+        } else if (tool === 'edit') {
+          hintEl.textContent = t === 'POINT' ? 'Drag the point to a new location.'
+            : 'Drag vertices to move. Click midpoint to add a vertex. Click a vertex then press Delete to remove it.';
+          hintEl.style.display = '';
+        } else {
+          hintEl.style.display = 'none';
+        }
       };
 
       const enterDrawMode = () => {
@@ -1010,31 +1060,50 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         // For single-feature fields, clear existing before drawing a new one
         if (cfg.types.length === 1 && draw.getAll().features.length > 0) {
           draw.deleteAll();
+          currentValue = null;
+          if (document.activeElement !== textarea) textarea.value = '';
+          onChange?.(null);
         }
         try { draw.changeMode(cfg.drawMode); } catch (e) { console.warn('changeMode failed', e); }
         setActiveTool('draw');
-        if (hintEl) hintEl.style.display = '';
+        updateButtonStates();
+        updateHint('draw');
+      };
+      const enterEditMode = () => {
+        const features = draw.getAll().features;
+        if (!features.length) return; // shouldn't happen — Edit is disabled
+        const f = features[0];
+        try {
+          if (f.geometry.type === 'Point') {
+            draw.changeMode('simple_select', { featureIds: [f.id] });
+          } else {
+            draw.changeMode('direct_select', { featureId: f.id });
+          }
+        } catch (e) { console.warn('enter edit mode failed', e); return; }
+        setActiveTool('edit');
+        updateHint('edit');
       };
       const enterPanMode = () => {
         try { draw.changeMode('simple_select'); } catch (e) {}
         setActiveTool('pan');
-        if (hintEl) hintEl.style.display = 'none';
+        updateHint('pan');
       };
 
       panBtn?.addEventListener('click', () => enterPanMode());
       drawBtn?.addEventListener('click', () => enterDrawMode());
+      editBtn?.addEventListener('click', () => enterEditMode());
       clearBtn?.addEventListener('click', () => {
         draw.deleteAll();
-        // sync handler will trigger and clear textarea + onChange
-        // explicitly fire because deleteAll doesn't emit draw.delete
         currentValue = null;
         if (document.activeElement !== textarea) textarea.value = '';
         onChange?.(null);
         enterPanMode();
+        updateButtonStates();
       });
 
-      // Initial state: Pan
+      // Initial state: Pan + buttons reflect current value
       setActiveTool('pan');
+      updateButtonStates();
 
       const syncFromDraw = () => {
         const features = draw.getAll().features;
@@ -1058,17 +1127,25 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
           textarea.value = currentValue ? JSON.stringify(currentValue, null, 2) : '';
         }
         errorEl.textContent = '';
-        if (hintEl) hintEl.style.display = currentValue ? 'none' : '';
         onChange?.(currentValue);
+        updateButtonStates();
         _syncing = false;
       };
       map.on('draw.create', () => { syncFromDraw(); enterPanMode(); });
       map.on('draw.update', syncFromDraw);
       map.on('draw.delete', syncFromDraw);
-      // Mapbox Draw mode change (e.g. user pressed Esc to exit draw mode)
+      // Mapbox Draw mode change — keep our tool buttons synced with Draw's internal state
       map.on('draw.modechange', (ev) => {
-        if (ev.mode === 'simple_select' || ev.mode === 'direct_select') {
-          setActiveTool('pan');
+        if (ev.mode === 'direct_select') {
+          // User entered vertex-edit mode (we triggered, or via dbl-click on feature)
+          setActiveTool('edit');
+          updateHint('edit');
+        } else if (ev.mode === 'simple_select') {
+          // User exited draw or edit mode (Esc, click outside, etc.)
+          if (mapEl.classList.contains('is-drawing') || mapEl.classList.contains('is-editing')) {
+            setActiveTool('pan');
+            updateHint('pan');
+          }
         }
       });
 
@@ -1098,8 +1175,8 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
             if (b.bounds) map.fitBounds(b.bounds, { padding: 40, maxZoom: 17 });
             else if (b.center) map.flyTo({ center: b.center, zoom: b.zoom });
           }
-          if (hintEl) hintEl.style.display = parsed ? 'none' : '';
           onChange?.(parsed);
+          updateButtonStates();
           _syncing = false;
         } catch (e) {
           errorEl.textContent = 'Invalid JSON: ' + e.message;
