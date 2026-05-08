@@ -1,0 +1,101 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "PLATEAU Road (tran)",
+    "description": "Road model based on Japan's PLATEAU 3D city model specification (CityGML tran module). Includes road classification, width, and traffic attributes.",
+    "author": "Spatial CMS Community",
+    "license": "CC-BY-4.0",
+    "tags": ["plateau", "japan", "road", "transportation", "citygml", "tran"]
+  },
+  "models": [
+    {
+      "key": "plateau_road",
+      "name": "PLATEAU Road",
+      "description": "Road model following PLATEAU/CityGML tran specification",
+      "geometryType": "LINESTRING",
+      "srid": 6668,
+      "displayField": "road_name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "gml_id",
+          "label": "GML ID",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "road_name",
+          "label": "Road Name",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "road_class",
+          "label": "Road Classification",
+          "fieldType": "enum_",
+          "enumValues": [
+            "national_highway",
+            "prefectural_road",
+            "municipal_road",
+            "expressway",
+            "other"
+          ],
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "width_m",
+          "label": "Width (m)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 3
+        },
+        {
+          "key": "number_of_lanes",
+          "label": "Number of Lanes",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 1 },
+          "orderIndex": 4
+        },
+        {
+          "key": "surface_material",
+          "label": "Surface Material",
+          "fieldType": "enum_",
+          "enumValues": ["asphalt", "concrete", "gravel", "unpaved", "other"],
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "traffic_volume",
+          "label": "Traffic Volume (vehicles/day)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 6
+        },
+        {
+          "key": "administrator",
+          "label": "Administrator",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 7
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "PLATEAU Roads",
+    "description": "Road data from Japan's PLATEAU project (CityGML tran module)",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": false
+  }
+}

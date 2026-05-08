@@ -1,0 +1,209 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "自治体標準ODS - 指定緊急避難場所一覧",
+    "description": "Municipal Standard Open Data Set: Designated Emergency Evacuation Sites. Single-model POINT template matching the official CSV column definition (Definition A) published by デジタル庁. Site categories follow 災害対策基本法 (Disaster Countermeasures Basic Act) classifications: 洪水/崖崩れ・土石流及び地滑り/高潮/地震/津波/大規模な火事/内水氾濫/火山現象. Field labels are the exact Japanese column names; field keys are English snake_case. Coordinates are WGS84 / EPSG:4326. Source: https://www.digital.go.jp/resources/open_data/municipal-standard-data-set-test",
+    "author": "Spatial CMS Community",
+    "license": "CC-BY-4.0",
+    "tags": ["municipal", "japan", "ods", "evacuation", "disaster", "emergency", "digital-agency"]
+  },
+  "models": [
+    {
+      "key": "municipal_evacuation_site",
+      "name": "自治体標準ODS - 指定緊急避難場所一覧",
+      "description": "Designated emergency evacuation site inventory under 災害対策基本法 (Disaster Countermeasures Basic Act). Each row is one site, with disaster-type applicability flags. Geometry is the site point in WGS84.",
+      "geometryType": "POINT",
+      "srid": 4326,
+      "displayField": "site_name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "prefecture_code",
+          "label": "都道府県コード",
+          "fieldType": "string",
+          "isRequired": true,
+          "validationJson": { "pattern": "^[0-9]{2}$" },
+          "orderIndex": 0
+        },
+        {
+          "key": "municipality_code",
+          "label": "市区町村コード",
+          "fieldType": "string",
+          "isRequired": true,
+          "validationJson": { "pattern": "^[0-9]{3}$" },
+          "orderIndex": 1
+        },
+        {
+          "key": "prefecture",
+          "label": "都道府県名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 2
+        },
+        {
+          "key": "municipality",
+          "label": "市区町村名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 3
+        },
+        {
+          "key": "site_id",
+          "label": "避難場所ID",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 4
+        },
+        {
+          "key": "site_name",
+          "label": "避難場所名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 5
+        },
+        {
+          "key": "site_category",
+          "label": "避難場所分類",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": [
+            "指定緊急避難場所",
+            "指定避難所",
+            "指定緊急避難場所兼指定避難所",
+            "福祉避難所",
+            "広域避難場所",
+            "一時避難場所",
+            "その他"
+          ],
+          "orderIndex": 6
+        },
+        {
+          "key": "address",
+          "label": "住所",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 7
+        },
+        {
+          "key": "latitude",
+          "label": "緯度",
+          "fieldType": "number",
+          "isRequired": true,
+          "validationJson": { "minimum": 20, "maximum": 46 },
+          "orderIndex": 8
+        },
+        {
+          "key": "longitude",
+          "label": "経度",
+          "fieldType": "number",
+          "isRequired": true,
+          "validationJson": { "minimum": 122, "maximum": 154 },
+          "orderIndex": 9
+        },
+        {
+          "key": "phone_number",
+          "label": "電話番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 10
+        },
+        {
+          "key": "capacity",
+          "label": "収容可能人数",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "minimum": 0 },
+          "orderIndex": 11
+        },
+        {
+          "key": "supports_flood",
+          "label": "洪水",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 12
+        },
+        {
+          "key": "supports_landslide",
+          "label": "崖崩れ・土石流及び地滑り",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 13
+        },
+        {
+          "key": "supports_storm_surge",
+          "label": "高潮",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 14
+        },
+        {
+          "key": "supports_earthquake",
+          "label": "地震",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 15
+        },
+        {
+          "key": "supports_tsunami",
+          "label": "津波",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 16
+        },
+        {
+          "key": "supports_large_fire",
+          "label": "大規模な火事",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 17
+        },
+        {
+          "key": "supports_inland_flooding",
+          "label": "内水氾濫",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 18
+        },
+        {
+          "key": "supports_volcanic",
+          "label": "火山現象",
+          "fieldType": "boolean",
+          "isRequired": false,
+          "orderIndex": 19
+        },
+        {
+          "key": "equipment",
+          "label": "設備",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 20
+        },
+        {
+          "key": "url",
+          "label": "URL",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 21
+        },
+        {
+          "key": "remarks",
+          "label": "備考",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 22
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "指定緊急避難場所一覧",
+    "description": "自治体標準オープンデータセット - 指定緊急避難場所一覧 (デジタル庁仕様準拠)",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": true
+  }
+}

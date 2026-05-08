@@ -1,0 +1,95 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "Generic Building",
+    "description": "General-purpose building footprint model with common attributes like address, use type, and floor count.",
+    "author": "Spatial CMS Community",
+    "license": "CC-BY-4.0",
+    "tags": ["building", "general", "footprint"]
+  },
+  "models": [
+    {
+      "key": "building",
+      "name": "Building",
+      "description": "Building footprint with basic attributes",
+      "geometryType": "POLYGON",
+      "srid": 4326,
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "name",
+          "label": "Building Name",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 0
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "use_type",
+          "label": "Use Type",
+          "fieldType": "enum_",
+          "enumValues": ["residential", "commercial", "industrial", "institutional", "mixed_use", "other"],
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "floors_above",
+          "label": "Floors Above Ground",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 3
+        },
+        {
+          "key": "floors_below",
+          "label": "Floors Below Ground",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 4
+        },
+        {
+          "key": "year_built",
+          "label": "Year Built",
+          "fieldType": "number",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "height_m",
+          "label": "Height (m)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 6
+        },
+        {
+          "key": "area_sqm",
+          "label": "Floor Area (sqm)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 7
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "Buildings",
+    "description": "Building footprint dataset",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": true
+  }
+}
