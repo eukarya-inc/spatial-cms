@@ -129,6 +129,14 @@ Geometry is stored in a separate `entity_geometry` table (not on the entity tabl
 ### Geometry as a Field Type
 Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryIs3D`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.
 
+### Geometry Map UI (frontend)
+Each geometry field renders as an inline `.geometry-card` with a MapLibre GL preview/editor. Reusable component `renderGeometryCard({field, value, mode, isPrimary, containerEl, onChange})` in `public/index.html` handles both view (read-only) and edit (Mapbox Draw integration) modes. MapLibre + Mapbox Draw are CDN-loaded lazily on first card mount via `loadMapLibs()`. Rules:
+- SRID 4326 only — non-4326 fields show a warning banner and JSON-only editor
+- 3D geometries: 2D map preview, edit-mode confirmation before discarding Z; JSON textarea is the lossless fallback for Z editing
+- Map ↔ JSON textarea bidirectional sync (textarea synced on map draw events; map updated on textarea blur with valid-JSON check)
+- `router()` calls `__cleanupGeometryCards()` to prevent WebGL context leaks on navigation
+- Use cases: `viewEntityDetail` (mode `'view'`), edit form inside detail (mode `'edit'`), `viewNewRecord` (mode `'edit'`)
+
 ### Prisma Migrations with Directus
 Directus creates its own tables in the same schema, causing Prisma drift detection. Use this workflow:
 1. Write migration SQL manually in `prisma/migrations/<timestamp>_<name>/migration.sql`

@@ -187,6 +187,29 @@
       .sidebar { display: none; }
       .detail-grid { grid-template-columns: 1fr; }
     }
+
+    /* Geometry card (map preview + edit) */
+    .geometry-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; background: var(--surface); }
+    .geometry-card .gc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .geometry-card .gc-header strong { font-size: 14px; }
+    .geometry-card .gc-map { height: 300px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); position: relative; }
+    .geometry-card .gc-map.gc-empty { background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+    .geometry-card .gc-hint { font-size: 12px; color: var(--muted); margin-top: 8px; padding: 6px 10px; background: var(--bg); border-radius: 4px; }
+    .geometry-card .gc-srid-warning { padding: 8px 12px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 4px; font-size: 12px; color: #92400e; margin-bottom: 8px; }
+    .geometry-card .gc-error { padding: 8px 12px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 4px; font-size: 12px; color: var(--danger); margin-bottom: 8px; }
+    .geometry-card .gc-advanced { margin-top: 10px; }
+    .geometry-card .gc-advanced summary { cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; padding: 4px 0; }
+    .geometry-card .gc-advanced summary:hover { color: var(--text); }
+    .geometry-card .gc-advanced textarea { width: 100%; margin-top: 8px; padding: 8px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; resize: vertical; min-height: 100px; }
+    .geometry-card .gc-json-error { color: var(--danger); font-size: 12px; margin-top: 4px; min-height: 16px; }
+    .geometry-card .gc-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+    .geometry-card .gc-badge-primary { background: var(--primary); color: #fff; }
+    .geometry-card .gc-badge-3d { background: #8b5cf6; color: #fff; }
+    .geometry-card .gc-badge-type { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+    .geometry-card .gc-badge-srid { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+    /* MapLibre & Mapbox Draw control polish */
+    .geometry-card .maplibregl-ctrl-group button { width: 30px; height: 30px; }
+    .geometry-card .mapboxgl-ctrl-group button { width: 30px; height: 30px; }
   </style>
 </head>
 <body>
@@ -649,6 +672,360 @@ function getPrimaryGeometryField(schema) {
   if (!field || field.fieldType !== 'geometry') return null;
   return field;
 }
+
+// ─── Geometry Map UX (lazy-loaded MapLibre + Mapbox Draw) ──
+const __geometryCards = new Set();
+function __cleanupGeometryCards() {
+  __geometryCards.forEach(card => { try { card.destroy(); } catch (e) {} });
+  __geometryCards.clear();
+}
+
+let __mapLibsPromise = null;
+function loadMapLibs() {
+  if (__mapLibsPromise) return __mapLibsPromise;
+  __mapLibsPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Map library load timeout')), 10000);
+    const loadCss = href => new Promise(res => {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
+      l.onload = res; l.onerror = res; document.head.appendChild(l);
+    });
+    const loadJs = src => new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = src;
+      s.onload = res; s.onerror = () => rej(new Error('Failed: ' + src));
+      document.head.appendChild(s);
+    });
+    Promise.all([
+      loadCss('https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css'),
+      loadCss('https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css'),
+    ]).then(() => loadJs('https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'))
+      .then(() => {
+        // Mapbox Draw expects window.mapboxgl to exist (it's a Mapbox-GL plugin)
+        window.mapboxgl = window.maplibregl;
+        return loadJs('https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js');
+      })
+      .then(() => {
+        clearTimeout(timeout);
+        if (!window.maplibregl || !window.MapboxDraw) {
+          reject(new Error('Map libs missing after load'));
+          return;
+        }
+        resolve({ maplibregl: window.maplibregl, MapboxDraw: window.MapboxDraw });
+      })
+      .catch(err => { clearTimeout(timeout); reject(err); });
+  });
+  return __mapLibsPromise;
+}
+
+// Strip Z from a GeoJSON geometry (recurse coordinate arrays)
+function geomTo2D(geo) {
+  if (!geo || !geo.type) return geo;
+  const stripCoord = c => Array.isArray(c[0]) ? c.map(stripCoord) : c.slice(0, 2);
+  return { ...geo, coordinates: stripCoord(geo.coordinates) };
+}
+
+// Walk all coordinates [lng,lat] pairs in a geometry
+function flattenCoords(geo) {
+  if (!geo?.coordinates) return [];
+  const out = [];
+  const walk = c => Array.isArray(c[0]) ? c.forEach(walk) : out.push(c);
+  walk(geo.coordinates);
+  return out;
+}
+
+function geometryBounds(geo) {
+  const coords = flattenCoords(geo);
+  if (!coords.length) return { bounds: null, center: [139.7670, 35.6814], zoom: 9 };
+  if (coords.length === 1) {
+    return { bounds: null, center: [coords[0][0], coords[0][1]], zoom: 14 };
+  }
+  let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+  coords.forEach(c => {
+    if (c[0] < minLng) minLng = c[0];
+    if (c[0] > maxLng) maxLng = c[0];
+    if (c[1] < minLat) minLat = c[1];
+    if (c[1] > maxLat) maxLat = c[1];
+  });
+  return { bounds: [[minLng, minLat], [maxLng, maxLat]], center: null, zoom: null };
+}
+
+function drawConfigFor(geometryType) {
+  const t = (geometryType || 'MIXED').toUpperCase();
+  if (t === 'POINT') return { types: ['Point'], drawMode: 'draw_point', controls: { point: true, trash: true } };
+  if (t === 'LINESTRING') return { types: ['LineString'], drawMode: 'draw_line_string', controls: { line_string: true, trash: true } };
+  if (t === 'POLYGON') return { types: ['Polygon'], drawMode: 'draw_polygon', controls: { polygon: true, trash: true } };
+  // MIXED or NONE
+  return { types: ['Point', 'LineString', 'Polygon'], drawMode: null, controls: { point: true, line_string: true, polygon: true, trash: true } };
+}
+
+const BASEMAP_STYLE = {
+  version: 8,
+  sources: {
+    'osm': {
+      type: 'raster',
+      tiles: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png',
+              'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png',
+              'https://c.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors © CARTO'
+    }
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+};
+
+function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChange }) {
+  const fieldKey = field.key;
+  const geomType = (field.geometryType || 'MIXED').toUpperCase();
+  const srid = field.geometrySrid || 4326;
+  const is3D = !!field.geometryIs3D;
+  const isLatLng = (srid === 4326);
+
+  // Build header
+  const badges = [];
+  if (isPrimary) badges.push('<span class="gc-badge gc-badge-primary">PRIMARY</span>');
+  badges.push(`<span class="gc-badge gc-badge-type">${geomType}</span>`);
+  if (is3D) badges.push('<span class="gc-badge gc-badge-3d">3D</span>');
+  if (srid !== 4326) badges.push(`<span class="gc-badge gc-badge-srid">EPSG:${srid}</span>`);
+
+  // Build initial JSON string for textarea
+  const initialJson = value ? JSON.stringify(value, null, 2) : '';
+
+  // Compose DOM
+  containerEl.innerHTML = `
+    <div class="geometry-card" data-field-key="${fieldKey}">
+      <div class="gc-header">
+        <strong>${field.label || fieldKey}</strong>
+        ${badges.join('')}
+        <span style="margin-left:auto;font-size:11px;color:var(--muted)"><code>${fieldKey}</code></span>
+      </div>
+      <div class="gc-body">
+        ${!isLatLng ? `<div class="gc-srid-warning">⚠ Map preview unavailable for EPSG:${srid}. Edit GeoJSON directly below.</div>` : ''}
+        ${isLatLng ? `<div class="gc-map-wrapper"><div class="gc-map ${value ? '' : 'gc-empty'}"></div></div>` : ''}
+        ${isLatLng && mode === 'edit' ? `<div class="gc-hint" style="display:${value ? 'none' : ''}"></div>` : ''}
+        <details class="gc-advanced" ${!isLatLng ? 'open' : ''}>
+          <summary>Advanced (GeoJSON)</summary>
+          <textarea class="gc-textarea" rows="6" ${mode === 'view' ? 'readonly' : ''}>${initialJson}</textarea>
+          <div class="gc-json-error"></div>
+        </details>
+      </div>
+    </div>
+  `;
+
+  const cardEl = containerEl.querySelector('.geometry-card');
+  const mapEl = cardEl.querySelector('.gc-map');
+  const hintEl = cardEl.querySelector('.gc-hint');
+  const textarea = cardEl.querySelector('.gc-textarea');
+  const errorEl = cardEl.querySelector('.gc-json-error');
+
+  let currentValue = value;
+  let map = null;
+  let draw = null;
+  let _syncing = false;
+
+  const instance = {
+    destroy: () => {
+      __geometryCards.delete(instance);
+      if (map) { try { map.remove(); } catch (e) {} map = null; }
+      draw = null;
+    },
+    getValue: () => currentValue,
+    setMode: () => {} // not implemented for Phase 1
+  };
+  __geometryCards.add(instance);
+
+  // If non-4326, JSON-only mode
+  if (!isLatLng) {
+    if (mode === 'edit') {
+      textarea.addEventListener('change', () => {
+        try {
+          const parsed = textarea.value.trim() ? JSON.parse(textarea.value) : null;
+          errorEl.textContent = '';
+          currentValue = parsed;
+          onChange?.(parsed);
+        } catch (e) {
+          errorEl.textContent = 'Invalid JSON: ' + e.message;
+        }
+      });
+    }
+    return instance;
+  }
+
+  // Set up hint text
+  if (hintEl) {
+    if (geomType === 'POINT') hintEl.textContent = 'Click on the map to place a point';
+    else if (geomType === 'LINESTRING') hintEl.textContent = 'Click points to draw a line, double-click to finish';
+    else if (geomType === 'POLYGON') hintEl.textContent = 'Click points to draw a polygon, click first point or double-click to close';
+    else hintEl.textContent = 'Use the toolbar to draw a point, line, or polygon';
+  }
+
+  // Async-load map libs and initialize map
+  loadMapLibs().then(({ maplibregl, MapboxDraw }) => {
+    if (!cardEl.isConnected) return; // user navigated away
+
+    const initial = geometryBounds(value);
+    const mapOptions = {
+      container: mapEl,
+      style: BASEMAP_STYLE,
+      attributionControl: { compact: true },
+    };
+    if (initial.bounds) {
+      mapOptions.bounds = initial.bounds;
+      mapOptions.fitBoundsOptions = { padding: 40, maxZoom: 17, minZoom: 2 };
+    } else {
+      mapOptions.center = initial.center;
+      mapOptions.zoom = initial.zoom;
+    }
+    map = new maplibregl.Map(mapOptions);
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+
+    map.on('load', () => {
+      // Add a source/layer for the geometry rendering (used in view mode and as initial in edit mode)
+      const renderValue = value ? geomTo2D(value) : null;
+      map.addSource('feature', {
+        type: 'geojson',
+        data: renderValue ? { type: 'Feature', geometry: renderValue, properties: {} } : { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'feature-fill', type: 'fill', source: 'feature',
+        filter: ['==', '$type', 'Polygon'],
+        paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.3 }
+      });
+      map.addLayer({
+        id: 'feature-line', type: 'line', source: 'feature',
+        filter: ['in', '$type', 'LineString', 'Polygon'],
+        paint: { 'line-color': '#2563eb', 'line-width': 2 }
+      });
+      map.addLayer({
+        id: 'feature-point', type: 'circle', source: 'feature',
+        filter: ['==', '$type', 'Point'],
+        paint: { 'circle-radius': 6, 'circle-color': '#3b82f6', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }
+      });
+
+      if (mode !== 'edit') return;
+
+      // 3D edit warning
+      if (is3D && value) {
+        const ok = confirm('This field has 3D geometry. Editing on a 2D map will discard Z (height) values. Continue?');
+        if (!ok) {
+          // Block editing — replace map with a banner
+          mapEl.innerHTML = `<div class="gc-empty">3D editing not supported. Use GeoJSON below to preserve Z.</div>`;
+          return;
+        }
+      }
+
+      // Set up Mapbox Draw
+      const cfg = drawConfigFor(geomType);
+      draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: cfg.controls,
+        defaultMode: 'simple_select',
+      });
+      map.addControl(draw, 'top-left');
+
+      // Hide our static feature layer when draw is active (Draw renders its own)
+      map.setLayoutProperty('feature-fill', 'visibility', 'none');
+      map.setLayoutProperty('feature-line', 'visibility', 'none');
+      map.setLayoutProperty('feature-point', 'visibility', 'none');
+
+      // Seed Draw with existing value
+      if (value) {
+        const drawValue = geomTo2D(value);
+        draw.add({ type: 'Feature', geometry: drawValue, properties: {} });
+      } else if (cfg.drawMode) {
+        // Auto-enter draw mode when empty + single-type
+        setTimeout(() => { try { draw.changeMode(cfg.drawMode); } catch (e) {} }, 100);
+      }
+
+      const syncFromDraw = () => {
+        const features = draw.getAll().features;
+        // For single-geometry fields, only keep the latest one
+        if (features.length > 1) {
+          const latest = features[features.length - 1];
+          features.slice(0, -1).forEach(f => draw.delete(f.id));
+          syncFromDrawFeature(latest.geometry);
+        } else if (features.length === 1) {
+          syncFromDrawFeature(features[0].geometry);
+        } else {
+          syncFromDrawFeature(null);
+        }
+      };
+      const syncFromDrawFeature = (geo) => {
+        if (_syncing) return;
+        _syncing = true;
+        // Preserve original Z if the topology is unchanged (best-effort: not implemented in Phase 1, drop Z)
+        currentValue = geo ? { ...geo } : null;
+        if (document.activeElement !== textarea) {
+          textarea.value = currentValue ? JSON.stringify(currentValue, null, 2) : '';
+        }
+        errorEl.textContent = '';
+        if (hintEl) hintEl.style.display = currentValue ? 'none' : '';
+        onChange?.(currentValue);
+        _syncing = false;
+      };
+      map.on('draw.create', syncFromDraw);
+      map.on('draw.update', syncFromDraw);
+      map.on('draw.delete', syncFromDraw);
+
+      // Textarea → map sync on blur
+      textarea.addEventListener('change', () => {
+        if (_syncing) return;
+        const text = textarea.value.trim();
+        try {
+          const parsed = text ? JSON.parse(text) : null;
+          errorEl.textContent = '';
+          _syncing = true;
+          // Validate basic shape
+          if (parsed && (!parsed.type || !parsed.coordinates)) {
+            throw new Error('Not a valid GeoJSON geometry (missing type/coordinates)');
+          }
+          // Validate type matches field
+          if (parsed && cfg.types.length === 1 && parsed.type !== cfg.types[0]) {
+            throw new Error(`Expected ${cfg.types[0]}, got ${parsed.type}`);
+          }
+          currentValue = parsed;
+          // Refresh draw
+          draw.deleteAll();
+          if (parsed) {
+            const draw2D = geomTo2D(parsed);
+            draw.add({ type: 'Feature', geometry: draw2D, properties: {} });
+            const b = geometryBounds(draw2D);
+            if (b.bounds) map.fitBounds(b.bounds, { padding: 40, maxZoom: 17 });
+            else if (b.center) map.flyTo({ center: b.center, zoom: b.zoom });
+          }
+          if (hintEl) hintEl.style.display = parsed ? 'none' : '';
+          onChange?.(parsed);
+          _syncing = false;
+        } catch (e) {
+          errorEl.textContent = 'Invalid JSON: ' + e.message;
+          _syncing = false;
+        }
+      });
+    });
+
+    map.on('error', (e) => {
+      console.warn('[GeometryCard] map error', e?.error?.message || e);
+    });
+  }).catch(err => {
+    // Library load failed — fall back to JSON-only
+    console.warn('[GeometryCard] map libs failed', err);
+    cardEl.querySelector('.gc-body').insertAdjacentHTML('afterbegin',
+      `<div class="gc-error">Could not load map (${err.message}). Edit GeoJSON below.</div>`);
+    if (mapEl) mapEl.style.display = 'none';
+    if (hintEl) hintEl.style.display = 'none';
+    cardEl.querySelector('.gc-advanced').setAttribute('open', '');
+    if (mode === 'edit') {
+      textarea.addEventListener('change', () => {
+        try {
+          const parsed = textarea.value.trim() ? JSON.parse(textarea.value) : null;
+          errorEl.textContent = '';
+          currentValue = parsed;
+          onChange?.(parsed);
+        } catch (e) { errorEl.textContent = 'Invalid JSON: ' + e.message; }
+      });
+    }
+  });
+
+  return instance;
+}
 function setBreadcrumb(...parts) {
   $('breadcrumb').innerHTML = parts.map((p, i) =>
     i < parts.length - 1
@@ -727,6 +1104,9 @@ function navWorkflow(target) {
 }
 
 async function router() {
+  // Release any active geometry maps before re-rendering (prevents WebGL leaks)
+  __cleanupGeometryCards();
+
   const hash = location.hash.slice(1) || 'dashboard';
   const parts = hash.split('/');
 
@@ -1143,7 +1523,7 @@ async function viewEntityDetail(main, entityId) {
         <h4 style="margin:0 0 8px;font-size:14px;color:var(--muted)">Properties</h4>
         <div id="entity-props-display"></div>
         <h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">Geometry</h4>
-        <div id="entity-geometry-display">${e.geometry ? `<div style="font-size:13px;margin-bottom:4px"><span class="badge badge-none">${e.geometry.type}</span> <span style="color:var(--muted)">${e.geometry.type === 'Point' ? `[${e.geometry.coordinates[0]}, ${e.geometry.coordinates[1]}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(e.geometry, null, 2)}</pre>` : '<span style="color:var(--muted)">None</span>'}</div>
+        <div id="entity-geometry-display"><div style="color:var(--muted);font-size:13px">Loading geometry…</div></div>
       </div>
     </div>
     <div class="meta-sidebar">
@@ -1179,18 +1559,23 @@ async function viewEntityDetail(main, entityId) {
           <div style="font-size:14px">${display}</div>
         </div>`;
       }).join('');
-      // Update geometry display from properties (geometry-as-field)
+      // Update geometry display from properties (geometry-as-field) — uses inline map cards
       const geoDisplay = $('entity-geometry-display');
       if (geoDisplay) {
         const geoFields = getSchemaGeometryFields(schema);
         if (geoFields.length) {
-          geoDisplay.innerHTML = geoFields.map(gf => {
-            const gv = e.properties?.[gf.key];
+          geoDisplay.innerHTML = geoFields.map(gf =>
+            `<div class="gc-mount" data-field-key="${gf.key}"></div>`
+          ).join('');
+          geoFields.forEach(gf => {
+            const mountEl = geoDisplay.querySelector(`.gc-mount[data-field-key="${gf.key}"]`);
+            if (!mountEl) return;
+            const gv = e.properties?.[gf.key] || null;
             const isPrimary = gf.key === schema.primaryGeometryField;
-            const primaryBadge = isPrimary ? ' <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff;margin-left:6px">PRIMARY</span>' : '';
-            if (!gv) return `<div style="font-size:13px;color:var(--muted)">${gf.label || gf.key}${primaryBadge}: None</div>`;
-            return `<div style="font-size:13px;margin-bottom:4px"><strong>${gf.label || gf.key}</strong>${primaryBadge} <span class="badge badge-none">${gv.type || gf.geometryType}</span>${gf.geometryIs3D ? ' <span style="font-size:11px;color:var(--muted)">3D</span>' : ''} <span style="color:var(--muted)">${gv.type === 'Point' ? `[${gv.coordinates[0]}, ${gv.coordinates[1]}${gv.coordinates[2] !== undefined ? ', ' + gv.coordinates[2] : ''}]` : ''}</span></div><pre style="max-height:200px;overflow:auto">${JSON.stringify(gv, null, 2)}</pre>`;
-          }).join('');
+            renderGeometryCard({ field: gf, value: gv, mode: 'view', isPrimary, containerEl: mountEl });
+          });
+        } else {
+          geoDisplay.innerHTML = '<div style="color:var(--muted);font-size:13px">No geometry fields defined for this model.</div>';
         }
       }
       // Show any extra properties not in schema
@@ -1210,6 +1595,20 @@ async function viewEntityDetail(main, entityId) {
     }
   } else {
     propsEl.innerHTML = `<pre>${JSON.stringify(e.properties, null, 2)}</pre>`;
+    // Without schema, render a single synthesized geometry card for e.geometry if present
+    const geoDisplay = $('entity-geometry-display');
+    if (geoDisplay) {
+      if (e.geometry) {
+        geoDisplay.innerHTML = '<div class="gc-mount" data-field-key="geometry"></div>';
+        const mountEl = geoDisplay.querySelector('.gc-mount');
+        renderGeometryCard({
+          field: { key: 'geometry', label: 'Geometry', geometryType: e.geometry.type?.toUpperCase() || 'MIXED', geometrySrid: 4326, geometryIs3D: false },
+          value: e.geometry, mode: 'view', isPrimary: true, containerEl: mountEl
+        });
+      } else {
+        geoDisplay.innerHTML = '<span style="color:var(--muted)">None</span>';
+      }
+    }
   }
 
   // ── Status change ──
@@ -1284,19 +1683,12 @@ async function viewEntityDetail(main, entityId) {
           <button class="btn btn-outline btn-sm" id="ef-cancel">Cancel</button>
         </div>`;
 
+        // Track geometry field values via map cards (vs DOM inputs)
+        const formGeoState = {};
         // Dynamic form fields (including geometry fields)
         for (const f of schema.fields) {
           if (f.fieldType === 'geometry') {
-            // Geometry fields: POINT → lon/lat inputs, others → GeoJSON textarea
-            const geomType = f.geometryType || 'MIXED';
-            formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''} <span class="badge badge-none" style="font-size:10px">${geomType}</span></label>`;
-            if (geomType === 'POINT' || geomType === 'MIXED') {
-              formHtml += `<div class="form-row"><div class="form-group"><label style="font-size:12px">Longitude</label><input id="ef-geo-lon-${f.key}" type="number" step="any"></div><div class="form-group"><label style="font-size:12px">Latitude</label><input id="ef-geo-lat-${f.key}" type="number" step="any"></div></div>`;
-              if (geomType === 'MIXED') formHtml += `<div style="font-size:11px;color:var(--muted);margin-top:4px">For non-Point geometry:</div><textarea id="ef-geo-json-${f.key}" rows="3" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea>`;
-            } else {
-              formHtml += `<textarea id="ef-geo-json-${f.key}" rows="4" placeholder='{"type":"${geomType === 'POLYGON' ? 'Polygon' : geomType === 'LINESTRING' ? 'LineString' : 'Geometry'}","coordinates":[...]}'></textarea>`;
-            }
-            formHtml += '</div>';
+            formHtml += `<div class="gc-mount" data-field-key="${f.key}"></div>`;
             continue;
           }
           formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
@@ -1342,14 +1734,18 @@ async function viewEntityDetail(main, entityId) {
           else if (f.fieldType === 'json') el.value = JSON.stringify(val, null, 2);
           else el.value = String(val);
         }
-        // Pre-fill geometry from properties (geometry-as-field)
+        // Mount geometry map cards
         for (const f of schema.fields) {
           if (f.fieldType !== 'geometry') continue;
-          const gv = e.properties?.[f.key];
-          if (!gv) continue;
-          const lonEl = $(`ef-geo-lon-${f.key}`), latEl = $(`ef-geo-lat-${f.key}`), geoEl = $(`ef-geo-json-${f.key}`);
-          if (lonEl && gv.type === 'Point' && gv.coordinates) { lonEl.value = gv.coordinates[0]; latEl.value = gv.coordinates[1]; }
-          else if (geoEl) geoEl.value = JSON.stringify(gv, null, 2);
+          const mountEl = card.querySelector(`.gc-mount[data-field-key="${f.key}"]`);
+          if (!mountEl) continue;
+          const gv = e.properties?.[f.key] || null;
+          formGeoState[f.key] = gv;
+          const isPrimary = f.key === schema.primaryGeometryField;
+          renderGeometryCard({
+            field: f, value: gv, mode: 'edit', isPrimary, containerEl: mountEl,
+            onChange: (newVal) => { formGeoState[f.key] = newVal; }
+          });
         }
 
         $('ef-cancel').onclick = () => reload();
@@ -1374,12 +1770,12 @@ async function viewEntityDetail(main, entityId) {
               }
               else { properties[f.key] = el.value || null; }
             }
-            // Collect geometry field values into properties
+            // Collect geometry field values from map cards
             for (const f of schema.fields) {
               if (f.fieldType !== 'geometry') continue;
-              const lonEl = $(`ef-geo-lon-${f.key}`), latEl = $(`ef-geo-lat-${f.key}`), geoEl = $(`ef-geo-json-${f.key}`);
-              if (lonEl?.value && latEl?.value) properties[f.key] = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
-              else if (geoEl?.value) try { properties[f.key] = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON in ' + f.key, 'error'); return; }
+              if (formGeoState[f.key] !== undefined) {
+                properties[f.key] = formGeoState[f.key];
+              }
             }
 
             const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({
@@ -1409,15 +1805,7 @@ async function viewNewRecord(main, modelKey) {
 
   for (const f of schema.fields) {
     if (f.fieldType === 'geometry') {
-      const geomType = f.geometryType || 'MIXED';
-      html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''} <span class="badge badge-none" style="font-size:10px">${geomType}</span></label>`;
-      if (geomType === 'POINT' || geomType === 'MIXED') {
-        html += `<div class="form-row"><div class="form-group"><label style="font-size:12px">Longitude</label><input id="rf-geo-lon-${f.key}" type="number" step="any" placeholder="139.7454"></div><div class="form-group"><label style="font-size:12px">Latitude</label><input id="rf-geo-lat-${f.key}" type="number" step="any" placeholder="35.6586"></div></div>`;
-        if (geomType === 'MIXED') html += `<div style="font-size:11px;color:var(--muted);margin-top:4px">For non-Point geometry:</div><textarea id="rf-geo-json-${f.key}" rows="3" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea>`;
-      } else {
-        html += `<textarea id="rf-geo-json-${f.key}" rows="4" placeholder='{"type":"${geomType === 'POLYGON' ? 'Polygon' : geomType === 'LINESTRING' ? 'LineString' : 'Geometry'}","coordinates":[...]}'></textarea>`;
-      }
-      html += '</div>';
+      html += `<div class="gc-mount" data-field-key="${f.key}"></div>`;
       continue;
     }
     html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
@@ -1441,15 +1829,26 @@ async function viewNewRecord(main, modelKey) {
   main.innerHTML = html;
   await populateReferenceSelects(main);
 
+  // Mount geometry map cards
+  const formGeoState = {};
+  for (const f of schema.fields) {
+    if (f.fieldType !== 'geometry') continue;
+    const mountEl = main.querySelector(`.gc-mount[data-field-key="${f.key}"]`);
+    if (!mountEl) continue;
+    formGeoState[f.key] = null;
+    const isPrimary = f.key === schema.primaryGeometryField;
+    renderGeometryCard({
+      field: f, value: null, mode: 'edit', isPrimary, containerEl: mountEl,
+      onChange: (newVal) => { formGeoState[f.key] = newVal; }
+    });
+  }
+
   $('rf-submit').onclick = async () => {
     try {
       const properties = {};
       for (const f of schema.fields) {
         if (f.fieldType === 'geometry') {
-          // Collect geometry field values into properties
-          const lonEl = $(`rf-geo-lon-${f.key}`), latEl = $(`rf-geo-lat-${f.key}`), geoEl = $(`rf-geo-json-${f.key}`);
-          if (lonEl?.value && latEl?.value) properties[f.key] = { type: 'Point', coordinates: [parseFloat(lonEl.value), parseFloat(latEl.value)] };
-          else if (geoEl?.value) try { properties[f.key] = JSON.parse(geoEl.value); } catch { toast('Invalid GeoJSON in ' + f.key, 'error'); return; }
+          if (formGeoState[f.key]) properties[f.key] = formGeoState[f.key];
           continue;
         }
         const el = $(`rf-${f.key}`);
