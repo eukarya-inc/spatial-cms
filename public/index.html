@@ -210,13 +210,17 @@
     /* MapLibre & Mapbox Draw control polish */
     .geometry-card .maplibregl-ctrl-group button { width: 30px; height: 30px; }
     .geometry-card .mapboxgl-ctrl-group button { width: 30px; height: 30px; }
-    /* Cursor overrides — Mapbox Draw sets these classes when entering a draw mode */
-    .geometry-card .mapboxgl-canvas-container.mouse-add,
-    .geometry-card .maplibregl-canvas-container.mouse-add { cursor: crosshair; }
-    .geometry-card .mapboxgl-canvas-container.mouse-pointer,
-    .geometry-card .maplibregl-canvas-container.mouse-pointer { cursor: pointer; }
-    .geometry-card .mapboxgl-canvas-container.mouse-move,
-    .geometry-card .maplibregl-canvas-container.mouse-move { cursor: move; }
+    /* Cursor overrides — Mapbox Draw sets mouse-* classes when entering a draw mode.
+       Use !important because MapLibre's default rule
+       .maplibregl-canvas-container.maplibregl-interactive { cursor: grab; }
+       has equal-or-higher specificity (Draw expects host to remove maplibregl-interactive
+       in draw mode, but it's hardcoded to look for mapboxgl-interactive). */
+    .geometry-card .maplibregl-canvas-container.mouse-add,
+    .geometry-card .mapboxgl-canvas-container.mouse-add { cursor: crosshair !important; }
+    .geometry-card .maplibregl-canvas-container.mouse-pointer,
+    .geometry-card .mapboxgl-canvas-container.mouse-pointer { cursor: pointer !important; }
+    .geometry-card .maplibregl-canvas-container.mouse-move,
+    .geometry-card .mapboxgl-canvas-container.mouse-move { cursor: move !important; }
   </style>
 </head>
 <body>
@@ -1694,6 +1698,8 @@ async function viewEntityDetail(main, entityId) {
         item.onclick = () => {
           const v = versions.find(x => x.id === item.dataset.vid);
           if (!v) return;
+          // Dispose any active geometry maps before replacing card DOM
+          __cleanupGeometryCards();
           const card = $('entity-main-card');
           const snap = v.snapshot || {};
           card.innerHTML = `
@@ -1716,6 +1722,10 @@ async function viewEntityDetail(main, entityId) {
   if (editBtn) {
     editBtn.onclick = async () => {
       try {
+        // Dispose view-mode geometry maps before replacing the card DOM,
+        // otherwise their MapLibre instances reference detached DOM and throw,
+        // which makes the form render fail silently.
+        __cleanupGeometryCards();
         const schema = await api(`/definitions/models/${e.modelDefinitionId}/schema`);
         const card = $('entity-main-card');
 
