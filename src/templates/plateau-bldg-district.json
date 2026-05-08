@@ -2,50 +2,121 @@
   "$schema": "https://spatial-cms.dev/template/v1.json",
   "templateVersion": "1.0.0",
   "metadata": {
-    "name": "PLATEAU Building + District",
-    "description": "Multi-model package: Buildings with district reference. Buildings belong to administrative districts.",
-    "author": "Spatial CMS",
+    "name": "PLATEAU Building District",
+    "description": "District-level building aggregation model for PLATEAU. Provides summary statistics and zoning information for urban planning and analysis.",
+    "author": "Spatial CMS Community",
     "license": "CC-BY-4.0",
-    "tags": ["plateau", "building", "district", "multi-model", "reference"]
+    "tags": ["plateau", "japan", "district", "building", "zoning", "urban_planning"]
   },
   "models": [
     {
-      "key": "p_district",
-      "name": "District",
-      "description": "Administrative district (行政区)",
-      "primaryGeometryField": "boundary",
-      "displayField": "name",
-      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "key": "plateau_bldg_district",
+      "name": "Building District",
+      "description": "District-level aggregation of PLATEAU building data with zoning and statistics",
+      "geometryType": "POLYGON",
+      "srid": 6668,
+      "displayField": "district_name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
       "fields": [
-        { "key": "code", "label": "District Code", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
-        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": true, "orderIndex": 1 },
-        { "key": "name_en", "label": "Name (English)", "fieldType": "string", "orderIndex": 2 },
-        { "key": "prefecture", "label": "Prefecture", "fieldType": "string", "orderIndex": 3 },
-        { "key": "area_sqm", "label": "Area (sqm)", "fieldType": "number", "orderIndex": 4 },
-        { "key": "boundary", "label": "Boundary", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 4326, "geometryIs3D": false, "isRequired": false, "orderIndex": 5 }
-      ]
-    },
-    {
-      "key": "p_building",
-      "name": "Building",
-      "description": "Building with district reference (bldg:Building)",
-      "primaryGeometryField": "footprint",
-      "displayField": "gml_id",
-      "governance": { "approvalMode": "manual", "publishMode": "manual" },
-      "fields": [
-        { "key": "gml_id", "label": "GML ID", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
-        { "key": "name", "label": "Name", "fieldType": "string", "orderIndex": 1 },
-        { "key": "measured_height", "label": "Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 2 },
-        { "key": "usage", "label": "Usage Code", "fieldType": "string", "orderIndex": 3 },
-        { "key": "year_built", "label": "Year Built", "fieldType": "number", "orderIndex": 4 },
-        { "key": "district", "label": "District", "fieldType": "reference", "referenceModelKey": "p_district", "orderIndex": 5 },
-        { "key": "footprint", "label": "Footprint", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 6668, "geometryIs3D": true, "isRequired": false, "orderIndex": 6 }
+        {
+          "key": "district_name",
+          "label": "District Name",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "district_code",
+          "label": "District Code",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "city_name",
+          "label": "City Name",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "prefecture",
+          "label": "Prefecture",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 3
+        },
+        {
+          "key": "zone_type",
+          "label": "Zone Type",
+          "fieldType": "enum_",
+          "enumValues": [
+            "category_1_low_rise_residential",
+            "category_2_low_rise_residential",
+            "category_1_medium_high_rise_residential",
+            "category_2_medium_high_rise_residential",
+            "category_1_residential",
+            "category_2_residential",
+            "quasi_residential",
+            "neighborhood_commercial",
+            "commercial",
+            "quasi_industrial",
+            "industrial",
+            "exclusive_industrial",
+            "undesignated"
+          ],
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "building_count",
+          "label": "Building Count",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 5
+        },
+        {
+          "key": "avg_height_m",
+          "label": "Average Building Height (m)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 6
+        },
+        {
+          "key": "total_floor_area_sqm",
+          "label": "Total Floor Area (sqm)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 7
+        },
+        {
+          "key": "building_coverage_ratio",
+          "label": "Building Coverage Ratio (%)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0, "max": 100 },
+          "orderIndex": 8
+        },
+        {
+          "key": "floor_area_ratio",
+          "label": "Floor Area Ratio (%)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 9
+        }
       ]
     }
   ],
   "dataset": {
-    "name": "PLATEAU Buildings with Districts",
-    "description": "Building dataset with administrative district references",
+    "name": "PLATEAU Building Districts",
+    "description": "District-level building statistics from PLATEAU",
     "license": "CC-BY-4.0",
     "publishToDelivery": true,
     "publishToOgc": false

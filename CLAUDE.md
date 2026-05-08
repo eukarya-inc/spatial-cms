@@ -184,6 +184,8 @@ Delete action archives entities (status → archived). Archived entities are hid
 ### Model Templates
 Templates only create models + fields (Definition Kernel). They do NOT create datasets (Publish Kernel). Template JSON files may include a `dataset` section as a recommended configuration hint, but `applyTemplate` ignores it — dataset creation is a publish decision the user must make explicitly. Apply uses `$transaction` for atomicity. GET endpoints require `manage` scope; POST /apply requires `admin`.
 
+**Bundled templates are synced from the community repo [`lavalse/spatial-cms-model-template`](https://github.com/lavalse/spatial-cms-model-template)**. The CMS bundles 11 templates across 5 categories (general / plateau / osm / municipal / gif). Files live in `src/templates/` with flat `<category>-<basename>.json` naming so the non-recursive `listBundledTemplates()` discovers them. To resync after the upstream repo updates: replace files in `src/templates/` from `https://raw.githubusercontent.com/lavalse/spatial-cms-model-template/main/templates/<category>/<file>.json` (no backend changes needed).
+
 ### CORS
 All `/api/v1/*` routes have CORS enabled (`Access-Control-Allow-Origin: *`) for external tools (viewer, workbench). Configured in `src/app.ts` before route registration.
 
