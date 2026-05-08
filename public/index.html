@@ -207,20 +207,26 @@
     .geometry-card .gc-badge-3d { background: #8b5cf6; color: #fff; }
     .geometry-card .gc-badge-type { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
     .geometry-card .gc-badge-srid { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
-    /* MapLibre & Mapbox Draw control polish */
-    .geometry-card .maplibregl-ctrl-group button { width: 30px; height: 30px; }
-    .geometry-card .mapboxgl-ctrl-group button { width: 30px; height: 30px; }
-    /* Cursor overrides — Mapbox Draw sets mouse-* classes when entering a draw mode.
-       Use !important because MapLibre's default rule
-       .maplibregl-canvas-container.maplibregl-interactive { cursor: grab; }
-       has equal-or-higher specificity (Draw expects host to remove maplibregl-interactive
-       in draw mode, but it's hardcoded to look for mapboxgl-interactive). */
-    .geometry-card .maplibregl-canvas-container.mouse-add,
-    .geometry-card .mapboxgl-canvas-container.mouse-add { cursor: crosshair !important; }
-    .geometry-card .maplibregl-canvas-container.mouse-pointer,
-    .geometry-card .mapboxgl-canvas-container.mouse-pointer { cursor: pointer !important; }
-    .geometry-card .maplibregl-canvas-container.mouse-move,
-    .geometry-card .mapboxgl-canvas-container.mouse-move { cursor: move !important; }
+    /* Custom mode toolbar above map (we drive Mapbox Draw modes ourselves
+       because Draw's built-in control buttons + cursor handling don't work
+       reliably on MapLibre 4 without forking the library). */
+    .geometry-card .gc-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+    .geometry-card .gc-tool { padding: 5px 12px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
+    .geometry-card .gc-tool:hover { background: var(--bg); }
+    .geometry-card .gc-tool.is-active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .geometry-card .gc-tool[disabled] { opacity: 0.4; cursor: not-allowed; }
+    .geometry-card .gc-tool-clear { margin-left: auto; color: var(--danger); }
+    .geometry-card .gc-tool-clear:hover { background: rgba(239,68,68,0.1); }
+    /* Cursor — explicit by mode, !important to beat MapLibre's default cursor rule */
+    .geometry-card .gc-map .maplibregl-canvas-container,
+    .geometry-card .gc-map .mapboxgl-canvas-container { cursor: grab !important; }
+    .geometry-card .gc-map .maplibregl-canvas-container:active,
+    .geometry-card .gc-map .mapboxgl-canvas-container:active { cursor: grabbing !important; }
+    .geometry-card .gc-map.is-drawing .maplibregl-canvas-container,
+    .geometry-card .gc-map.is-drawing .mapboxgl-canvas-container { cursor: crosshair !important; }
+    /* Hide Mapbox Draw's built-in toolbar — we use our own */
+    .geometry-card .mapboxgl-ctrl-group:has(.mapbox-gl-draw_ctrl-draw-btn),
+    .geometry-card .maplibregl-ctrl-group:has(.mapbox-gl-draw_ctrl-draw-btn) { display: none !important; }
   </style>
 </head>
 <body>
@@ -828,6 +834,12 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
   // Build initial JSON string for textarea
   const initialJson = value ? JSON.stringify(value, null, 2) : '';
 
+  // Toolbar buttons differ by geometry type (only valid mode shown)
+  const drawLabel = (geomType === 'POINT') ? '✏️ Place Point'
+                   : (geomType === 'LINESTRING') ? '✏️ Draw Line'
+                   : (geomType === 'POLYGON') ? '✏️ Draw Polygon'
+                   : '✏️ Draw';
+
   // Compose DOM
   containerEl.innerHTML = `
     <div class="geometry-card" data-field-key="${fieldKey}">
@@ -838,6 +850,11 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
       </div>
       <div class="gc-body">
         ${!isLatLng ? `<div class="gc-srid-warning">⚠ Map preview unavailable for EPSG:${srid}. Edit GeoJSON directly below.</div>` : ''}
+        ${isLatLng && mode === 'edit' ? `<div class="gc-toolbar">
+          <button type="button" class="gc-tool gc-tool-pan is-active" data-tool="pan" title="Pan / move map">✋ Pan</button>
+          <button type="button" class="gc-tool gc-tool-draw" data-tool="draw" title="Draw a new shape">${drawLabel}</button>
+          <button type="button" class="gc-tool gc-tool-clear" data-tool="clear" title="Remove geometry">🗑 Clear</button>
+        </div>` : ''}
         ${isLatLng ? `<div class="gc-map-wrapper"><div class="gc-map ${value ? '' : 'gc-empty'}"></div></div>` : ''}
         ${isLatLng && mode === 'edit' ? `<div class="gc-hint" style="display:${value ? 'none' : ''}"></div>` : ''}
         <details class="gc-advanced" ${!isLatLng ? 'open' : ''}>
@@ -954,16 +971,14 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
       // Apply CSS class polyfill so Mapbox Draw can find DOM elements via mapboxgl-* selectors
       applyMapboxClassPolyfill(map);
 
-      // Set up Mapbox Draw
+      // Set up Mapbox Draw — no built-in buttons, we drive modes via our own toolbar
       const cfg = drawConfigFor(geomType);
       draw = new MapboxDraw({
         displayControlsDefault: false,
-        controls: cfg.controls,
+        controls: {},
         defaultMode: 'simple_select',
       });
-      map.addControl(draw, 'top-left');
-
-      // Re-apply polyfill after addControl (new control DOM nodes also need the alias classes)
+      map.addControl(draw);
       applyMapboxClassPolyfill(map);
 
       // Hide our static feature layer when draw is active (Draw renders its own)
@@ -971,14 +986,55 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
       map.setLayoutProperty('feature-line', 'visibility', 'none');
       map.setLayoutProperty('feature-point', 'visibility', 'none');
 
-      // Seed Draw with existing value
+      // Seed Draw with existing value (always start in pan mode for clarity)
       if (value) {
         const drawValue = geomTo2D(value);
         draw.add({ type: 'Feature', geometry: drawValue, properties: {} });
-      } else if (cfg.drawMode) {
-        // Auto-enter draw mode when empty + single-type
-        setTimeout(() => { try { draw.changeMode(cfg.drawMode); } catch (e) {} }, 100);
       }
+
+      // Toolbar: Pan / Draw / Clear
+      const toolbar = cardEl.querySelector('.gc-toolbar');
+      const panBtn = toolbar?.querySelector('[data-tool="pan"]');
+      const drawBtn = toolbar?.querySelector('[data-tool="draw"]');
+      const clearBtn = toolbar?.querySelector('[data-tool="clear"]');
+
+      const setActiveTool = (tool) => {
+        toolbar?.querySelectorAll('.gc-tool').forEach(b => b.classList.remove('is-active'));
+        if (tool === 'pan') panBtn?.classList.add('is-active');
+        else if (tool === 'draw') drawBtn?.classList.add('is-active');
+        mapEl.classList.toggle('is-drawing', tool === 'draw');
+      };
+
+      const enterDrawMode = () => {
+        if (!cfg.drawMode) return;
+        // For single-feature fields, clear existing before drawing a new one
+        if (cfg.types.length === 1 && draw.getAll().features.length > 0) {
+          draw.deleteAll();
+        }
+        try { draw.changeMode(cfg.drawMode); } catch (e) { console.warn('changeMode failed', e); }
+        setActiveTool('draw');
+        if (hintEl) hintEl.style.display = '';
+      };
+      const enterPanMode = () => {
+        try { draw.changeMode('simple_select'); } catch (e) {}
+        setActiveTool('pan');
+        if (hintEl) hintEl.style.display = 'none';
+      };
+
+      panBtn?.addEventListener('click', () => enterPanMode());
+      drawBtn?.addEventListener('click', () => enterDrawMode());
+      clearBtn?.addEventListener('click', () => {
+        draw.deleteAll();
+        // sync handler will trigger and clear textarea + onChange
+        // explicitly fire because deleteAll doesn't emit draw.delete
+        currentValue = null;
+        if (document.activeElement !== textarea) textarea.value = '';
+        onChange?.(null);
+        enterPanMode();
+      });
+
+      // Initial state: Pan
+      setActiveTool('pan');
 
       const syncFromDraw = () => {
         const features = draw.getAll().features;
@@ -1006,9 +1062,15 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         onChange?.(currentValue);
         _syncing = false;
       };
-      map.on('draw.create', syncFromDraw);
+      map.on('draw.create', () => { syncFromDraw(); enterPanMode(); });
       map.on('draw.update', syncFromDraw);
       map.on('draw.delete', syncFromDraw);
+      // Mapbox Draw mode change (e.g. user pressed Esc to exit draw mode)
+      map.on('draw.modechange', (ev) => {
+        if (ev.mode === 'simple_select' || ev.mode === 'direct_select') {
+          setActiveTool('pan');
+        }
+      });
 
       // Textarea → map sync on blur
       textarea.addEventListener('change', () => {
