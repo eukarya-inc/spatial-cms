@@ -1,0 +1,125 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "Generic POI",
+    "description": "General-purpose Point of Interest model with common attributes like name, category, address, and contact information.",
+    "author": "Spatial CMS Community",
+    "license": "CC-BY-4.0",
+    "tags": ["poi", "general", "points"]
+  },
+  "models": [
+    {
+      "key": "poi_category",
+      "name": "POI Category",
+      "description": "Lookup table for POI categories",
+      "geometryType": "NONE",
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "name",
+          "label": "Category Name",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "icon",
+          "label": "Icon",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "color",
+          "label": "Color",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 2
+        }
+      ]
+    },
+    {
+      "key": "poi",
+      "name": "Point of Interest",
+      "description": "General-purpose POI with location and attributes",
+      "geometryType": "POINT",
+      "srid": 4326,
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "description",
+          "label": "Description",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "category",
+          "label": "Category",
+          "fieldType": "reference",
+          "referenceModelKey": "poi_category",
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "address",
+          "label": "Address",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 3
+        },
+        {
+          "key": "phone",
+          "label": "Phone",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "website",
+          "label": "Website",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "opening_hours",
+          "label": "Opening Hours",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "notes",
+          "label": "Notes",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 7
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "Points of Interest",
+    "description": "General-purpose POI dataset",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": true
+  }
+}

@@ -1,0 +1,218 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "自治体標準ODS - 公共施設一覧",
+    "description": "Municipal Standard Open Data Set: Public facilities (役所/公民館/図書館/学校/公園 etc.). Single-model POINT template matching the official CSV column definition (Definition A) published by デジタル庁. Field labels are the exact Japanese column names from the spec; field keys are English snake_case. Coordinates are WGS84 / EPSG:4326. Source: https://www.digital.go.jp/resources/open_data/municipal-standard-data-set-test",
+    "author": "Spatial CMS Community",
+    "license": "CC-BY-4.0",
+    "tags": ["municipal", "japan", "ods", "public-facility", "digital-agency"]
+  },
+  "models": [
+    {
+      "key": "municipal_public_facility",
+      "name": "自治体標準ODS - 公共施設一覧",
+      "description": "Public facility inventory. Covers government offices, community centers, libraries, schools, parks, and other municipally operated facilities. Each row is one facility with operating-hours, accessibility, and contact metadata. Geometry is the representative point in WGS84.",
+      "geometryType": "POINT",
+      "srid": 4326,
+      "displayField": "facility_name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "prefecture_code",
+          "label": "都道府県コード",
+          "fieldType": "string",
+          "isRequired": true,
+          "validationJson": { "pattern": "^[0-9]{2}$" },
+          "orderIndex": 0
+        },
+        {
+          "key": "municipality_code",
+          "label": "市区町村コード",
+          "fieldType": "string",
+          "isRequired": true,
+          "validationJson": { "pattern": "^[0-9]{3}$" },
+          "orderIndex": 1
+        },
+        {
+          "key": "prefecture",
+          "label": "都道府県名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 2
+        },
+        {
+          "key": "municipality",
+          "label": "市区町村名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 3
+        },
+        {
+          "key": "facility_id",
+          "label": "施設ID",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 4
+        },
+        {
+          "key": "facility_name",
+          "label": "施設名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 5
+        },
+        {
+          "key": "facility_name_kana",
+          "label": "施設名_カナ",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "facility_category",
+          "label": "施設分類",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": [
+            "庁舎",
+            "公民館",
+            "図書館",
+            "学校",
+            "保育所",
+            "幼稚園",
+            "公園",
+            "体育施設",
+            "文化施設",
+            "福祉施設",
+            "保健施設",
+            "観光施設",
+            "交通施設",
+            "その他"
+          ],
+          "orderIndex": 7
+        },
+        {
+          "key": "address",
+          "label": "住所",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 8
+        },
+        {
+          "key": "address_modifier",
+          "label": "方書",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 9
+        },
+        {
+          "key": "latitude",
+          "label": "緯度",
+          "fieldType": "number",
+          "isRequired": true,
+          "validationJson": { "minimum": 20, "maximum": 46 },
+          "orderIndex": 10
+        },
+        {
+          "key": "longitude",
+          "label": "経度",
+          "fieldType": "number",
+          "isRequired": true,
+          "validationJson": { "minimum": 122, "maximum": 154 },
+          "orderIndex": 11
+        },
+        {
+          "key": "phone_number",
+          "label": "電話番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 12
+        },
+        {
+          "key": "extension_number",
+          "label": "内線番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 13
+        },
+        {
+          "key": "corporate_number",
+          "label": "法人番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^[0-9]{13}$" },
+          "orderIndex": 14
+        },
+        {
+          "key": "organization_name",
+          "label": "団体名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 15
+        },
+        {
+          "key": "available_days",
+          "label": "利用可能曜日",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 16
+        },
+        {
+          "key": "start_time",
+          "label": "開始時間",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+          "orderIndex": 17
+        },
+        {
+          "key": "end_time",
+          "label": "終了時間",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+          "orderIndex": 18
+        },
+        {
+          "key": "description",
+          "label": "説明",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 19
+        },
+        {
+          "key": "accessibility_info",
+          "label": "バリアフリー情報",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 20
+        },
+        {
+          "key": "url",
+          "label": "URL",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 21
+        },
+        {
+          "key": "remarks",
+          "label": "備考",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 22
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "公共施設一覧",
+    "description": "自治体標準オープンデータセット - 公共施設一覧 (デジタル庁仕様準拠)",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": true
+  }
+}

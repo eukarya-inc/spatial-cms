@@ -2,32 +2,131 @@
   "$schema": "https://spatial-cms.dev/template/v1.json",
   "templateVersion": "1.0.0",
   "metadata": {
-    "name": "PLATEAU Building",
-    "description": "Building model based on PLATEAU 3D City Model Standard. Includes standard CityGML building attributes.",
-    "author": "Spatial CMS",
+    "name": "PLATEAU Building (bldg)",
+    "description": "Building model based on Japan's PLATEAU 3D city model specification (CityGML bldg module). Includes LOD attributes, structural data, and building use classification.",
+    "author": "Spatial CMS Community",
     "license": "CC-BY-4.0",
-    "tags": ["plateau", "building", "citygml", "japan", "3d"]
+    "tags": ["plateau", "japan", "3d", "building", "citygml", "bldg"]
   },
   "models": [
     {
-      "key": "plateau_building",
+      "key": "plateau_bldg",
       "name": "PLATEAU Building",
-      "description": "Building features from PLATEAU 3D city model (bldg:Building)",
-      "primaryGeometryField": "footprint",
-      "displayField": "gml_id",
-      "governance": { "approvalMode": "manual", "publishMode": "manual" },
+      "description": "Building model following PLATEAU/CityGML bldg specification",
+      "geometryType": "POLYGON",
+      "is3D": true,
+      "srid": 6668,
+      "displayField": "bldg_name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
       "fields": [
-        { "key": "gml_id", "label": "GML ID", "fieldType": "string", "isRequired": true, "orderIndex": 0 },
-        { "key": "name", "label": "Name", "fieldType": "string", "isRequired": false, "orderIndex": 1 },
-        { "key": "usage", "label": "Usage Code", "fieldType": "string", "isRequired": false, "orderIndex": 2 },
-        { "key": "usage_label", "label": "Usage Label", "fieldType": "string", "isRequired": false, "orderIndex": 3 },
-        { "key": "measured_height", "label": "Measured Height (m)", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 4 },
-        { "key": "storeys_above_ground", "label": "Storeys Above Ground", "fieldType": "number", "validationJson": { "min": 0 }, "orderIndex": 5 },
-        { "key": "year_of_construction", "label": "Year of Construction", "fieldType": "number", "orderIndex": 6 },
-        { "key": "roof_type", "label": "Roof Type", "fieldType": "string", "isRequired": false, "orderIndex": 7 },
-        { "key": "lod", "label": "LoD Level", "fieldType": "string", "isRequired": false, "orderIndex": 8 },
-        { "key": "footprint", "label": "Footprint", "fieldType": "geometry", "geometryType": "POLYGON", "geometrySrid": 6668, "geometryIs3D": true, "isRequired": false, "orderIndex": 9 }
+        {
+          "key": "gml_id",
+          "label": "GML ID",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "bldg_name",
+          "label": "Building Name",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 1
+        },
+        {
+          "key": "bldg_usage",
+          "label": "Building Usage",
+          "fieldType": "enum_",
+          "enumValues": [
+            "residential", "commercial", "industrial",
+            "public_facility", "transportation", "storage",
+            "agriculture", "unknown", "other"
+          ],
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "measured_height",
+          "label": "Measured Height (m)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 3
+        },
+        {
+          "key": "storeys_above",
+          "label": "Storeys Above Ground",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 4
+        },
+        {
+          "key": "storeys_below",
+          "label": "Storeys Below Ground",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 5
+        },
+        {
+          "key": "year_of_construction",
+          "label": "Year of Construction",
+          "fieldType": "number",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "roof_type",
+          "label": "Roof Type",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 7
+        },
+        {
+          "key": "lod",
+          "label": "LOD Level",
+          "fieldType": "enum_",
+          "enumValues": ["0", "1", "2", "3", "4"],
+          "isRequired": false,
+          "orderIndex": 8
+        },
+        {
+          "key": "total_floor_area",
+          "label": "Total Floor Area (sqm)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "min": 0 },
+          "orderIndex": 9
+        },
+        {
+          "key": "building_structure",
+          "label": "Building Structure",
+          "fieldType": "enum_",
+          "enumValues": [
+            "wood", "steel", "rc", "src", "masonry", "other"
+          ],
+          "isRequired": false,
+          "orderIndex": 10
+        },
+        {
+          "key": "fireproof_class",
+          "label": "Fireproof Structure Class",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 11
+        }
       ]
     }
-  ]
+  ],
+  "dataset": {
+    "name": "PLATEAU Buildings",
+    "description": "3D building data from Japan's PLATEAU project (CityGML bldg module)",
+    "license": "CC-BY-4.0",
+    "publishToDelivery": true,
+    "publishToOgc": false
+  }
 }

@@ -1,0 +1,436 @@
+{
+  "$schema": "https://spatial-cms.dev/template/v1.json",
+  "templateVersion": "1.0.0",
+  "metadata": {
+    "name": "GIF Spatial Core (Address / Facility / Building / Land)",
+    "description": "GIF (Government Interoperability Framework) reference model for spatial entities. Defines a normalized Address as a shared lookup, then Facility (POINT), Building (POLYGON), and Land (POLYGON), all referencing Address. Demonstrates the multi-model + reference pattern. Source: JDA-DM/GIF v2.3 Core Data Model XSD (https://github.com/JDA-DM/GIF). Field labels are Japanese to match the official specification; per-field English notes live in this top-level description and in each model description.",
+    "author": "Spatial CMS Community",
+    "license": "CC0-1.0",
+    "tags": ["gif", "japan", "reference-model", "address", "facility", "building", "land", "multi-model"]
+  },
+  "models": [
+    {
+      "key": "gif_address",
+      "name": "GIF Address (住所)",
+      "description": "Normalized Address lookup based on GIF Address class. Carries prefecture/municipality codes (JIS X 0401/0402), administrative hierarchy, postal code, and a denormalized full address string. Referenced by gif_facility / gif_building / gif_land via reference fields. GIF defines 7 mandatory patterns (MP01-MP07) for different address types; this model accepts any pattern by making non-key components optional.",
+      "geometryType": "NONE",
+      "displayField": "full_address",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "local_government_code",
+          "label": "全国地方公共団体コード",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^[0-9]{6}$" },
+          "orderIndex": 0
+        },
+        {
+          "key": "prefecture_code",
+          "label": "都道府県コード",
+          "fieldType": "string",
+          "isRequired": true,
+          "validationJson": { "pattern": "^[0-9]{2}$" },
+          "orderIndex": 1
+        },
+        {
+          "key": "municipality_code",
+          "label": "市区町村コード",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^[0-9]{3}$" },
+          "orderIndex": 2
+        },
+        {
+          "key": "prefecture",
+          "label": "都道府県名",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 3
+        },
+        {
+          "key": "city_and_county",
+          "label": "市区町村名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "street_address",
+          "label": "町名・番地",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "city_block",
+          "label": "丁目・番・号",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "building_name_etc",
+          "label": "建物名等",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 7
+        },
+        {
+          "key": "postal_code",
+          "label": "郵便番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "validationJson": { "pattern": "^[0-9]{3}-?[0-9]{4}$" },
+          "orderIndex": 8
+        },
+        {
+          "key": "full_address",
+          "label": "住所(全体)",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 9
+        },
+        {
+          "key": "country",
+          "label": "国名",
+          "fieldType": "string",
+          "isRequired": false,
+          "defaultValue": "日本",
+          "orderIndex": 10
+        }
+      ]
+    },
+    {
+      "key": "gif_facility",
+      "name": "GIF Facility (施設)",
+      "description": "GIF Facility class: a place where services are provided to the public (hospital, library, government office, park, community center, etc.). Geometry is the representative point. References gif_address for normalized location.",
+      "geometryType": "POINT",
+      "srid": 4326,
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "facility_id",
+          "label": "施設ID",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 0
+        },
+        {
+          "key": "type_information",
+          "label": "施設種別",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": [
+            "病院",
+            "診療所",
+            "図書館",
+            "学校",
+            "保育所",
+            "公民館",
+            "公園",
+            "役所",
+            "消防署",
+            "警察署",
+            "郵便局",
+            "駅",
+            "観光案内所",
+            "その他"
+          ],
+          "orderIndex": 1
+        },
+        {
+          "key": "name",
+          "label": "名称",
+          "fieldType": "string",
+          "isRequired": true,
+          "orderIndex": 2
+        },
+        {
+          "key": "name_kana",
+          "label": "名称カナ",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 3
+        },
+        {
+          "key": "name_en",
+          "label": "名称(英語)",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "alternate_name",
+          "label": "別名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "description",
+          "label": "説明",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "address",
+          "label": "住所",
+          "fieldType": "reference",
+          "referenceModelKey": "gif_address",
+          "isRequired": true,
+          "orderIndex": 7
+        },
+        {
+          "key": "access_method",
+          "label": "アクセス方法",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 8
+        },
+        {
+          "key": "parking_status",
+          "label": "駐車場状況",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": ["あり", "なし", "有料", "限定", "不明"],
+          "orderIndex": 9
+        },
+        {
+          "key": "phone_number",
+          "label": "電話番号",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 10
+        },
+        {
+          "key": "email",
+          "label": "メールアドレス",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 11
+        },
+        {
+          "key": "website_url",
+          "label": "ウェブサイトURL",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 12
+        }
+      ]
+    },
+    {
+      "key": "gif_building",
+      "name": "GIF Building (建物)",
+      "description": "GIF Building class: a constructed structure occupying a footprint. Geometry is the building outline polygon. May appear at multiple addresses (entrances, wings); we model the primary address as a single reference. For 3D forms or LOD-aware geometry use the plateau/bldg.json template instead.",
+      "geometryType": "POLYGON",
+      "srid": 4326,
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "building_id",
+          "label": "建物ID",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 0
+        },
+        {
+          "key": "type_information",
+          "label": "建物種別",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": [
+            "住宅",
+            "共同住宅",
+            "店舗",
+            "事務所",
+            "工場",
+            "倉庫",
+            "学校",
+            "病院",
+            "公共施設",
+            "宗教施設",
+            "その他"
+          ],
+          "orderIndex": 1
+        },
+        {
+          "key": "name",
+          "label": "建物名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "name_kana",
+          "label": "建物名カナ",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 3
+        },
+        {
+          "key": "name_en",
+          "label": "建物名(英語)",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "alternate_name",
+          "label": "別名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "description",
+          "label": "説明",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "address",
+          "label": "住所",
+          "fieldType": "reference",
+          "referenceModelKey": "gif_address",
+          "isRequired": true,
+          "orderIndex": 7
+        },
+        {
+          "key": "remarks",
+          "label": "備考",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 8
+        }
+      ]
+    },
+    {
+      "key": "gif_land",
+      "name": "GIF Land (土地)",
+      "description": "GIF Land class: a parcel of land identified by an address (or cadastral identifier). Geometry is the parcel polygon. Carries land use classification, area in square meters, and topography description. References gif_address.",
+      "geometryType": "POLYGON",
+      "srid": 4326,
+      "displayField": "name",
+      "governance": {
+        "approvalMode": "manual",
+        "publishMode": "manual"
+      },
+      "fields": [
+        {
+          "key": "land_id",
+          "label": "土地ID",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 0
+        },
+        {
+          "key": "usage",
+          "label": "用途",
+          "fieldType": "enum_",
+          "isRequired": false,
+          "enumValues": [
+            "宅地",
+            "農地",
+            "山林",
+            "原野",
+            "牧場",
+            "池沼",
+            "鉱泉地",
+            "雑種地",
+            "公衆用道路",
+            "公園",
+            "学校用地",
+            "その他"
+          ],
+          "orderIndex": 1
+        },
+        {
+          "key": "name",
+          "label": "名称",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 2
+        },
+        {
+          "key": "name_kana",
+          "label": "名称カナ",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 3
+        },
+        {
+          "key": "name_en",
+          "label": "名称(英語)",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 4
+        },
+        {
+          "key": "alternate_name",
+          "label": "別名",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 5
+        },
+        {
+          "key": "description",
+          "label": "説明",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 6
+        },
+        {
+          "key": "address",
+          "label": "住所",
+          "fieldType": "reference",
+          "referenceModelKey": "gif_address",
+          "isRequired": true,
+          "orderIndex": 7
+        },
+        {
+          "key": "area_sqm",
+          "label": "面積(㎡)",
+          "fieldType": "number",
+          "isRequired": false,
+          "validationJson": { "minimum": 0 },
+          "orderIndex": 8
+        },
+        {
+          "key": "topography",
+          "label": "地形",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 9
+        },
+        {
+          "key": "land_form_image_url",
+          "label": "地形画像URL",
+          "fieldType": "string",
+          "isRequired": false,
+          "orderIndex": 10
+        }
+      ]
+    }
+  ],
+  "dataset": {
+    "name": "GIF Spatial Core",
+    "description": "GIF reference dataset for spatial entities (Address, Facility, Building, Land)",
+    "license": "CC0-1.0",
+    "publishToDelivery": true,
+    "publishToOgc": true
+  }
+}
