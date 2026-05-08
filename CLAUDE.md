@@ -49,6 +49,9 @@ Interactive TUI or CLI for managing all services:
 ./dev.sh restart [service]     # Restart all or one service
 ./dev.sh status                # Show status table
 ./dev.sh logs <service>        # Tail logs
+./dev.sh deploy-prod         # Deploy master → AWS production
+./dev.sh prod-status         # Check production health
+./dev.sh prod-logs [service] # Tail production logs (default: cms)
 ```
 
 Services: `db` `keycloak` `directus` `cms` `viewer` `workbench`
