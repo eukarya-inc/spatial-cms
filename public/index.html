@@ -188,37 +188,28 @@
       .detail-grid { grid-template-columns: 1fr; }
     }
 
-    /* Template Gallery — master-detail layout */
+    /* Template Gallery */
     .tpl-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
     .tpl-tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); white-space: nowrap; user-select: none; }
     .tpl-tab:hover { color: var(--text); }
     .tpl-tab.is-active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
-    .tpl-layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
     .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
     .tpl-card { padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--surface); transition: border-color 0.1s, background 0.1s; min-height: 100px; display: flex; flex-direction: column; gap: 4px; }
     .tpl-card:hover { border-color: var(--primary); }
-    .tpl-card.is-selected { border-color: var(--primary); background: rgba(59,130,246,0.06); box-shadow: 0 0 0 1px var(--primary); }
     .tpl-card-icon { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
     .tpl-card-title { font-size: 14px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .tpl-card-meta { font-size: 11px; color: var(--muted); }
     .tpl-card-tags { display: flex; gap: 3px; flex-wrap: wrap; margin-top: auto; }
     .tpl-card-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--bg); color: var(--muted); }
-    .tpl-detail-panel { position: sticky; top: 16px; max-height: calc(100vh - 100px); display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
-    .tpl-detail-empty { padding: 60px 24px; text-align: center; color: var(--muted); font-size: 13px; }
-    .tpl-detail-content { padding: 16px; overflow-y: auto; flex: 1; }
-    .tpl-detail-apply-bar { padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--border); }
-    .tpl-detail-apply-bar .btn { width: 100%; }
-    .tpl-detail-close { display: none; background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); padding: 4px 8px; }
-    .tpl-detail-close:hover { color: var(--text); }
-    @media (max-width: 1024px) {
-      .tpl-layout { grid-template-columns: 1fr 320px; }
-    }
-    @media (max-width: 768px) {
-      .tpl-layout { grid-template-columns: 1fr; }
-      .tpl-detail-panel { position: fixed; inset: 0; max-height: 100vh; z-index: 1000; border-radius: 0; display: none; }
-      .tpl-detail-panel.is-open { display: flex; }
-      .tpl-detail-close { display: inline-block; }
-    }
+
+    /* Template preview modal (sticky header + footer, scrollable body) */
+    .tpl-preview-card { padding: 0; max-width: 640px; max-height: 85vh; display: flex; flex-direction: column; }
+    .tpl-preview-header { padding: 20px 24px 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+    .tpl-preview-header h3 { margin: 0; font-size: 16px; line-height: 1.3; }
+    .tpl-preview-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); padding: 0 4px; line-height: 1; }
+    .tpl-preview-close:hover { color: var(--text); }
+    .tpl-preview-body { padding: 16px 24px; overflow-y: auto; flex: 1; }
+    .tpl-preview-footer { padding: 12px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface); }
   </style>
 </head>
 <body>
@@ -3952,23 +3943,11 @@ async function viewTemplateGallery(main) {
     </div>
 
     <div id="tpl-tabs" class="tpl-tabs"></div>
-
-    <div class="tpl-layout">
-      <div id="tpl-grid" class="tpl-grid"></div>
-      <div id="tpl-detail" class="tpl-detail-panel">
-        <div id="tpl-detail-body" class="tpl-detail-empty">
-          Select a template to see details.
-        </div>
-        <div id="tpl-detail-apply-bar" class="tpl-detail-apply-bar" style="display:none">
-          <button class="btn btn-primary" id="tpl-apply-btn">Use This Template</button>
-        </div>
-      </div>
-    </div>`;
+    <div id="tpl-grid" class="tpl-grid"></div>`;
 
   // Collect all tags (used as category tabs)
   const allTags = [...new Set(templates.flatMap(t => t.tags || []))].sort();
   let activeTag = '';
-  let currentSelectedId = null;
 
   const tabsEl = $('tpl-tabs');
   tabsEl.innerHTML =
@@ -4014,8 +3993,7 @@ async function viewTemplateGallery(main) {
       const tags = t.tags || [];
       const tagsHtml = tags.slice(0, 2).map(tag => `<span class="tpl-card-tag">${tag}</span>`).join('');
       const moreTags = tags.length > 2 ? `<span class="tpl-card-tag">+${tags.length - 2}</span>` : '';
-      const selectedCls = t.id === currentSelectedId ? ' is-selected' : '';
-      return `<div class="tpl-card${selectedCls}" data-tpl-card="${t.id}">
+      return `<div class="tpl-card" data-tpl-card="${t.id}">
         <div class="tpl-card-icon">${cardIcon(t)}</div>
         <div class="tpl-card-title">${t.name}</div>
         <div class="tpl-card-meta">${t.modelCount} model${t.modelCount === 1 ? '' : 's'} · ${t.fieldCount} fields</div>
@@ -4029,164 +4007,179 @@ async function viewTemplateGallery(main) {
   }
 
   async function showDetail(tplId) {
-    const panel = $('tpl-detail');
-    const body = $('tpl-detail-body');
-    const applyBar = $('tpl-detail-apply-bar');
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-card tpl-preview-card">
+      <div class="tpl-preview-header">
+        <h3>Loading…</h3>
+        <button class="tpl-preview-close" id="_tp_close" title="Close">✕</button>
+      </div>
+      <div class="tpl-preview-body" id="_tp_body">
+        <div style="color:var(--muted)">Loading template…</div>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
 
-    currentSelectedId = tplId;
-    panel.classList.add('is-open');
-    renderGrid();
-
-    body.className = 'tpl-detail-content';
-    body.innerHTML = '<div style="color:var(--muted)">Loading template...</div>';
-    applyBar.style.display = 'none';
+    let escHandler;
+    const close = () => { document.removeEventListener('keydown', escHandler); if (overlay.parentNode) document.body.removeChild(overlay); };
+    overlay.querySelector('#_tp_close').onclick = close;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    escHandler = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', escHandler);
 
     try {
       const tpl = await api('/templates/' + tplId);
       const tagsHtml = (tpl.metadata.tags || []).map(tag => `<span style="font-size:11px;padding:2px 6px;border-radius:3px;background:var(--bg);color:var(--muted)">${tag}</span>`).join(' ');
-      body.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:8px">
-          <h3 style="margin:0;font-size:16px;line-height:1.3">${tpl.metadata.name}</h3>
-          <button class="tpl-detail-close" id="tpl-detail-close-btn" title="Close">✕</button>
-        </div>
+      const card = overlay.querySelector('.tpl-preview-card');
+      overlay.querySelector('.tpl-preview-header h3').textContent = tpl.metadata.name;
+      overlay.querySelector('#_tp_body').innerHTML = `
         ${tpl.metadata.author || tpl.metadata.license ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${tpl.metadata.author ? 'By ' + tpl.metadata.author : ''}${tpl.metadata.author && tpl.metadata.license ? ' · ' : ''}${tpl.metadata.license || ''}</div>` : ''}
         ${tagsHtml ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">${tagsHtml}</div>` : ''}
         ${tpl.metadata.description ? `<div style="font-size:13px;line-height:1.5;color:var(--text);margin-bottom:14px">${tpl.metadata.description}</div>` : ''}
 
-          ${tpl.models.map(m => `
-            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:2px">${m.name} <code style="font-size:11px;color:var(--muted);font-weight:normal">${m.key}</code></div>
-              <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-                ${(() => { const gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null; return gf ? `${gf.geometryType || 'MIXED'}${gf.geometryIs3D ? ' 3D' : ''} · EPSG:${gf.geometrySrid || 4326}` : 'No geometry'; })()}
-                ${m.governance?.approvalMode === 'auto' ? ' · Auto-approve' : ''}
-              </div>
-              <table style="width:100%;font-size:12px;box-shadow:none;border-collapse:collapse">
-                <thead><tr><th style="text-align:left;padding:4px 8px;color:var(--muted)">Field</th><th style="text-align:left;padding:4px 8px;color:var(--muted)">Type</th><th style="text-align:left;padding:4px 8px;color:var(--muted)">Required</th></tr></thead>
-                <tbody>${m.fields.map(f => `
-                  <tr>
-                    <td style="padding:4px 8px"><code>${f.key}</code> <span style="color:var(--muted)">${f.label}</span></td>
-                    <td style="padding:4px 8px">${f.fieldType}${f.fieldType === 'geometry' ? ` (${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}${f.geometrySrid && f.geometrySrid !== 4326 ? ' EPSG:' + f.geometrySrid : ''})` : ''}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
-                    <td style="padding:4px 8px">${f.isRequired ? '✓' : ''}</td>
-                  </tr>
-                `).join('')}</tbody>
-              </table>
+        ${tpl.models.map(m => `
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${m.name} <code style="font-size:11px;color:var(--muted);font-weight:normal">${m.key}</code></div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+              ${(() => { const gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null; return gf ? `${gf.geometryType || 'MIXED'}${gf.geometryIs3D ? ' 3D' : ''} · EPSG:${gf.geometrySrid || 4326}` : 'No geometry'; })()}
+              ${m.governance?.approvalMode === 'auto' ? ' · Auto-approve' : ''}
             </div>
-          `).join('')}
+            <table style="width:100%;font-size:12px;box-shadow:none;border-collapse:collapse">
+              <thead><tr><th style="text-align:left;padding:3px 6px;color:var(--muted);font-weight:500">Field</th><th style="text-align:left;padding:3px 6px;color:var(--muted);font-weight:500">Type</th><th style="text-align:left;padding:3px 6px;color:var(--muted);font-weight:500;width:40px">Req.</th></tr></thead>
+              <tbody>${m.fields.map(f => `
+                <tr>
+                  <td style="padding:3px 6px"><code style="font-size:11px">${f.key}</code> <span style="color:var(--muted);font-size:11px">${f.label}</span></td>
+                  <td style="padding:3px 6px;font-size:11px">${f.fieldType}${f.fieldType === 'geometry' ? ` (${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}${f.geometrySrid && f.geometrySrid !== 4326 ? ' EPSG:' + f.geometrySrid : ''})` : ''}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
+                  <td style="padding:3px 6px">${f.isRequired ? '✓' : ''}</td>
+                </tr>
+              `).join('')}</tbody>
+            </table>
+          </div>
+        `).join('')}
 
         ${tpl.dataset ? `<div style="margin-top:14px;padding:10px;background:var(--bg);border-radius:var(--radius);font-size:12px;color:var(--muted)">Recommended dataset: <strong>${tpl.dataset.name}</strong>${tpl.dataset.license ? ' (' + tpl.dataset.license + ')' : ''} — create manually in Publish \u2192 Datasets after applying</div>` : ''}`;
 
-      const closeBtn = $('tpl-detail-close-btn');
-      if (closeBtn) closeBtn.onclick = () => panel.classList.remove('is-open');
-
-      applyBar.style.display = 'block';
-      $('tpl-apply-btn').onclick = async () => {
-        // Pre-check: detect model key conflicts
-        const existingModels = await api('/definitions/models').catch(() => []);
-        const existingKeys = new Set(existingModels.map(m => m.key));
-
-        // Build grouped apply modal
-        const input = await new Promise(resolve => {
-          const overlay = document.createElement('div');
-          overlay.className = 'modal-overlay';
-          const modelCards = tpl.models.map(m => {
-            const conflict = existingKeys.has(m.key);
-            const _gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null;
-            const geomBadge = _gf
-              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${_gf.geometryType || 'MIXED'}${_gf.geometryIs3D ? ' 3D' : ''}</span>` : '';
-            const sridBadge = _gf && _gf.geometrySrid && _gf.geometrySrid !== 4326
-              ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${_gf.geometrySrid}</span>` : '';
-            const fieldCount = `<span style="font-size:11px;color:var(--muted)">${m.fields.length} fields</span>`;
-            const conflictBadge = conflict ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:#fef3c7;color:#92400e">\u26a0 key exists</span>` : '';
-            const desc = m.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.3">${m.description}</div>` : '';
-            return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--bg)">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
-                <strong style="font-size:14px">${m.name}</strong>
-                ${geomBadge}${sridBadge}${fieldCount}${conflictBadge}
-              </div>
-              ${desc}
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-                <div>
-                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Key</label>
-                  <input id="_ta_key_${m.key}" type="text" value="${m.key}" placeholder="${m.key}" style="width:100%;padding:6px 8px;border:1px solid ${conflict ? '#f59e0b' : 'var(--border)'};border-radius:4px;font-size:13px;font-family:monospace">
-                </div>
-                <div>
-                  <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Name</label>
-                  <input id="_ta_name_${m.key}" type="text" value="${m.name}" placeholder="${m.name}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
-                </div>
-              </div>
-            </div>`;
-          }).join('');
-
-          const datasetHint = tpl.dataset
-            ? `<div style="font-size:12px;color:var(--muted);padding:8px 10px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">Recommended dataset: <strong>${tpl.dataset.name}</strong> — create manually in Publish \u2192 Datasets after applying</div>`
-            : '';
-
-          overlay.innerHTML = `<div class="modal-card" style="max-width:520px">
-            <h3 style="margin:0 0 4px">Apply Template</h3>
-            <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${tpl.metadata.name} \u2014 ${tpl.models.length} model(s)</div>
-            ${modelCards}
-            ${datasetHint}
-            <div class="modal-actions">
-              <button class="btn btn-outline" id="_ta_cancel">Cancel</button>
-              <button class="btn btn-primary" id="_ta_apply">Apply</button>
-            </div>
-          </div>`;
-          document.body.appendChild(overlay);
-
-          let escHandler;
-          const close = (val) => { document.removeEventListener('keydown', escHandler); document.body.removeChild(overlay); resolve(val); };
-          overlay.querySelector('#_ta_cancel').onclick = () => close(null);
-          overlay.querySelector('#_ta_apply').onclick = () => {
-            const result = {};
-            tpl.models.forEach(m => {
-              result['key_' + m.key] = overlay.querySelector('#_ta_key_' + m.key).value;
-              result['name_' + m.key] = overlay.querySelector('#_ta_name_' + m.key).value;
-            });
-            close(result);
-          };
-          overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
-          escHandler = (e) => { if (e.key === 'Escape') close(null); };
-          document.addEventListener('keydown', escHandler);
-          setTimeout(() => {
-            overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_ta_apply').click(); }; });
-          }, 150);
-        });
-        if (!input) return;
-
-        // Validate: block if any final keys still conflict
-        const finalKeys = tpl.models.map(m => (input['key_' + m.key]?.trim()) || m.key);
-        const stillConflicting = finalKeys.filter(k => existingKeys.has(k));
-        if (stillConflicting.length) {
-          toast('Model key conflict: ' + stillConflicting.join(', ') + ' already exist. Change the keys or delete existing models first.', 'error');
-          return;
-        }
-
-        const overrides = {};
-        for (const m of tpl.models) {
-          const newKey = input['key_' + m.key]?.trim();
-          const newName = input['name_' + m.key]?.trim();
-          if (newKey && newKey !== m.key) overrides[m.key] = { key: newKey, name: newName || newKey };
-          else if (newName && newName !== m.name) overrides[m.key] = { name: newName };
-        }
-
-        try {
-          const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
-            api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId, overrides }) })
-          );
-          const msg = result.models.length + ' model(s) created';
-          toast(result.datasetHint
-            ? msg + '. Recommended dataset: create it in Publish \u2192 Datasets.'
-            : 'Template applied: ' + msg);
-          refreshModels();
-          setTimeout(() => {
-            if (result.models.length === 1) nav('define/models/' + result.models[0].id);
-            else nav('define/models');
-          }, 1500);
-        } catch (err) { toast(err.message, 'error'); }
+      const footer = document.createElement('div');
+      footer.className = 'tpl-preview-footer';
+      footer.innerHTML = `
+        <button class="btn btn-outline" id="_tp_cancel">Cancel</button>
+        <button class="btn btn-primary" id="_tp_apply">Use This Template</button>
+      `;
+      card.appendChild(footer);
+      footer.querySelector('#_tp_cancel').onclick = close;
+      footer.querySelector('#_tp_apply').onclick = () => {
+        close();
+        openApplyTemplateModal(tpl, tplId);
       };
     } catch (err) {
-      body.innerHTML = `<div style="color:var(--danger);padding:8px">Failed to load: ${err.message}</div>`;
+      overlay.querySelector('#_tp_body').innerHTML = `<div style="color:var(--danger);padding:8px">Failed to load: ${err.message}</div>`;
     }
+  }
+
+  async function openApplyTemplateModal(tpl, tplId) {
+    // Pre-check: detect model key conflicts
+    const existingModels = await api('/definitions/models').catch(() => []);
+    const existingKeys = new Set(existingModels.map(m => m.key));
+
+    // Build grouped apply modal
+    const input = await new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      const modelCards = tpl.models.map(m => {
+        const conflict = existingKeys.has(m.key);
+        const _gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null;
+        const geomBadge = _gf
+          ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${_gf.geometryType || 'MIXED'}${_gf.geometryIs3D ? ' 3D' : ''}</span>` : '';
+        const sridBadge = _gf && _gf.geometrySrid && _gf.geometrySrid !== 4326
+          ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${_gf.geometrySrid}</span>` : '';
+        const fieldCount = `<span style="font-size:11px;color:var(--muted)">${m.fields.length} fields</span>`;
+        const conflictBadge = conflict ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:#fef3c7;color:#92400e">\u26a0 key exists</span>` : '';
+        const desc = m.description ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.3">${m.description}</div>` : '';
+        return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--bg)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+            <strong style="font-size:14px">${m.name}</strong>
+            ${geomBadge}${sridBadge}${fieldCount}${conflictBadge}
+          </div>
+          ${desc}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Key</label>
+              <input id="_ta_key_${m.key}" type="text" value="${m.key}" placeholder="${m.key}" style="width:100%;padding:6px 8px;border:1px solid ${conflict ? '#f59e0b' : 'var(--border)'};border-radius:4px;font-size:13px;font-family:monospace">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Name</label>
+              <input id="_ta_name_${m.key}" type="text" value="${m.name}" placeholder="${m.name}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      const datasetHint = tpl.dataset
+        ? `<div style="font-size:12px;color:var(--muted);padding:8px 10px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">Recommended dataset: <strong>${tpl.dataset.name}</strong> — create manually in Publish \u2192 Datasets after applying</div>`
+        : '';
+
+      overlay.innerHTML = `<div class="modal-card" style="max-width:520px">
+        <h3 style="margin:0 0 4px">Apply Template</h3>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${tpl.metadata.name} \u2014 ${tpl.models.length} model(s)</div>
+        ${modelCards}
+        ${datasetHint}
+        <div class="modal-actions">
+          <button class="btn btn-outline" id="_ta_cancel">Cancel</button>
+          <button class="btn btn-primary" id="_ta_apply">Apply</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+
+      let escHandler;
+      const close = (val) => { document.removeEventListener('keydown', escHandler); document.body.removeChild(overlay); resolve(val); };
+      overlay.querySelector('#_ta_cancel').onclick = () => close(null);
+      overlay.querySelector('#_ta_apply').onclick = () => {
+        const result = {};
+        tpl.models.forEach(m => {
+          result['key_' + m.key] = overlay.querySelector('#_ta_key_' + m.key).value;
+          result['name_' + m.key] = overlay.querySelector('#_ta_name_' + m.key).value;
+        });
+        close(result);
+      };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+      escHandler = (e) => { if (e.key === 'Escape') close(null); };
+      document.addEventListener('keydown', escHandler);
+      setTimeout(() => {
+        overlay.querySelectorAll('input').forEach(inp => { inp.onkeydown = (e) => { if (e.key === 'Enter') overlay.querySelector('#_ta_apply').click(); }; });
+      }, 150);
+    });
+    if (!input) return;
+
+    // Validate: block if any final keys still conflict
+    const finalKeys = tpl.models.map(m => (input['key_' + m.key]?.trim()) || m.key);
+    const stillConflicting = finalKeys.filter(k => existingKeys.has(k));
+    if (stillConflicting.length) {
+      toast('Model key conflict: ' + stillConflicting.join(', ') + ' already exist. Change the keys or delete existing models first.', 'error');
+      return;
+    }
+
+    const overrides = {};
+    for (const m of tpl.models) {
+      const newKey = input['key_' + m.key]?.trim();
+      const newName = input['name_' + m.key]?.trim();
+      if (newKey && newKey !== m.key) overrides[m.key] = { key: newKey, name: newName || newKey };
+      else if (newName && newName !== m.name) overrides[m.key] = { name: newName };
+    }
+
+    try {
+      const result = await withProcessingModal('Applying Template', tpl.metadata.name, () =>
+        api('/templates/apply', { method: 'POST', body: JSON.stringify({ templateId: tplId, overrides }) })
+      );
+      const msg = result.models.length + ' model(s) created';
+      toast(result.datasetHint
+        ? msg + '. Recommended dataset: create it in Publish \u2192 Datasets.'
+        : 'Template applied: ' + msg);
+      refreshModels();
+      setTimeout(() => {
+        if (result.models.length === 1) nav('define/models/' + result.models[0].id);
+        else nav('define/models');
+      }, 1500);
+    } catch (err) { toast(err.message, 'error'); }
   }
 
   renderGrid();
