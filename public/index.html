@@ -280,6 +280,17 @@
     .tpl-preview-close:hover { color: var(--text); }
     .tpl-preview-body { padding: 16px 24px; overflow-y: auto; flex: 1; }
     .tpl-preview-footer { padding: 12px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface); }
+
+    /* Model Designer field / section chrome */
+    .field-constraint-chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--bg); color: var(--muted); border: 1px solid var(--border); margin: 4px 4px 0 0; line-height: 1.4; }
+    .field-constraint-chip.is-primary { background: rgba(99,102,241,0.08); color: var(--primary); border-color: rgba(99,102,241,0.2); }
+    .field-constraint-chip.is-required { background: rgba(239,68,68,0.08); color: var(--danger); border-color: rgba(239,68,68,0.2); font-weight: 600; }
+    .field-constraint-chip code { background: transparent; padding: 0; font-size: 10px; }
+    .field-section-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .field-section-label:first-child { margin-top: 0; }
+    .md-section { border-left: 4px solid var(--border); }
+    .md-section.is-primary { border-left-color: var(--primary); }
+    .md-section.is-warning { border-left-color: #f59e0b; }
   </style>
 </head>
 <body>
@@ -5270,7 +5281,7 @@ async function viewModelDetail(main, modelId) {
       <button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-model-btn">Delete Model</button>
     </div>
 
-    <div class="card">
+    <div class="card md-section is-primary">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="margin:0">Fields</h3>
         <button class="btn btn-primary btn-sm" id="show-add-field">+ Add Field</button>
@@ -5282,6 +5293,7 @@ async function viewModelDetail(main, modelId) {
           <h4 style="font-size:15px">New Field</h4>
           <button class="btn btn-ghost btn-sm" id="cancel-add-field" style="color:var(--muted)">Cancel</button>
         </div>
+        <div class="field-section-label" style="margin-top:0">Identity</div>
         <div class="form-row">
           <div class="form-group"><label>Key <span style="color:var(--danger)">*</span></label><input id="af-key" placeholder="e.g. name, height, category" style="font-family:monospace"></div>
           <div class="form-group"><label>Display Label <span style="color:var(--danger)">*</span></label><input id="af-label" placeholder="e.g. Name, Height (m), Category"></div>
@@ -5312,7 +5324,7 @@ async function viewModelDetail(main, modelId) {
     </div>
 
 
-    <div class="card">
+    <div class="card md-section">
       <h3>Display Field</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which field identifies a record in lists and dropdowns.</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -5323,7 +5335,7 @@ async function viewModelDetail(main, modelId) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card md-section">
       <h3>Primary Geometry Field</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which geometry field is synced to PostGIS for spatial queries (bbox, near).</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -5335,7 +5347,7 @@ async function viewModelDetail(main, modelId) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card md-section is-warning">
       <h3>Governance Policy</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Controls how proposals for this model are processed.</p>
       <div class="form-row">
@@ -5594,63 +5606,78 @@ async function viewModelDetail(main, modelId) {
 
 function renderFieldItem(f, modelId, index) {
   const info = fieldTypeInfo[f.fieldType] || { icon: '?', color: '#999', desc: '' };
-  // Constraint pills shown inline below the field name. We surface every
-  // configured attribute so schema designers can audit at a glance.
-  const constraints = [];
-  if (f.enumValues) constraints.push(`options: ${f.enumValues.join(', ')}`);
+
+  // Build chip array for constraints + state. Each one renders as a pill below
+  // the field name so designers can scan an entire schema's rules at a glance.
+  const chips = [];
+  const typeLabel = f.fieldType === 'enum_' ? 'enum' : f.fieldType;
+  chips.push(`<span class="field-constraint-chip is-primary">${typeLabel}</span>`);
+  if (f.isRequired) {
+    chips.push(`<span class="field-constraint-chip is-required">REQUIRED</span>`);
+  }
   if (f.fieldType === 'reference' && f.referenceModelKey) {
-    constraints.push(`→ ${f.referenceModelKey}`);
+    chips.push(`<span class="field-constraint-chip">→ <code>${f.referenceModelKey}</code></span>`);
   }
   if (f.fieldType === 'geometry') {
     const parts = [];
     if (f.geometryType) parts.push(f.geometryType);
     if (f.geometryIs3D) parts.push('3D');
-    if (parts.length) constraints.push(parts.join(' '));
-    if (f.geometrySrid && f.geometrySrid !== 4326) constraints.push(`EPSG:${f.geometrySrid}`);
+    if (parts.length) chips.push(`<span class="field-constraint-chip">${parts.join(' ')}</span>`);
+    if (f.geometrySrid && f.geometrySrid !== 4326) {
+      chips.push(`<span class="field-constraint-chip">EPSG:${f.geometrySrid}</span>`);
+    }
+  }
+  if (f.enumValues?.length) {
+    chips.push(`<span class="field-constraint-chip">${f.enumValues.length} option${f.enumValues.length === 1 ? '' : 's'}</span>`);
   }
   if (f.validationJson) {
     const v = f.validationJson;
-    if (v.min !== undefined) constraints.push(`≥ ${v.min}`);
-    if (v.max !== undefined) constraints.push(`≤ ${v.max}`);
-    if (v.minLength !== undefined) constraints.push(`min ${v.minLength} chars`);
-    if (v.maxLength !== undefined) constraints.push(`max ${v.maxLength} chars`);
+    if (v.min !== undefined) chips.push(`<span class="field-constraint-chip">≥ ${v.min}</span>`);
+    if (v.max !== undefined) chips.push(`<span class="field-constraint-chip">≤ ${v.max}</span>`);
+    if (v.minLength !== undefined) chips.push(`<span class="field-constraint-chip">min ${v.minLength} chars</span>`);
+    if (v.maxLength !== undefined) chips.push(`<span class="field-constraint-chip">max ${v.maxLength} chars</span>`);
     if (v.pattern) {
       const human = humanizePattern(v.pattern);
-      constraints.push(human ? `pattern: ${human}` : `pattern: ${v.pattern}`);
+      chips.push(`<span class="field-constraint-chip">pattern: ${human || `<code>${v.pattern}</code>`}</span>`);
     }
   }
   if (f.defaultValue !== undefined && f.defaultValue !== null) {
     const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
-    constraints.push(`default: ${dv}`);
+    chips.push(`<span class="field-constraint-chip">default: <code>${dv}</code></span>`);
   }
 
-  return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
-    <div class="drag-handle" style="cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;padding:0 2px;user-select:none" title="Drag to reorder">⠿</div>
-    <div style="width:36px;height:36px;border-radius:8px;background:${info.color}15;color:${info.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${info.icon}</div>
+  return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
+    <div class="drag-handle" style="cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;padding:8px 2px 0;user-select:none" title="Drag to reorder">⠿</div>
+    <div style="width:36px;height:36px;border-radius:8px;background:${info.color}15;color:${info.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;margin-top:2px">${info.icon}</div>
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-weight:600;font-size:14px">${f.label}</span>
         <code style="font-size:12px;color:var(--muted);background:var(--bg);padding:1px 6px;border-radius:3px">${f.key}</code>
-        ${f.isRequired ? '<span style="font-size:11px;color:var(--danger);font-weight:600">REQUIRED</span>' : ''}
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">${f.fieldType === 'enum_' ? 'enum' : f.fieldType}${constraints.length ? ' &middot; ' + constraints.join(' &middot; ') : ''}</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;margin-top:2px">${chips.join('')}</div>
     </div>
-    <button class="btn btn-ghost btn-sm" data-edit-field="${f.id}" style="color:var(--primary)">Edit</button>
-    <button class="btn btn-ghost btn-sm" data-del-field="${f.id}" data-field-label="${f.label}" style="color:var(--danger)">Delete</button>
+    <div style="display:flex;gap:4px;flex-shrink:0;align-self:center">
+      <button class="btn btn-ghost btn-sm" data-edit-field="${f.id}" style="color:var(--primary)">Edit</button>
+      <button class="btn btn-ghost btn-sm" data-del-field="${f.id}" data-field-label="${f.label}" style="color:var(--danger)">Delete</button>
+    </div>
   </div>
   <div id="edit-area-${f.id}" style="display:none;background:var(--bg);border-radius:var(--radius);padding:16px;margin:-4px 0 8px;border:1px solid var(--border)">
+    <div class="field-section-label">Identity (immutable)</div>
     <div style="display:flex;gap:12px;margin-bottom:8px">
       <div style="flex:1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Key</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:13px;color:var(--muted)">${f.key}</div></div>
       <div style="flex:1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Type</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.fieldType === 'enum_' ? 'enum' : f.fieldType}</div></div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Key and type cannot be changed after creation. To change, delete this field and create a new one.</div>
+
+    <div class="field-section-label">Editable</div>
     <div class="form-row">
       <div class="form-group"><label>Label</label><input id="ef-label-${f.id}" value="${f.label}"></div>
       <div class="form-group" style="flex:0;min-width:100px"><label>Required</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="ef-req-${f.id}" ${f.isRequired ? 'checked' : ''}> Yes</label></div></div>
     </div>
     ${f.fieldType === 'enum_' ? `<div class="form-group"><label>Enum Values (comma separated)</label><input id="ef-enums-${f.id}" value="${(f.enumValues || []).join(', ')}"></div>` : ''}
+
     ${renderFieldReadOnlySummary(f)}
-    <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
+
+    <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
   </div>`;
 }
 
@@ -5687,11 +5714,11 @@ function renderFieldReadOnlySummary(f) {
   }
 
   if (!rows.length) return '';
-  return `<div style="margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
-    <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Schema constraints (read-only)</div>
-    <table style="width:100%;box-shadow:none"><tbody>${rows.join('')}</tbody></table>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">To change these, delete this field and create a new one with the desired config.</div>
-  </div>`;
+  return `<div class="field-section-label" style="margin-top:20px">Schema constraints (immutable)</div>
+    <div style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <table style="width:100%;box-shadow:none"><tbody>${rows.join('')}</tbody></table>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">To change these, delete this field and create a new one with the desired config.</div>
+    </div>`;
 }
 
 function onFieldTypeChange() {
@@ -5742,19 +5769,14 @@ function onFieldTypeChange() {
   } else if (type === 'json') {
     defaultHtml = `<textarea id="af-default" rows="2" placeholder='Optional — valid JSON, e.g. {"key":"value"}'></textarea>`;
   }
-  // Wrap each section in a labeled fieldset-style block so the user can see
-  // at a glance that the form has three parts (Identity above + these two).
+  // Wrap each section with the shared label class so the form looks uniform
+  // with the Edit panel ("EDITABLE" / "SCHEMA CONSTRAINTS" / etc.)
   const validationSection = validationHtml
-    ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-weight:600">Validation rules</div>
-         ${validationHtml}
-       </div>`
+    ? `<div class="field-section-label">Validation rules</div>${validationHtml}`
     : '';
   const defaultSection = defaultHtml
-    ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-weight:600">Default value</div>
-         <div class="form-group">${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>
-       </div>`
+    ? `<div class="field-section-label">Default value</div>
+       <div class="form-group">${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>`
     : '';
 
   extra.innerHTML = validationSection + defaultSection;
