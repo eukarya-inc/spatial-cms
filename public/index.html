@@ -5383,8 +5383,15 @@ async function viewModelDetail(main, modelId) {
     } catch (err) { toast(err.message, 'error'); }
   };
 
-  // Toggle add-field form
-  $('show-add-field').onclick = () => { $('add-field-form').style.display = 'block'; $('show-add-field').style.display = 'none'; $('af-key').focus(); };
+  // Toggle add-field form. Trigger onFieldTypeChange so type-specific inputs
+  // (Pattern, Default Value, etc.) render immediately — they live in #af-extra
+  // which is empty until that handler runs.
+  $('show-add-field').onclick = () => {
+    $('add-field-form').style.display = 'block';
+    $('show-add-field').style.display = 'none';
+    onFieldTypeChange();
+    $('af-key').focus();
+  };
   $('cancel-add-field').onclick = () => { $('add-field-form').style.display = 'none'; $('show-add-field').style.display = ''; };
 
   // Submit new field
@@ -5735,11 +5742,22 @@ function onFieldTypeChange() {
   } else if (type === 'json') {
     defaultHtml = `<textarea id="af-default" rows="2" placeholder='Optional — valid JSON, e.g. {"key":"value"}'></textarea>`;
   }
+  // Wrap each section in a labeled fieldset-style block so the user can see
+  // at a glance that the form has three parts (Identity above + these two).
+  const validationSection = validationHtml
+    ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-weight:600">Validation rules</div>
+         ${validationHtml}
+       </div>`
+    : '';
   const defaultSection = defaultHtml
-    ? `<div class="form-group"><label>Default Value</label>${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>`
+    ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-weight:600">Default value</div>
+         <div class="form-group">${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>
+       </div>`
     : '';
 
-  extra.innerHTML = validationHtml + defaultSection;
+  extra.innerHTML = validationSection + defaultSection;
 }
 
 // Live humanize feedback for the pattern input
