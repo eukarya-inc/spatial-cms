@@ -654,6 +654,75 @@ function entityDisplayName(entity, model) {
   return props.name || props.title || props.gmlid || props.key_code || entity.id?.substring(0, 12) || 'Untitled';
 }
 
+// ─── Field constraint helpers ───────────────────────
+// Best-effort turn a regex into a friendly description; null = no humanization.
+function humanizePattern(p) {
+  let m = p.match(/^\^?\[0-9\]\{(\d+)\}\$?$/);
+  if (m) return `${m[1]} digits`;
+  m = p.match(/^\^?\[0-9\]\{(\d+),(\d+)\}\$?$/);
+  if (m) return `${m[1]}–${m[2]} digits`;
+  if (/^\^?\[a-z\]\+\$?$/.test(p)) return 'lowercase letters only';
+  if (/^\^?\[A-Z\]\+\$?$/.test(p)) return 'uppercase letters only';
+  if (/^\^?\[A-Z0-9_\]\+\$?$/.test(p)) return 'uppercase letters, digits, underscores';
+  if (/^\^?\[a-z0-9_\]\+\$?$/.test(p)) return 'lowercase letters, digits, underscores';
+  if (/^\^?\[a-zA-Z0-9_\]\+\$?$/.test(p)) return 'letters, digits, underscores';
+  return null;
+}
+
+// Build the hint span for a field showing its constraints.
+function renderFieldHint(f) {
+  const v = f.validation || {};
+  const parts = [];
+  if (f.fieldType === 'string') {
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      parts.push(human ? `Format: ${human}` : `Must match <code>${v.pattern}</code>`);
+    }
+    if (v.minLength !== undefined && v.maxLength !== undefined) parts.push(`${v.minLength}–${v.maxLength} chars`);
+    else if (v.minLength !== undefined) parts.push(`min ${v.minLength} chars`);
+    else if (v.maxLength !== undefined) parts.push(`max ${v.maxLength} chars`);
+  } else if (f.fieldType === 'number') {
+    if (v.min !== undefined && v.max !== undefined) parts.push(`Range ${v.min}–${v.max}`);
+    else if (v.min !== undefined) parts.push(`≥ ${v.min}`);
+    else if (v.max !== undefined) parts.push(`≤ ${v.max}`);
+  } else if (f.fieldType === 'enum_' && f.enumValues?.length) {
+    parts.push(`One of: ${f.enumValues.join(', ')}`);
+  } else if (f.fieldType === 'geometry') {
+    const gt = f.geometryType ? `${f.geometryType}${f.geometryIs3D ? ' 3D' : ''}` : null;
+    const srid = f.geometrySrid && f.geometrySrid !== 4326 ? `EPSG:${f.geometrySrid}` : null;
+    [gt, srid].filter(Boolean).forEach(s => parts.push(s));
+  }
+  return parts.length
+    ? `<small style="display:block;font-size:11px;color:var(--muted);margin-top:4px">${parts.join(' · ')}</small>`
+    : '';
+}
+
+// Validate a single field value against its constraints. Returns null if valid,
+// or a human-readable error string otherwise.
+function validateFieldValue(f, value, hasValue) {
+  if (f.isRequired && !hasValue) return `${f.label} is required`;
+  if (!hasValue) return null;
+  const v = f.validation || {};
+  if (f.fieldType === 'string') {
+    if (typeof value !== 'string') return `${f.label} must be a string`;
+    if (v.minLength !== undefined && value.length < v.minLength) return `${f.label} must be at least ${v.minLength} characters`;
+    if (v.maxLength !== undefined && value.length > v.maxLength) return `${f.label} must be at most ${v.maxLength} characters`;
+    if (v.pattern && !new RegExp(v.pattern).test(value)) {
+      const human = humanizePattern(v.pattern);
+      return `${f.label} must match ${human || `pattern ${v.pattern}`}`;
+    }
+  } else if (f.fieldType === 'number') {
+    if (typeof value !== 'number' || isNaN(value)) return `${f.label} must be a number`;
+    if (v.min !== undefined && value < v.min) return `${f.label} must be ≥ ${v.min}`;
+    if (v.max !== undefined && value > v.max) return `${f.label} must be ≤ ${v.max}`;
+  } else if (f.fieldType === 'enum_') {
+    if (f.enumValues && !f.enumValues.includes(value)) {
+      return `${f.label} must be one of: ${f.enumValues.join(', ')}`;
+    }
+  }
+  return null;
+}
+
 // Build autocomplete reference pickers
 async function populateReferenceSelects(container) {
   const containers = (container || document).querySelectorAll('.ref-ac[data-ref-model]');
@@ -2114,11 +2183,22 @@ async function viewEntityDetail(main, entityId) {
           }
           formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
           switch (f.fieldType) {
-            case 'string': formHtml += `<input id="ef-${f.key}" type="text">`; break;
-            case 'number':
-              const min = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
-              const max = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
-              formHtml += `<input id="ef-${f.key}" type="number" step="any" ${min} ${max}>`; break;
+            case 'string': {
+              const v = f.validation || {};
+              const attrs = [
+                v.pattern ? `pattern="${v.pattern}"` : '',
+                v.maxLength !== undefined ? `maxlength="${v.maxLength}"` : '',
+                v.minLength !== undefined ? `minlength="${v.minLength}"` : '',
+              ].filter(Boolean).join(' ');
+              formHtml += `<input id="ef-${f.key}" type="text" ${attrs}>`;
+              break;
+            }
+            case 'number': {
+              const minA = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
+              const maxA = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
+              formHtml += `<input id="ef-${f.key}" type="number" step="any" ${minA} ${maxA}>`;
+              break;
+            }
             case 'boolean': formHtml += `<input id="ef-${f.key}" type="checkbox">`; break;
             case 'date': formHtml += `<input id="ef-${f.key}" type="date">`; break;
             case 'enum_': formHtml += `<select id="ef-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
@@ -2126,6 +2206,7 @@ async function viewEntityDetail(main, entityId) {
             case 'reference': formHtml += `<div class="ref-ac" id="ef-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
             default: formHtml += `<input id="ef-${f.key}" type="text">`;
           }
+          formHtml += renderFieldHint(f);
           formHtml += '</div>';
         }
 
@@ -2199,6 +2280,21 @@ async function viewEntityDetail(main, entityId) {
               }
             }
 
+            // Client-side format validation (partial update: only validate
+            // fields the user actually provided, don't enforce required).
+            const errors = [];
+            for (const f of schema.fields) {
+              const val = properties[f.key];
+              const has = val !== undefined && val !== null && val !== '';
+              if (!has) continue;
+              const err = validateFieldValue(f, val, true);
+              if (err) errors.push(err);
+            }
+            if (errors.length) {
+              toast(errors.join('; '), 'error');
+              return;
+            }
+
             const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({
               entityId: e.id,
               proposedChange: { action: 'update', data: { type: e.type, properties } }
@@ -2231,11 +2327,22 @@ async function viewNewRecord(main, modelKey) {
     }
     html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
     switch (f.fieldType) {
-      case 'string': html += `<input id="rf-${f.key}" type="text">`; break;
-      case 'number':
-        const min = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
-        const max = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
-        html += `<input id="rf-${f.key}" type="number" step="any" ${min} ${max}>`; break;
+      case 'string': {
+        const v = f.validation || {};
+        const attrs = [
+          v.pattern ? `pattern="${v.pattern}"` : '',
+          v.maxLength !== undefined ? `maxlength="${v.maxLength}"` : '',
+          v.minLength !== undefined ? `minlength="${v.minLength}"` : '',
+        ].filter(Boolean).join(' ');
+        html += `<input id="rf-${f.key}" type="text" ${attrs}>`;
+        break;
+      }
+      case 'number': {
+        const minA = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
+        const maxA = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
+        html += `<input id="rf-${f.key}" type="number" step="any" ${minA} ${maxA}>`;
+        break;
+      }
       case 'boolean': html += `<input id="rf-${f.key}" type="checkbox">`; break;
       case 'date': html += `<input id="rf-${f.key}" type="date">`; break;
       case 'enum_': html += `<select id="rf-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
@@ -2243,6 +2350,7 @@ async function viewNewRecord(main, modelKey) {
       case 'reference': html += `<div class="ref-ac" id="rf-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
       default: html += `<input id="rf-${f.key}" type="text">`;
     }
+    html += renderFieldHint(f);
     html += '</div>';
   }
 
@@ -2267,38 +2375,41 @@ async function viewNewRecord(main, modelKey) {
   $('rf-submit').onclick = async () => {
     try {
       const properties = {};
-      const missing = [];
+      const errors = [];
       for (const f of schema.fields) {
+        let value, hasValue = false;
         if (f.fieldType === 'geometry') {
-          const gv = formGeoState[f.key];
-          if (gv) properties[f.key] = gv;
-          else if (f.isRequired) missing.push(f.label);
-          continue;
-        }
-        const el = $(`rf-${f.key}`);
-        if (!el) continue;
-        let hasValue = false;
-        if (f.fieldType === 'reference') {
-          if (el._refValue) { properties[f.key] = el._refValue; hasValue = true; }
-        } else if (f.fieldType === 'boolean') {
-          // Boolean always has a value (true or false). Required just means the field exists.
-          properties[f.key] = el.checked;
-          hasValue = true;
-        } else if (f.fieldType === 'number') {
-          if (el.value !== '') { properties[f.key] = parseFloat(el.value); hasValue = true; }
-        } else if (f.fieldType === 'json') {
-          if (el.value) {
-            try { properties[f.key] = JSON.parse(el.value); hasValue = true; }
-            catch { toast('Invalid JSON in ' + f.key, 'error'); return; }
-          }
+          value = formGeoState[f.key];
+          hasValue = !!value;
+          if (hasValue) properties[f.key] = value;
         } else {
-          if (el.value) { properties[f.key] = el.value; hasValue = true; }
+          const el = $(`rf-${f.key}`);
+          if (!el) continue;
+          if (f.fieldType === 'reference') {
+            value = el._refValue;
+            hasValue = !!value;
+            if (hasValue) properties[f.key] = value;
+          } else if (f.fieldType === 'boolean') {
+            value = el.checked;
+            hasValue = true;
+            properties[f.key] = value;
+          } else if (f.fieldType === 'number') {
+            if (el.value !== '') { value = parseFloat(el.value); hasValue = true; properties[f.key] = value; }
+          } else if (f.fieldType === 'json') {
+            if (el.value) {
+              try { value = JSON.parse(el.value); hasValue = true; properties[f.key] = value; }
+              catch { toast('Invalid JSON in ' + f.key, 'error'); return; }
+            }
+          } else {
+            if (el.value) { value = el.value; hasValue = true; properties[f.key] = value; }
+          }
         }
-        if (f.isRequired && !hasValue) missing.push(f.label);
+        const err = validateFieldValue(f, value, hasValue);
+        if (err) errors.push(err);
       }
 
-      if (missing.length) {
-        toast(`Required fields missing: ${missing.join(', ')}`, 'error');
+      if (errors.length) {
+        toast(errors.join('; '), 'error');
         return;
       }
 
