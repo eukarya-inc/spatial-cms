@@ -20,6 +20,22 @@ workspaceRouter.get("/", async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/v1/workspaces/locate/{entity|model|dataset}/:id
+// Returns the workspace that owns the given record, or 404. Used by the
+// frontend to recover from cross-workspace 404s.
+workspaceRouter.get("/locate/:kind/:id", async (req, res, next) => {
+  try {
+    const kind = z.enum(["entity", "model", "dataset"]).parse(req.params.kind);
+    const id = z.string().uuid().parse(req.params.id);
+    let ws;
+    if (kind === "entity") ws = await workspaceService.locateEntity(id);
+    else if (kind === "model") ws = await workspaceService.locateModel(id);
+    else ws = await workspaceService.locateDataset(id);
+    if (!ws) return res.status(404).json({ error: `${kind} not found in any workspace` });
+    res.json({ workspace: { id: ws.id, slug: ws.slug, name: ws.name } });
+  } catch (err) { next(err); }
+});
+
 // GET /api/v1/workspaces/:slug
 workspaceRouter.get("/:slug", async (req, res, next) => {
   try {

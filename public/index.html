@@ -66,6 +66,12 @@
     .ws-menu-sep { border-top: 1px solid rgba(255,255,255,0.08); margin: 4px 0; }
     .ws-menu-action { padding: 7px 12px; font-size: 12px; color: #93c5fd; cursor: pointer; display: flex; align-items: center; gap: 6px; }
     .ws-menu-action:hover { background: rgba(255,255,255,0.06); }
+    .ws-menu-item-label { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding-right: 8px; }
+    .ws-delete-btn { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 3px; visibility: hidden; line-height: 1; flex: 0 0 auto; }
+    .ws-menu-item:hover .ws-delete-btn { visibility: visible; }
+    .ws-delete-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+    .ws-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.1); color: var(--primary); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 4px; vertical-align: middle; }
+    .ws-pill:hover { background: rgba(59,130,246,0.2); }
     .sidebar-section { padding: 16px 20px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255,255,255,0.3); }
     .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 14px; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
     .sidebar-item:hover { background: var(--sidebar-hover); }
@@ -486,13 +492,22 @@ async function renderWorkspaceSwitcher() {
   const list = await loadWorkspaces();
   const current = window.currentWorkspaceSlug || 'default';
   const found = list.find(w => w.slug === current);
-  document.getElementById('ws-current-name').textContent = found?.name || current;
+  window._currentWorkspaceName = found?.name || current;
+  document.getElementById('ws-current-name').textContent = window._currentWorkspaceName;
   const menu = document.getElementById('ws-menu');
   menu.innerHTML =
-    list.map(w => `<div class="ws-menu-item${w.slug === current ? ' is-current' : ''}" onclick="switchWorkspace('${w.slug}')">
-      <span>${w.name}</span>
-      <span class="ws-menu-item-meta">${w.slug}</span>
-    </div>`).join('') +
+    list.map(w => {
+      const deleteBtn = w.slug === 'default'
+        ? ''
+        : `<button class="ws-delete-btn" onclick="event.stopPropagation(); confirmDeleteWorkspace('${w.slug}', ${JSON.stringify(w.name)})" title="Delete workspace">✕</button>`;
+      return `<div class="ws-menu-item${w.slug === current ? ' is-current' : ''}">
+        <span class="ws-menu-item-label" onclick="switchWorkspace('${w.slug}')">
+          <span>${w.name}</span>
+          <span class="ws-menu-item-meta">${w.slug}</span>
+        </span>
+        ${deleteBtn}
+      </div>`;
+    }).join('') +
     `<div class="ws-menu-sep"></div>
      <div class="ws-menu-action" onclick="openCreateWorkspaceModal()">+ New Workspace</div>`;
 }
@@ -509,22 +524,52 @@ function closeWorkspaceMenuOnOutside() {
   document.getElementById('ws-menu')?.classList.remove('is-open');
 }
 
+function updateTabTitle() {
+  document.title = `Spatial CMS — ${window._currentWorkspaceName || 'Default'}`;
+}
+
+function isDetailRoute(hash) {
+  return /^#(manage\/(records|review|new)\/[^/]+\/.+|define\/models\/.+|publish\/datasets\/.+)/.test(hash);
+}
+
 async function switchWorkspace(slug) {
   if (slug === window.currentWorkspaceSlug) {
     document.getElementById('ws-menu').classList.remove('is-open');
     return;
   }
+  const list = await loadWorkspaces();
+  const ws = list.find(w => w.slug === slug);
+  if (!ws) return;
+
   window.currentWorkspaceSlug = slug;
   localStorage.setItem('workspace_slug', slug);
-  // Clear caches that hold workspace-bound data
-  if (window.modelCache) window.modelCache = {};
+
+  // Reset workspace-bound caches (modelCache is a let-array — must reassign correctly)
+  modelCache = [];
+  window._allEntities = null;
+  window._modelEntities = null;
+  window._modelTotal = null;
   if (window.datasetCache) window.datasetCache = {};
-  if (window._allEntities) window._allEntities = null;
-  if (window._modelEntities) window._modelEntities = null;
+
+  // Close any ghost modals (they're tied to the old workspace's data)
+  document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
+
   document.getElementById('ws-menu').classList.remove('is-open');
+
+  // Re-render sidebar + counts + tab title
   await renderWorkspaceSwitcher();
-  // Re-route to current view to refresh lists
-  router();
+  await refreshModels();
+  await refreshPendingCount();
+  updateTabTitle();
+
+  // Detail / edit routes carry IDs from the old workspace; jump to dashboard
+  // to avoid an immediate 404. List routes just re-render in place.
+  if (isDetailRoute(location.hash)) {
+    nav('dashboard');
+  } else {
+    router();
+  }
+  toast(`Switched to "${ws.name}"`);
 }
 
 async function openCreateWorkspaceModal() {
@@ -544,6 +589,51 @@ async function openCreateWorkspaceModal() {
     await switchWorkspace(result.slug.trim());
   } catch (err) {
     toast(err.message, 'error');
+  }
+}
+
+async function confirmDeleteWorkspace(slug, name) {
+  document.getElementById('ws-menu')?.classList.remove('is-open');
+  const ok = await modalConfirm(
+    `Delete workspace "${name}"?`,
+    `This will permanently delete the workspace and ALL its models, datasets, entities, proposals, and publications.\n\nThis cannot be undone.`,
+    { confirmText: 'Delete forever', danger: true },
+  );
+  if (!ok) return;
+  try {
+    await api('/workspaces/' + slug, { method: 'DELETE' });
+    toast(`Workspace "${name}" deleted`);
+    if (window.currentWorkspaceSlug === slug) {
+      await switchWorkspace('default');
+    } else {
+      await renderWorkspaceSwitcher();
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+/** Try to find which workspace owns a record so we can offer to switch. */
+async function locateInOtherWorkspace(kind, id) {
+  try {
+    const data = await api(`/workspaces/locate/${kind}/${id}`);
+    return data.workspace;
+  } catch { return null; }
+}
+
+/** Render a "this record is in another workspace" panel into a target element. */
+async function renderCrossWorkspaceNotFound(targetEl, kind, id, fallbackHtml) {
+  const ws = await locateInOtherWorkspace(kind, id);
+  if (ws && ws.slug !== window.currentWorkspaceSlug) {
+    targetEl.innerHTML = `
+      <div class="card" style="max-width:520px;margin:40px auto;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">↗</div>
+        <h3 style="margin:0 0 8px">This ${kind} lives in another workspace</h3>
+        <div style="color:var(--muted);margin-bottom:16px">It belongs to <strong>${ws.name}</strong> (${ws.slug}). Switch workspaces to view it.</div>
+        <button class="btn btn-primary" onclick="switchWorkspace('${ws.slug}')">Switch to ${ws.name}</button>
+      </div>`;
+  } else {
+    targetEl.innerHTML = fallbackHtml;
   }
 }
 
@@ -1341,7 +1431,9 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
   return instance;
 }
 function setBreadcrumb(...parts) {
-  $('breadcrumb').innerHTML = parts.map((p, i) =>
+  const wsName = window._currentWorkspaceName || 'Default';
+  const wsPill = `<span class="ws-pill" onclick="toggleWorkspaceMenu(event)" title="Click to switch workspace">${wsName}</span><span class="sep">/</span>`;
+  $('breadcrumb').innerHTML = wsPill + parts.map((p, i) =>
     i < parts.length - 1
       ? `<a onclick="${p[1]}">${p[0]}</a><span class="sep">/</span>`
       : `<span style="color:var(--text);font-weight:500">${p[0]}</span>`
@@ -1813,7 +1905,16 @@ function filterModelRecords(modelKey) {
 
 // ─── Entity Detail ─────────────────────────────────
 async function viewEntityDetail(main, entityId) {
-  const e = await api(`/entities/${entityId}`);
+  let e;
+  try {
+    e = await api(`/entities/${entityId}`);
+  } catch (err) {
+    setBreadcrumb(['Manage'], ['Records', `nav('manage/records')`], ['Not found']);
+    setActiveNav('manage/records');
+    await renderCrossWorkspaceNotFound(main, 'entity', entityId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Entity not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   setBreadcrumb(['Manage'], ['Records', `nav('manage/records')`], [e.type, `nav('manage/records/${e.type}')`], [e.properties?.name || 'Detail']);
   setActiveNav(`manage/records/${e.type}`);
 
@@ -2571,7 +2672,16 @@ async function viewDatasets(main) {
 
 // ─── Dataset Detail ────────────────────────────────
 async function viewDatasetDetail(main, datasetId) {
-  const d = await api(`/datasets/${datasetId}`);
+  let d;
+  try {
+    d = await api(`/datasets/${datasetId}`);
+  } catch (err) {
+    setBreadcrumb(['Publish'], ['Datasets', `nav('publish/datasets')`], ['Not found']);
+    setActiveNav('publish/datasets');
+    await renderCrossWorkspaceNotFound(main, 'dataset', datasetId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Dataset not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   const bindings = await api(`/definitions/datasets/${datasetId}/bindings`).catch(() => []);
   setBreadcrumb(['Publish'], ['Datasets', `nav('publish/datasets')`], [d.name]);
   setActiveNav('publish/datasets');
@@ -4934,6 +5044,20 @@ async function viewModels(main) {
         </tr>`;
       }).join('')}</tbody>`;
     main.append(t);
+  } else {
+    // Empty workspace — show a clear CTA so user knows where to start
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    const empty = h('div', { className: 'card', style: { maxWidth: '520px', margin: '40px auto', textAlign: 'center', padding: '32px 24px' } });
+    empty.innerHTML = `
+      <div style="font-size:32px;margin-bottom:8px">🗂</div>
+      <h3 style="margin:0 0 6px;font-size:18px">${wsName} is empty</h3>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Start by applying a bundled template or creating your first model from scratch.</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>
+        <button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='block'">+ New Model</button>
+      </div>
+    `;
+    main.append(empty);
   }
 }
 
@@ -4950,7 +5074,16 @@ const fieldTypeInfo = {
 };
 
 async function viewModelDetail(main, modelId) {
-  const m = await api(`/definitions/models/${modelId}`);
+  let m;
+  try {
+    m = await api(`/definitions/models/${modelId}`);
+  } catch (err) {
+    setBreadcrumb(['Define'], ['Models', `nav('define/models')`], ['Not found']);
+    setActiveNav('define/models');
+    await renderCrossWorkspaceNotFound(main, 'model', modelId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Model not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   setBreadcrumb(['Define'], ['Models', `nav('define/models')`], [m.name]);
   setActiveNav('define/models');
 
@@ -5368,6 +5501,7 @@ async function viewGovernance(main) {
 // ─── Init (called after auth completes) ────────────
 async function startApp() {
   await renderWorkspaceSwitcher();
+  updateTabTitle();
   await refreshModels();
   await refreshPendingCount();
   router();
