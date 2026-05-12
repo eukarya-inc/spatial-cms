@@ -20,10 +20,11 @@ interface ImportOptions {
  * Does NOT write anything to the database.
  */
 export async function validateBulk(
+  workspaceId: string,
   modelKey: string,
   entities: Array<{ properties: Record<string, unknown> }>,
 ) {
-  const model = await findModelDefinitionByKey(modelKey);
+  const model = await findModelDefinitionByKey(workspaceId, modelKey);
   const modelDefId = model?.id ?? null;
 
   const errors: Array<{ index: number; errors: string[] }> = [];
@@ -57,17 +58,18 @@ export async function validateBulk(
  * skipInvalid: false → if any invalid, import nothing
  */
 export async function bulkImport(
+  workspaceId: string,
   entities: ImportEntity[],
   source: "human" | "machine" | "import_" = "import_",
   options: ImportOptions = {},
 ) {
   const { skipInvalid = false } = options;
 
-  // Resolve modelDefinitionId for each entity type
+  // Resolve modelDefinitionId for each entity type (scoped to workspace)
   const modelCache: Record<string, string | null> = {};
   for (const item of entities) {
     if (!(item.type in modelCache)) {
-      const model = await findModelDefinitionByKey(item.type);
+      const model = await findModelDefinitionByKey(workspaceId, item.type);
       modelCache[item.type] = model?.id ?? null;
     }
   }
@@ -147,6 +149,7 @@ export async function bulkImport(
 
     await prisma.proposal.create({
       data: {
+        workspaceId,
         entityId: entity.id,
         proposedChange: ({
           action: "create",
@@ -176,6 +179,7 @@ export async function bulkImport(
  * Bulk proposal creation: creates multiple proposals at once.
  */
 export async function createProposalSet(
+  workspaceId: string,
   proposals: Array<{
     entityId?: string;
     proposedChange: {
@@ -189,8 +193,22 @@ export async function createProposalSet(
   }>,
   source: "human" | "machine" | "import_" = "machine",
 ) {
+  // Verify all proposal types are in this workspace (best-effort: skips ones with no type)
+  const types = [
+    ...new Set(
+      proposals
+        .map((p) => p.proposedChange?.data?.type)
+        .filter((t): t is string => !!t),
+    ),
+  ];
+  for (const t of types) {
+    const m = await findModelDefinitionByKey(workspaceId, t);
+    if (!m) throw new Error(`Model "${t}" not found in this workspace`);
+  }
+
   const created = await prisma.proposal.createManyAndReturn({
     data: proposals.map((p) => ({
+      workspaceId,
       entityId: p.entityId,
       proposedChange: p.proposedChange as object,
       source,
@@ -208,17 +226,18 @@ export async function createProposalSet(
  * This is the recommended import mode for data pipelines.
  */
 export async function governedImport(
+  workspaceId: string,
   entities: ImportEntity[],
   source: "human" | "machine" | "import_" = "machine",
   options: ImportOptions = {},
 ) {
   const { skipInvalid = false } = options;
 
-  // Resolve model for validation
+  // Resolve model for validation (scoped to workspace)
   const modelCache: Record<string, string | null> = {};
   for (const item of entities) {
     if (!(item.type in modelCache)) {
-      const model = await findModelDefinitionByKey(item.type);
+      const model = await findModelDefinitionByKey(workspaceId, item.type);
       modelCache[item.type] = model?.id ?? null;
     }
   }
@@ -257,7 +276,7 @@ export async function governedImport(
 
     // Use createProposal which handles auto-approval via GovernancePolicy
     try {
-      const proposal = await createProposal({
+      const proposal = await createProposal(workspaceId, {
         proposedChange: {
           action: "create",
           data: {

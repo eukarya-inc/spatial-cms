@@ -61,16 +61,18 @@ interface ListOptions {
   sort?: { field: string; order: "asc" | "desc" };
 }
 
-export async function listEntities(options: ListOptions = {}) {
-  const where: Record<string, unknown> = {};
+export async function listEntities(workspaceId: string, options: ListOptions = {}) {
+  const where: Record<string, unknown> = {
+    modelDefinition: { workspaceId },
+  };
   if (options.type) where.type = options.type;
   if (options.status) where.status = options.status;
   if (options.modelDefinitionId) where.modelDefinitionId = options.modelDefinitionId;
 
   // Spatial filtering: get matching IDs first, using model's SRID
   if (options.bbox || options.near) {
-    // Resolve SRID from model type if available
-    const srid = options.type ? await getSridForType(options.type) : 4326;
+    // Resolve SRID from model type if available (scoped to workspace)
+    const srid = options.type ? await getSridForType(workspaceId, options.type) : 4326;
     let spatialIds: string[];
     if (options.bbox) {
       spatialIds = await findEntitiesInBBox(options.bbox, srid);
@@ -129,11 +131,29 @@ export async function listEntities(options: ListOptions = {}) {
   };
 }
 
-export async function getEntity(id: string) {
+/** Verifies entity is in workspace; returns it or throws NotFoundError. */
+async function assertEntityInWorkspace(workspaceId: string, id: string) {
+  const entity = await prisma.entity.findUnique({
+    where: { id },
+    include: { modelDefinition: { select: { workspaceId: true } } },
+  });
+  if (!entity || entity.modelDefinition?.workspaceId !== workspaceId) {
+    throw new NotFoundError("Entity");
+  }
+  return entity;
+}
+
+export async function getEntity(workspaceId: string, id: string) {
+  const entity = await prisma.entity.findUnique({
+    where: { id },
+    include: { modelDefinition: { select: { workspaceId: true } } },
+  });
+  if (!entity || entity.modelDefinition?.workspaceId !== workspaceId) return null;
   return getEntityWithGeometry(id);
 }
 
-export async function getEntityVersions(id: string) {
+export async function getEntityVersions(workspaceId: string, id: string) {
+  await assertEntityInWorkspace(workspaceId, id);
   return prisma.entityVersion.findMany({
     where: { entityId: id },
     orderBy: { versionNumber: "desc" },
@@ -141,17 +161,15 @@ export async function getEntityVersions(id: string) {
 }
 
 /** Restore an archived entity back to active */
-export async function restoreEntity(id: string) {
-  const entity = await prisma.entity.findUnique({ where: { id } });
-  if (!entity) throw new NotFoundError("Entity");
+export async function restoreEntity(workspaceId: string, id: string) {
+  const entity = await assertEntityInWorkspace(workspaceId, id);
   if (entity.status !== "archived") throw new BusinessError("Only archived entities can be restored");
   return prisma.entity.update({ where: { id }, data: { status: "active" } });
 }
 
 /** Permanently delete an archived entity (cannot be undone) */
-export async function purgeEntity(id: string) {
-  const entity = await prisma.entity.findUnique({ where: { id } });
-  if (!entity) throw new NotFoundError("Entity");
+export async function purgeEntity(workspaceId: string, id: string) {
+  const entity = await assertEntityInWorkspace(workspaceId, id);
   if (entity.status !== "archived") throw new BusinessError("Only archived entities can be purged");
 
   // Disconnect proposals (keep audit trail but remove FK)
@@ -166,12 +184,16 @@ export async function purgeEntity(id: string) {
 // Direct entity creation is intentionally NOT exposed.
 // Entities are created/modified through the proposal system.
 // This helper is used internally by the proposal approval flow.
-export async function createEntityInternal(data: {
-  type: string;
-  modelDefinitionId?: string;
-  properties?: Record<string, unknown>;
-  status?: "draft" | "active" | "archived";
-}) {
+// workspaceId is required so model-by-key resolution stays inside the workspace.
+export async function createEntityInternal(
+  workspaceId: string,
+  data: {
+    type: string;
+    modelDefinitionId?: string;
+    properties?: Record<string, unknown>;
+    status?: "draft" | "active" | "archived";
+  },
+) {
   // Resolve modelDefinitionId from type if not provided
   let modelDefId = data.modelDefinitionId;
   let type = data.type;
@@ -180,7 +202,7 @@ export async function createEntityInternal(data: {
     const model = await prisma.modelDefinition.findUnique({ where: { id: modelDefId } });
     if (model) type = model.key;
   } else if (type) {
-    const model = await findModelDefinitionByKey(type);
+    const model = await findModelDefinitionByKey(workspaceId, type);
     if (model) modelDefId = model.id;
   }
 

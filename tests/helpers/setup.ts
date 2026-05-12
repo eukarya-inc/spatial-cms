@@ -2,7 +2,17 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-/** Clean all business data from the database (preserves schema) */
+/** Ensure a default workspace exists; return its id. */
+export async function ensureDefaultWorkspace() {
+  const existing = await prisma.workspace.findUnique({ where: { slug: "default" } });
+  if (existing) return existing.id;
+  const created = await prisma.workspace.create({
+    data: { slug: "default", name: "Default" },
+  });
+  return created.id;
+}
+
+/** Clean all business data from the database (preserves schema + default workspace) */
 export async function cleanDatabase() {
   await prisma.apiKey.deleteMany();
   await prisma.activeReleaseState.deleteMany();
@@ -16,13 +26,17 @@ export async function cleanDatabase() {
   await prisma.$executeRaw`DELETE FROM entity`;
   await prisma.fieldDefinition.deleteMany();
   await prisma.modelDefinition.deleteMany();
+  // Workspaces survive cleanup, but make sure default exists.
+  await ensureDefaultWorkspace();
 }
 
 /** Create a building model with fields for testing (unique key per call) */
 export async function createTestModel() {
+  const workspaceId = await ensureDefaultWorkspace();
   const suffix = Math.random().toString(36).substring(2, 8);
   const model = await prisma.modelDefinition.create({
     data: {
+      workspaceId,
       key: `test_building_${suffix}`,
       name: "Test Building",
       primaryGeometryField: "location",

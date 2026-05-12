@@ -73,7 +73,7 @@ describe("API Key auth and scopes", () => {
     });
     const { data: binding } = await apiRequest(`/definitions/datasets/${ds.id}/bindings`, {
       method: "POST",
-      body: { modelDefinitionId: (await prisma.modelDefinition.findUnique({ where: { key: modelKey } }))?.id },
+      body: { modelDefinitionId: (await prisma.modelDefinition.findFirst({ where: { key: modelKey } }))?.id },
       headers: { "X-API-Key": adminKey },
     });
     const { data: snap } = await apiRequest(`/datasets/${ds.id}/snapshot`, {

@@ -4,7 +4,7 @@ import {
   findEntitiesInBBox,
   findEntitiesNearPoint,
 } from "../../shared/geometry.js";
-import { getModelSchema } from "../definition/definition.service.js";
+import { getModelSchemaById } from "../definition/definition.service.js";
 
 interface ManifestItem {
   entityId: string;
@@ -349,7 +349,7 @@ export async function getPublishedModelSchema(datasetDefinitionId: string, model
   const binding = bindings.find((b) => b.modelDefinition.key === modelKey);
   if (!binding) return null;
 
-  const schema = await getModelSchema(binding.modelDefinitionId);
+  const schema = await getModelSchemaById(binding.modelDefinitionId);
   if (!schema) return null;
 
   // Apply field projection
@@ -389,7 +389,7 @@ export async function getPublishedDatasetSchema(datasetDefinitionId: string) {
   // Get schema for each bound model, applying field projection
   const models = await Promise.all(
     bindings.map(async (b) => {
-      const schema = await getModelSchema(b.modelDefinitionId);
+      const schema = await getModelSchemaById(b.modelDefinitionId);
       if (!schema) return null;
       const projection = b.projectionJson as { mode: string; fields: string[] } | null;
       if (projection?.fields?.length && schema.fields) {
@@ -403,13 +403,17 @@ export async function getPublishedDatasetSchema(datasetDefinitionId: string) {
     }),
   );
 
-  // If no bindings, try legacy entityTypes → find models by key
+  // If no bindings, try legacy entityTypes → find models by key (scoped to the
+  // dataset's workspace, since model keys are unique only per workspace now).
   if (!models.filter(Boolean).length) {
     const entityTypes = (release.datasetDefinition.entityTypes as string[] | null) ?? [];
+    const datasetWorkspaceId = release.datasetDefinition.workspaceId;
     const legacyModels = await Promise.all(
       entityTypes.map(async (key) => {
-        const model = await prisma.modelDefinition.findUnique({ where: { key } });
-        if (model) return getModelSchema(model.id);
+        const model = await prisma.modelDefinition.findUnique({
+          where: { workspaceId_key: { workspaceId: datasetWorkspaceId, key } },
+        });
+        if (model) return getModelSchemaById(model.id);
         return null;
       }),
     );

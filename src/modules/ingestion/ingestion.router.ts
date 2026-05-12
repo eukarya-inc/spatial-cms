@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as ingestionService from "./ingestion.service.js";
+import { workspaceId } from "../../shared/workspace.js";
 
 export const ingestionRouter = Router();
 
@@ -59,6 +60,7 @@ ingestionRouter.post("/validate", async (req, res, next) => {
   try {
     const data = validateSchema.parse(req.body);
     const result = await ingestionService.validateBulk(
+      workspaceId(req),
       data.modelKey,
       data.entities as any,
     );
@@ -73,6 +75,7 @@ ingestionRouter.post("/governed", async (req, res, next) => {
   try {
     const data = importSchema.parse(req.body);
     const result = await ingestionService.governedImport(
+      workspaceId(req),
       data.entities as any,
       data.source,
       data.options,
@@ -88,6 +91,7 @@ ingestionRouter.post("/import", async (req, res, next) => {
   try {
     const data = importSchema.parse(req.body);
     const result = await ingestionService.bulkImport(
+      workspaceId(req),
       data.entities as any,
       data.source,
       data.options,
@@ -103,6 +107,7 @@ ingestionRouter.post("/proposal-set", async (req, res, next) => {
   try {
     const data = proposalSetSchema.parse(req.body);
     const result = await ingestionService.createProposalSet(
+      workspaceId(req),
       data.proposals as any,
       data.source,
     );

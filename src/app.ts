@@ -14,7 +14,9 @@ import { deliveryRouter } from "./modules/delivery/delivery.router.js";
 import { ogcRouter } from "./modules/delivery/ogc.router.js";
 import { apiKeyRouter } from "./modules/api-keys/api-key.router.js";
 import { templateRouter } from "./modules/template/template.router.js";
+import { workspaceRouter } from "./modules/workspace/workspace.router.js";
 import { requireApiKey } from "./middleware/apiKeyAuth.js";
+import { resolveWorkspace } from "./shared/workspace.js";
 
 const app = express();
 
@@ -56,7 +58,7 @@ app.use("/api/v1", (
 ) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, Authorization");
+  res.header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Workspace-Key, Authorization");
   if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
   next();
 });
@@ -72,15 +74,22 @@ app.post("/api/v1/api-keys/bootstrap", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// API routes (protected by scope-based API Key)
-app.use("/api/v1/entities", requireApiKey("manage"), entityRouter);
-app.use("/api/v1/proposals", requireApiKey("manage"), proposalRouter);
-app.use("/api/v1/datasets", requireApiKey("manage"), datasetRouter);
-app.use("/api/v1/publications", requireApiKey("manage"), publicationRouter);
-app.use("/api/v1/ingestion", requireApiKey("manage"), ingestionRouter);
-app.use("/api/v1/definitions", requireApiKey("manage"), definitionRouter);
+// Workspaces — minimal scope check (everyone authed can list/get; admin to create/delete).
+// Mounted before the workspace-scoped routes so the management API for workspaces
+// itself does not require X-Workspace-Key.
+app.use("/api/v1/workspaces", requireApiKey("manage"), workspaceRouter);
+
+// API routes (protected by scope-based API Key + workspace context where applicable)
+app.use("/api/v1/entities", requireApiKey("manage"), resolveWorkspace, entityRouter);
+app.use("/api/v1/proposals", requireApiKey("manage"), resolveWorkspace, proposalRouter);
+app.use("/api/v1/datasets", requireApiKey("manage"), resolveWorkspace, datasetRouter);
+app.use("/api/v1/publications", requireApiKey("manage"), resolveWorkspace, publicationRouter);
+app.use("/api/v1/ingestion", requireApiKey("manage"), resolveWorkspace, ingestionRouter);
+app.use("/api/v1/definitions", requireApiKey("manage"), resolveWorkspace, definitionRouter);
 app.use("/api/v1/api-keys", requireApiKey("admin"), apiKeyRouter);
-app.use("/api/v1/templates", requireApiKey("manage"), templateRouter);
+app.use("/api/v1/templates", requireApiKey("manage"), resolveWorkspace, templateRouter);
+// Delivery / OGC are workspace-agnostic (external consumers, dataset is uniquely
+// identified by id, workspace is internal organization concept).
 app.use("/api/v1/delivery", requireApiKey("delivery"), deliveryRouter);
 app.use("/api/v1/ogc", ogcRouter);
 

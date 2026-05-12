@@ -148,8 +148,13 @@ async function main() {
 
   // --- Create a dataset definition ---
 
+  // Resolve workspace: default unless SEED_WORKSPACE is set.
+  const wsSlug = process.env.SEED_WORKSPACE || "default";
+  const ws = await prisma.workspace.findUnique({ where: { slug: wsSlug } });
+  if (!ws) throw new Error(`Workspace '${wsSlug}' not found — create it first`);
   const dataset = await prisma.datasetDefinition.create({
     data: {
+      workspaceId: ws.id,
       name: "Buildings",
       entityTypes: ["building"],
       filterRule: { status: "active" },

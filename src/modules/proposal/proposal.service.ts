@@ -23,15 +23,61 @@ interface ProposalInput {
   source?: "human" | "machine" | "import_";
 }
 
-export async function createProposal(input: ProposalInput) {
-  // For update/delete proposals, resolve entity type if not provided
+/** Verifies proposal is in workspace via its direct workspaceId FK. */
+async function assertProposalInWorkspace(workspaceId: string, id: string) {
+  const proposal = await prisma.proposal.findFirst({ where: { id, workspaceId } });
+  if (!proposal) throw new NotFoundError("Proposal");
+  return proposal;
+}
+
+export async function createProposal(workspaceId: string, input: ProposalInput) {
+  // For update/delete proposals, resolve entity type if not provided + verify ownership
   if (input.entityId && !input.proposedChange.data.type) {
-    const entity = await prisma.entity.findUnique({ where: { id: input.entityId }, select: { type: true } });
-    if (entity?.type) input.proposedChange.data.type = entity.type;
+    const entity = await prisma.entity.findUnique({
+      where: { id: input.entityId },
+      include: { modelDefinition: { select: { workspaceId: true, key: true } } },
+    });
+    if (entity?.modelDefinition?.workspaceId !== workspaceId) {
+      throw new NotFoundError("Entity");
+    }
+    if (entity.modelDefinition.key) input.proposedChange.data.type = entity.modelDefinition.key;
+  } else if (input.entityId) {
+    // entityId provided + type provided — still verify ownership
+    const entity = await prisma.entity.findUnique({
+      where: { id: input.entityId },
+      include: { modelDefinition: { select: { workspaceId: true } } },
+    });
+    if (!entity || entity.modelDefinition?.workspaceId !== workspaceId) {
+      throw new NotFoundError("Entity");
+    }
+  }
+
+  // For create proposals, verify the named type exists in this workspace
+  // and validate the proposed properties up front (matches CLAUDE.md:
+  // "create only — full properties required"). Catching invalid creates
+  // here means the proposal never makes it into the queue in a state that
+  // would later fail at approve time.
+  if (!input.entityId && input.proposedChange.data.type) {
+    const model = await findModelDefinitionByKey(workspaceId, input.proposedChange.data.type);
+    if (!model) {
+      throw new BusinessError(`Model "${input.proposedChange.data.type}" not found in this workspace`);
+    }
+    input.proposedChange.data.modelDefinitionId = model.id;
+
+    if (input.proposedChange.action === "create") {
+      const validation = await validateAgainstModel(
+        model.id,
+        input.proposedChange.data.properties ?? {},
+      );
+      if (!validation.valid) {
+        throw new BusinessError(`Validation failed: ${validation.errors.join("; ")}`);
+      }
+    }
   }
 
   const proposal = await prisma.proposal.create({
     data: {
+      workspaceId,
       entityId: input.entityId,
       proposedChange: input.proposedChange as object,
       source: input.source ?? "human",
@@ -44,7 +90,7 @@ export async function createProposal(input: ProposalInput) {
   const modelDefId = input.proposedChange.data.modelDefinitionId;
   let resolvedModelId = modelDefId;
   if (!resolvedModelId && type) {
-    const model = await findModelDefinitionByKey(type);
+    const model = await findModelDefinitionByKey(workspaceId, type);
     if (model) resolvedModelId = model.id;
   }
   if (!resolvedModelId && input.entityId) {
@@ -60,10 +106,9 @@ export async function createProposal(input: ProposalInput) {
     });
     if (policy?.approvalMode === "auto") {
       try {
-        const result = await approveProposal(proposal.id);
+        const result = await approveProposal(workspaceId, proposal.id);
         return result.proposal;
       } catch (err) {
-        // Log the failure reason instead of swallowing silently
         console.warn(
           `[Auto-approval] Failed for proposal ${proposal.id}:`,
           err instanceof Error ? err.message : err,
@@ -75,23 +120,19 @@ export async function createProposal(input: ProposalInput) {
   return proposal;
 }
 
-export async function listProposals(filters?: { status?: string }) {
-  const where: Record<string, string> = {};
-  if (filters?.status) where.status = filters.status;
-
+export async function listProposals(workspaceId: string, filters?: { status?: string }) {
   return prisma.proposal.findMany({
-    where,
+    where: { workspaceId, ...(filters?.status ? { status: filters.status as any } : {}) },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function getProposal(id: string) {
-  return prisma.proposal.findUnique({ where: { id } });
+export async function getProposal(workspaceId: string, id: string) {
+  return assertProposalInWorkspace(workspaceId, id);
 }
 
-export async function approveProposal(id: string) {
-  const proposal = await prisma.proposal.findUnique({ where: { id } });
-  if (!proposal) throw new NotFoundError("Proposal");
+export async function approveProposal(workspaceId: string, id: string) {
+  const proposal = await assertProposalInWorkspace(workspaceId, id);
   if (proposal.status !== "pending")
     throw new BusinessError("Proposal is not pending");
 
@@ -105,10 +146,10 @@ export async function approveProposal(id: string) {
     };
   };
 
-  // Resolve modelDefinitionId for validation
+  // Resolve modelDefinitionId for validation, scoped to workspace
   let modelDefId = change.data.modelDefinitionId;
   if (!modelDefId && change.data.type) {
-    const model = await findModelDefinitionByKey(change.data.type);
+    const model = await findModelDefinitionByKey(workspaceId, change.data.type);
     if (model) modelDefId = model.id;
   }
   if (!modelDefId && proposal.entityId) {
@@ -118,9 +159,6 @@ export async function approveProposal(id: string) {
     if (existing?.modelDefinitionId) modelDefId = existing.modelDefinitionId;
   }
 
-  // Dynamic validation against model definition (create only — full properties required)
-  // Updates are partial; required-field checks would fail on partial payloads.
-  // updateEntityInternal merges properties, so final state will be valid.
   if (modelDefId && change.data.properties && change.action === "create") {
     const validation = await validateAgainstModel(
       modelDefId,
@@ -136,7 +174,7 @@ export async function approveProposal(id: string) {
   let entity;
 
   if (change.action === "create") {
-    entity = await createEntityInternal({
+    entity = await createEntityInternal(workspaceId, {
       type: change.data.type!,
       modelDefinitionId: modelDefId,
       properties: change.data.properties,
@@ -162,32 +200,25 @@ export async function approveProposal(id: string) {
 }
 
 /**
- * Batch approve: approve multiple pending proposals.
- * If ids provided, approve those specific proposals.
- * If filter provided, approve all pending proposals matching the filter.
- * If neither, approve ALL pending proposals.
+ * Batch approve: approve multiple pending proposals in this workspace.
  */
 export async function approveBatch(
+  workspaceId: string,
   ids?: string[],
   filter?: { type?: string },
 ) {
-  let proposals;
+  // Reuse listProposals's workspace scoping for the "all" path
+  const wsProposals = await listProposals(workspaceId, { status: "pending" });
 
+  let proposals = wsProposals;
   if (ids?.length) {
-    proposals = await prisma.proposal.findMany({
-      where: { id: { in: ids }, status: "pending" },
+    const idSet = new Set(ids);
+    proposals = wsProposals.filter((p) => idSet.has(p.id));
+  } else if (filter?.type) {
+    proposals = wsProposals.filter((p) => {
+      const change = p.proposedChange as { data?: { type?: string } };
+      return change.data?.type === filter.type;
     });
-  } else {
-    // Find all pending proposals, optionally filtered by type
-    proposals = await prisma.proposal.findMany({
-      where: { status: "pending" },
-    });
-    if (filter?.type) {
-      proposals = proposals.filter((p) => {
-        const change = p.proposedChange as { data?: { type?: string } };
-        return change.data?.type === filter.type;
-      });
-    }
   }
 
   let approved = 0;
@@ -196,7 +227,7 @@ export async function approveBatch(
 
   for (const p of proposals) {
     try {
-      await approveProposal(p.id);
+      await approveProposal(workspaceId, p.id);
       approved++;
     } catch (err) {
       failed++;
@@ -210,7 +241,8 @@ export async function approveBatch(
   return { total: proposals.length, approved, failed, errors };
 }
 
-export async function rejectProposal(id: string) {
+export async function rejectProposal(workspaceId: string, id: string) {
+  await assertProposalInWorkspace(workspaceId, id);
   return prisma.proposal.update({
     where: { id },
     data: { status: "rejected" },

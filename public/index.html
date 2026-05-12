@@ -48,7 +48,30 @@
 
     /* Sidebar */
     .sidebar { grid-area: sidebar; background: var(--sidebar-bg); color: var(--sidebar-text); overflow-y: auto; padding: 0; display: flex; flex-direction: column; }
-    .sidebar-brand { padding: 14px 20px; font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .sidebar-brand { padding: 14px 20px 6px; font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+
+    .ws-switcher { padding: 4px 14px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .ws-button { width: 100%; padding: 6px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; transition: background 0.1s; }
+    .ws-button:hover { background: rgba(255,255,255,0.1); }
+    .ws-button-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .ws-button-icon { font-size: 11px; opacity: 0.6; flex: 0 0 auto; }
+    .ws-button-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ws-button-caret { opacity: 0.5; font-size: 10px; flex: 0 0 auto; }
+    .ws-menu { position: absolute; top: 64px; left: 14px; width: 232px; background: #1f2937; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100; display: none; padding: 4px 0; max-height: 70vh; overflow-y: auto; }
+    .ws-menu.is-open { display: block; }
+    .ws-menu-item { padding: 7px 12px; font-size: 12px; color: #e5e7eb; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .ws-menu-item:hover { background: rgba(255,255,255,0.06); }
+    .ws-menu-item.is-current { color: var(--primary); background: rgba(59,130,246,0.1); }
+    .ws-menu-item-meta { font-size: 10px; opacity: 0.6; }
+    .ws-menu-sep { border-top: 1px solid rgba(255,255,255,0.08); margin: 4px 0; }
+    .ws-menu-action { padding: 7px 12px; font-size: 12px; color: #93c5fd; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .ws-menu-action:hover { background: rgba(255,255,255,0.06); }
+    .ws-menu-item-label { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding-right: 8px; }
+    .ws-delete-btn { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 3px; visibility: hidden; line-height: 1; flex: 0 0 auto; }
+    .ws-menu-item:hover .ws-delete-btn { visibility: visible; }
+    .ws-delete-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+    .ws-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.1); color: var(--primary); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 4px; vertical-align: middle; }
+    .ws-pill:hover { background: rgba(59,130,246,0.2); }
     .sidebar-section { padding: 16px 20px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255,255,255,0.3); }
     .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 14px; cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
     .sidebar-item:hover { background: var(--sidebar-hover); }
@@ -257,12 +280,46 @@
     .tpl-preview-close:hover { color: var(--text); }
     .tpl-preview-body { padding: 16px 24px; overflow-y: auto; flex: 1; }
     .tpl-preview-footer { padding: 12px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface); }
+
+    /* Model Designer field / section chrome */
+    .field-constraint-chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--bg); color: var(--muted); border: 1px solid var(--border); margin: 4px 4px 0 0; line-height: 1.4; }
+    .field-constraint-chip.is-primary { background: rgba(99,102,241,0.08); color: var(--primary); border-color: rgba(99,102,241,0.2); }
+    .field-constraint-chip.is-required { background: rgba(239,68,68,0.08); color: var(--danger); border-color: rgba(239,68,68,0.2); font-weight: 600; }
+    .field-constraint-chip code { background: transparent; padding: 0; font-size: 10px; }
+    .field-section-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .field-section-label:first-child { margin-top: 0; }
+    .md-section { border-left: 4px solid var(--border); }
+    .md-section.is-primary { border-left-color: var(--primary); }
+    .md-section.is-warning { border-left-color: #f59e0b; }
+
+    /* Unified empty-state component. Use renderEmptyState() to build. */
+    .empty-state { text-align: center; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .empty-state-page    { padding: 48px 24px; margin: 16px 0; }
+    .empty-state-section { padding: 32px 24px; margin: 8px 0; }
+    .empty-state-inline  { padding: 16px 12px; background: transparent; border: none; }
+    .empty-state-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.9; line-height: 1; }
+    .empty-state-inline .empty-state-icon { font-size: 20px; margin-bottom: 6px; }
+    .empty-state-title { font-size: 16px; color: var(--text); font-weight: 600; margin: 0 0 6px; }
+    .empty-state-inline .empty-state-title { font-size: 13px; font-weight: 500; color: var(--muted); }
+    .empty-state-desc { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 0 auto 16px; max-width: 520px; }
+    .empty-state-inline .empty-state-desc { font-size: 12px; margin-bottom: 8px; }
+    .empty-state-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   </style>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar-brand">Spatial CMS</div>
+    <div class="ws-switcher">
+      <button class="ws-button" id="ws-button" onclick="toggleWorkspaceMenu(event)">
+        <span class="ws-button-label">
+          <span class="ws-button-icon">▢</span>
+          <span class="ws-button-name" id="ws-current-name">Default</span>
+        </span>
+        <span class="ws-button-caret">▾</span>
+      </button>
+      <div class="ws-menu" id="ws-menu"></div>
+    </div>
 
     <div class="sidebar-section" data-section="define">Define</div>
     <div class="sidebar-item" data-section="define" onclick="nav('define/models')" data-nav="define/models"><span>Models & Fields</span></div>
@@ -427,11 +484,19 @@ async function initKeycloak() {
 initKeycloak();
 
 // ─── API + Utils ───────────────────────────────────
+// Current workspace (slug) — read from localStorage, defaults to "default".
+// Set by the sidebar workspace switcher.
+window.currentWorkspaceSlug = localStorage.getItem('workspace_slug') || 'default';
+
 async function api(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Workspace-Key': window.currentWorkspaceSlug || 'default',
+    ...(opts.headers || {}),
+  };
   // JWT token from Keycloak (for human users)
   if (keycloakToken) headers['Authorization'] = `Bearer ${keycloakToken}`;
-  const res = await fetch(`${API}${path}`, { headers, ...opts });
+  const res = await fetch(`${API}${path}`, { ...opts, headers });
   if (res.status === 401) {
     if (keycloakInstance) keycloakInstance.login();
     throw new Error('Authentication required');
@@ -440,6 +505,162 @@ async function api(path, opts = {}) {
   if (!res.ok) throw new Error(data.error || JSON.stringify(data.details) || 'Request failed');
   return data;
 }
+// ─── Workspace switcher ──────────────────────────────────
+async function loadWorkspaces() {
+  try {
+    return await api('/workspaces');
+  } catch { return []; }
+}
+
+async function renderWorkspaceSwitcher() {
+  const list = await loadWorkspaces();
+  const current = window.currentWorkspaceSlug || 'default';
+  const found = list.find(w => w.slug === current);
+  window._currentWorkspaceName = found?.name || current;
+  document.getElementById('ws-current-name').textContent = window._currentWorkspaceName;
+  const menu = document.getElementById('ws-menu');
+  menu.innerHTML =
+    list.map(w => {
+      const deleteBtn = w.slug === 'default'
+        ? ''
+        : `<button class="ws-delete-btn" onclick="event.stopPropagation(); confirmDeleteWorkspace('${w.slug}', ${JSON.stringify(w.name)})" title="Delete workspace">✕</button>`;
+      return `<div class="ws-menu-item${w.slug === current ? ' is-current' : ''}">
+        <span class="ws-menu-item-label" onclick="switchWorkspace('${w.slug}')">
+          <span>${w.name}</span>
+          <span class="ws-menu-item-meta">${w.slug}</span>
+        </span>
+        ${deleteBtn}
+      </div>`;
+    }).join('') +
+    `<div class="ws-menu-sep"></div>
+     <div class="ws-menu-action" onclick="openCreateWorkspaceModal()">+ New Workspace</div>`;
+}
+
+function toggleWorkspaceMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('ws-menu');
+  menu.classList.toggle('is-open');
+  if (menu.classList.contains('is-open')) {
+    document.addEventListener('click', closeWorkspaceMenuOnOutside, { once: true });
+  }
+}
+function closeWorkspaceMenuOnOutside() {
+  document.getElementById('ws-menu')?.classList.remove('is-open');
+}
+
+function updateTabTitle() {
+  document.title = `Spatial CMS — ${window._currentWorkspaceName || 'Default'}`;
+}
+
+function isDetailRoute(hash) {
+  return /^#(manage\/(records|review|new)\/[^/]+\/.+|define\/models\/.+|publish\/datasets\/.+)/.test(hash);
+}
+
+async function switchWorkspace(slug) {
+  if (slug === window.currentWorkspaceSlug) {
+    document.getElementById('ws-menu').classList.remove('is-open');
+    return;
+  }
+  const list = await loadWorkspaces();
+  const ws = list.find(w => w.slug === slug);
+  if (!ws) return;
+
+  window.currentWorkspaceSlug = slug;
+  localStorage.setItem('workspace_slug', slug);
+
+  // Reset workspace-bound caches (modelCache is a let-array — must reassign correctly)
+  modelCache = [];
+  window._allEntities = null;
+  window._modelEntities = null;
+  window._modelTotal = null;
+  if (window.datasetCache) window.datasetCache = {};
+
+  // Close any ghost modals (they're tied to the old workspace's data)
+  document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
+
+  document.getElementById('ws-menu').classList.remove('is-open');
+
+  // Re-render sidebar + counts + tab title
+  await renderWorkspaceSwitcher();
+  await refreshModels();
+  await refreshPendingCount();
+  updateTabTitle();
+
+  // Detail / edit routes carry IDs from the old workspace; jump to dashboard
+  // to avoid an immediate 404. List routes just re-render in place.
+  if (isDetailRoute(location.hash)) {
+    nav('dashboard');
+  } else {
+    router();
+  }
+  toast(`Switched to "${ws.name}"`);
+}
+
+async function openCreateWorkspaceModal() {
+  document.getElementById('ws-menu')?.classList.remove('is-open');
+  const result = await modalPrompt('New Workspace', [
+    { key: 'slug', label: 'Slug (lowercase, no spaces)', placeholder: 'parks', type: 'text' },
+    { key: 'name', label: 'Name', placeholder: 'Parks Demo', type: 'text' },
+    { key: 'description', label: 'Description (optional)', placeholder: '', type: 'text' },
+  ]);
+  if (!result || !result.slug || !result.name) return;
+  try {
+    await api('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ slug: result.slug.trim(), name: result.name.trim(), description: result.description?.trim() || undefined }),
+    });
+    toast(`Workspace "${result.name}" created`);
+    await switchWorkspace(result.slug.trim());
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function confirmDeleteWorkspace(slug, name) {
+  document.getElementById('ws-menu')?.classList.remove('is-open');
+  const ok = await modalConfirm(
+    `Delete workspace "${name}"?`,
+    `This will permanently delete the workspace and ALL its models, datasets, entities, proposals, and publications.\n\nThis cannot be undone.`,
+    { confirmText: 'Delete forever', danger: true },
+  );
+  if (!ok) return;
+  try {
+    await api('/workspaces/' + slug, { method: 'DELETE' });
+    toast(`Workspace "${name}" deleted`);
+    if (window.currentWorkspaceSlug === slug) {
+      await switchWorkspace('default');
+    } else {
+      await renderWorkspaceSwitcher();
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+/** Try to find which workspace owns a record so we can offer to switch. */
+async function locateInOtherWorkspace(kind, id) {
+  try {
+    const data = await api(`/workspaces/locate/${kind}/${id}`);
+    return data.workspace;
+  } catch { return null; }
+}
+
+/** Render a "this record is in another workspace" panel into a target element. */
+async function renderCrossWorkspaceNotFound(targetEl, kind, id, fallbackHtml) {
+  const ws = await locateInOtherWorkspace(kind, id);
+  if (ws && ws.slug !== window.currentWorkspaceSlug) {
+    targetEl.innerHTML = `
+      <div class="card" style="max-width:520px;margin:40px auto;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">↗</div>
+        <h3 style="margin:0 0 8px">This ${kind} lives in another workspace</h3>
+        <div style="color:var(--muted);margin-bottom:16px">It belongs to <strong>${ws.name}</strong> (${ws.slug}). Switch workspaces to view it.</div>
+        <button class="btn btn-primary" onclick="switchWorkspace('${ws.slug}')">Switch to ${ws.name}</button>
+      </div>`;
+  } else {
+    targetEl.innerHTML = fallbackHtml;
+  }
+}
+
 function toast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg; el.className = `toast ${type}`; el.style.display = 'block';
@@ -455,6 +676,93 @@ function entityDisplayName(entity, model) {
   // Fallback: try common field names
   const props = entity.properties || {};
   return props.name || props.title || props.gmlid || props.key_code || entity.id?.substring(0, 12) || 'Untitled';
+}
+
+// ─── Empty state helper ─────────────────────────────
+// Used everywhere a view has no data. Produces consistent markup across the
+// app so we don't end up with the "lone narrow card" / "bare <p>" / `.empty`-
+// class / inline-stylesheet zoo we had before.
+//   size: 'page' (full-width hero) | 'section' (smaller, inside a card) | 'inline' (compact)
+//   actions: array of button HTML strings (call-site decides which buttons)
+function renderEmptyState({ icon, title, description, actions = [], size = 'page' }) {
+  const iconHtml = icon ? `<div class="empty-state-icon">${icon}</div>` : '';
+  const descHtml = description ? `<div class="empty-state-desc">${description}</div>` : '';
+  const actionsHtml = actions.length ? `<div class="empty-state-actions">${actions.join('')}</div>` : '';
+  return `<div class="empty-state empty-state-${size}">
+    ${iconHtml}
+    <div class="empty-state-title">${title}</div>
+    ${descHtml}
+    ${actionsHtml}
+  </div>`;
+}
+
+// ─── Field constraint helpers ───────────────────────
+// Best-effort turn a regex into a friendly description; null = no humanization.
+function humanizePattern(p) {
+  let m = p.match(/^\^?\[0-9\]\{(\d+)\}\$?$/);
+  if (m) return `${m[1]} digits`;
+  m = p.match(/^\^?\[0-9\]\{(\d+),(\d+)\}\$?$/);
+  if (m) return `${m[1]}–${m[2]} digits`;
+  if (/^\^?\[a-z\]\+\$?$/.test(p)) return 'lowercase letters only';
+  if (/^\^?\[A-Z\]\+\$?$/.test(p)) return 'uppercase letters only';
+  if (/^\^?\[A-Z0-9_\]\+\$?$/.test(p)) return 'uppercase letters, digits, underscores';
+  if (/^\^?\[a-z0-9_\]\+\$?$/.test(p)) return 'lowercase letters, digits, underscores';
+  if (/^\^?\[a-zA-Z0-9_\]\+\$?$/.test(p)) return 'letters, digits, underscores';
+  return null;
+}
+
+// Build the hint span for a field showing its constraints.
+function renderFieldHint(f) {
+  const v = f.validation || {};
+  const parts = [];
+  if (f.fieldType === 'string') {
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      parts.push(human ? `Format: ${human}` : `Must match <code>${v.pattern}</code>`);
+    }
+    if (v.minLength !== undefined && v.maxLength !== undefined) parts.push(`${v.minLength}–${v.maxLength} chars`);
+    else if (v.minLength !== undefined) parts.push(`min ${v.minLength} chars`);
+    else if (v.maxLength !== undefined) parts.push(`max ${v.maxLength} chars`);
+  } else if (f.fieldType === 'number') {
+    if (v.min !== undefined && v.max !== undefined) parts.push(`Range ${v.min}–${v.max}`);
+    else if (v.min !== undefined) parts.push(`≥ ${v.min}`);
+    else if (v.max !== undefined) parts.push(`≤ ${v.max}`);
+  } else if (f.fieldType === 'enum_' && f.enumValues?.length) {
+    parts.push(`One of: ${f.enumValues.join(', ')}`);
+  } else if (f.fieldType === 'geometry') {
+    const gt = f.geometryType ? `${f.geometryType}${f.geometryIs3D ? ' 3D' : ''}` : null;
+    const srid = f.geometrySrid && f.geometrySrid !== 4326 ? `EPSG:${f.geometrySrid}` : null;
+    [gt, srid].filter(Boolean).forEach(s => parts.push(s));
+  }
+  return parts.length
+    ? `<small style="display:block;font-size:11px;color:var(--muted);margin-top:4px">${parts.join(' · ')}</small>`
+    : '';
+}
+
+// Validate a single field value against its constraints. Returns null if valid,
+// or a human-readable error string otherwise.
+function validateFieldValue(f, value, hasValue) {
+  if (f.isRequired && !hasValue) return `${f.label} is required`;
+  if (!hasValue) return null;
+  const v = f.validation || {};
+  if (f.fieldType === 'string') {
+    if (typeof value !== 'string') return `${f.label} must be a string`;
+    if (v.minLength !== undefined && value.length < v.minLength) return `${f.label} must be at least ${v.minLength} characters`;
+    if (v.maxLength !== undefined && value.length > v.maxLength) return `${f.label} must be at most ${v.maxLength} characters`;
+    if (v.pattern && !new RegExp(v.pattern).test(value)) {
+      const human = humanizePattern(v.pattern);
+      return `${f.label} must match ${human || `pattern ${v.pattern}`}`;
+    }
+  } else if (f.fieldType === 'number') {
+    if (typeof value !== 'number' || isNaN(value)) return `${f.label} must be a number`;
+    if (v.min !== undefined && value < v.min) return `${f.label} must be ≥ ${v.min}`;
+    if (v.max !== undefined && value > v.max) return `${f.label} must be ≤ ${v.max}`;
+  } else if (f.fieldType === 'enum_') {
+    if (f.enumValues && !f.enumValues.includes(value)) {
+      return `${f.label} must be one of: ${f.enumValues.join(', ')}`;
+    }
+  }
+  return null;
 }
 
 // Build autocomplete reference pickers
@@ -1234,7 +1542,9 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
   return instance;
 }
 function setBreadcrumb(...parts) {
-  $('breadcrumb').innerHTML = parts.map((p, i) =>
+  const wsName = window._currentWorkspaceName || 'Default';
+  const wsPill = `<span class="ws-pill" onclick="toggleWorkspaceMenu(event)" title="Click to switch workspace">${wsName}</span><span class="sep">/</span>`;
+  $('breadcrumb').innerHTML = wsPill + parts.map((p, i) =>
     i < parts.length - 1
       ? `<a onclick="${p[1]}">${p[0]}</a><span class="sep">/</span>`
       : `<span style="color:var(--text);font-weight:500">${p[0]}</span>`
@@ -1405,7 +1715,7 @@ async function viewDashboard(main) {
   }));
 
   main.innerHTML = `
-    <div class="page-header"><h2>Dashboard</h2></div>
+    <div class="page-header"><h2>Dashboard <span style="font-weight:400;color:var(--muted);font-size:14px">— ${window._currentWorkspaceName || 'Default'}</span></h2></div>
 
     <!-- Stats -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
@@ -1440,14 +1750,14 @@ async function viewDashboard(main) {
               <button class="btn btn-ghost btn-sm" onclick="nav('manage/records/${m.key}')">View</button>
             </div>
           </div>`;
-        }).join('') : '<div class="empty"><h4>No models yet</h4><p>Define your first model to get started.</p><button class="btn btn-primary" onclick="nav(\'define/models\')">Go to Models</button></div>'}
+        }).join('') : renderEmptyState({ title: 'No models yet', description: 'Define your first model to get started.', actions: [`<button class="btn btn-primary" onclick="nav('define/models')">Go to Models</button>`], size: 'section' })}
       </div>
 
       <!-- Recent activity (grouped by batch) -->
       <div class="card">
         <h3>Recent Activity</h3>
         ${(function() {
-          if (!recentProposals.length) return '<p style="color:var(--muted)">No activity yet.</p>';
+          if (!recentProposals.length) return renderEmptyState({ title: 'No activity yet', size: 'inline' });
           // Group proposals by: same action + type + status + same minute
           const groups = [];
           for (const p of recentProposals) {
@@ -1499,15 +1809,16 @@ async function viewContentAll(main) {
   main.innerHTML = '';
 
   if (modelCache.length === 0) {
-    main.innerHTML = `<div class="card" style="text-align:center;padding:48px 24px">
-      <h2 style="margin-bottom:8px">Welcome to Spatial CMS</h2>
-      <p style="color:var(--muted);margin-bottom:24px">Get started in 3 steps:</p>
-      <div style="text-align:left;max-width:400px;margin:0 auto;font-size:15px;line-height:2">
-        <div>1. Define your data models <button class="btn btn-ghost btn-sm" onclick="nav('define/models')">Go to Models &rarr;</button></div>
-        <div>2. Create records through proposals</div>
-        <div>3. Publish datasets to consumers</div>
-      </div>
-    </div>`;
+    main.innerHTML = renderEmptyState({
+      icon: '👋',
+      title: 'Welcome to Spatial CMS',
+      description: 'No models defined yet. The typical flow is: <strong>1)</strong> define data models, <strong>2)</strong> create records through proposals, <strong>3)</strong> publish datasets to consumers.',
+      actions: [
+        `<button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>`,
+        `<button class="btn btn-outline" onclick="nav('define/models')">Go to Models</button>`,
+      ],
+      size: 'page',
+    });
     return;
   }
 
@@ -1527,7 +1838,17 @@ async function viewContentAll(main) {
     </div>
     <div id="rec-table"></div>`;
 
-  if (!entities.length) { $('rec-table').innerHTML = '<div class="empty"><h4>No records yet</h4></div>'; return; }
+  if (!entities.length) {
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    $('rec-table').innerHTML = renderEmptyState({
+      icon: '📋',
+      title: `No records in ${wsName} yet`,
+      description: 'Records are added by creating a proposal for a model. Pick one from the sidebar, or jump straight in:',
+      actions: modelCache.slice(0, 3).map(m => `<button class="btn btn-outline btn-sm" onclick="nav('manage/new/${m.key}')">+ New ${m.name}</button>`),
+      size: 'page',
+    });
+    return;
+  }
 
   // Store entities for filtering
   window._allEntities = entities;
@@ -1554,7 +1875,7 @@ function filterRecords() {
     return true;
   });
   const container = $('rec-table');
-  if (!entities.length) { container.innerHTML = '<div class="empty" style="padding:24px"><p>No matching records.</p></div>'; return; }
+  if (!entities.length) { container.innerHTML = renderEmptyState({ title: 'No matching records', size: 'inline' }); return; }
   const isArchived = ($('rec-filter-status')?.value === 'archived');
 
   let html = '';
@@ -1643,7 +1964,14 @@ async function viewContentByModel(main, modelKey) {
     <div id="model-rec-table"></div>`;
 
   if (!entities.length) {
-    $('model-rec-table').innerHTML = `<div class="empty"><h4>No ${modelName} records yet</h4><p>Click the button above to create your first record.</p></div>`;
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    $('model-rec-table').innerHTML = renderEmptyState({
+      icon: '📋',
+      title: `No ${modelName} records in ${wsName} yet`,
+      description: 'Create your first record — it goes through the proposal queue (if governance is manual) or auto-approves.',
+      actions: [`<button class="btn btn-primary" onclick="nav('manage/new/${modelKey}')">+ New ${modelName}</button>`],
+      size: 'page',
+    });
     return;
   }
   window._modelEntities = entities;
@@ -1673,7 +2001,7 @@ function filterModelRecords(modelKey) {
     return true;
   });
   const container = $('model-rec-table');
-  if (!entities.length) { container.innerHTML = '<div class="empty" style="padding:24px"><p>No matching records.</p></div>'; return; }
+  if (!entities.length) { container.innerHTML = renderEmptyState({ title: 'No matching records', size: 'inline' }); return; }
   const isArchived = ($('model-filter-status')?.value === 'archived');
 
   let html = '';
@@ -1706,7 +2034,16 @@ function filterModelRecords(modelKey) {
 
 // ─── Entity Detail ─────────────────────────────────
 async function viewEntityDetail(main, entityId) {
-  const e = await api(`/entities/${entityId}`);
+  let e;
+  try {
+    e = await api(`/entities/${entityId}`);
+  } catch (err) {
+    setBreadcrumb(['Manage'], ['Records', `nav('manage/records')`], ['Not found']);
+    setActiveNav('manage/records');
+    await renderCrossWorkspaceNotFound(main, 'entity', entityId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Entity not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   setBreadcrumb(['Manage'], ['Records', `nav('manage/records')`], [e.type, `nav('manage/records/${e.type}')`], [e.properties?.name || 'Detail']);
   setActiveNav(`manage/records/${e.type}`);
 
@@ -1906,11 +2243,22 @@ async function viewEntityDetail(main, entityId) {
           }
           formHtml += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
           switch (f.fieldType) {
-            case 'string': formHtml += `<input id="ef-${f.key}" type="text">`; break;
-            case 'number':
-              const min = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
-              const max = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
-              formHtml += `<input id="ef-${f.key}" type="number" step="any" ${min} ${max}>`; break;
+            case 'string': {
+              const v = f.validation || {};
+              const attrs = [
+                v.pattern ? `pattern="${v.pattern}"` : '',
+                v.maxLength !== undefined ? `maxlength="${v.maxLength}"` : '',
+                v.minLength !== undefined ? `minlength="${v.minLength}"` : '',
+              ].filter(Boolean).join(' ');
+              formHtml += `<input id="ef-${f.key}" type="text" ${attrs}>`;
+              break;
+            }
+            case 'number': {
+              const minA = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
+              const maxA = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
+              formHtml += `<input id="ef-${f.key}" type="number" step="any" ${minA} ${maxA}>`;
+              break;
+            }
             case 'boolean': formHtml += `<input id="ef-${f.key}" type="checkbox">`; break;
             case 'date': formHtml += `<input id="ef-${f.key}" type="date">`; break;
             case 'enum_': formHtml += `<select id="ef-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
@@ -1918,6 +2266,7 @@ async function viewEntityDetail(main, entityId) {
             case 'reference': formHtml += `<div class="ref-ac" id="ef-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
             default: formHtml += `<input id="ef-${f.key}" type="text">`;
           }
+          formHtml += renderFieldHint(f);
           formHtml += '</div>';
         }
 
@@ -1991,6 +2340,21 @@ async function viewEntityDetail(main, entityId) {
               }
             }
 
+            // Client-side format validation (partial update: only validate
+            // fields the user actually provided, don't enforce required).
+            const errors = [];
+            for (const f of schema.fields) {
+              const val = properties[f.key];
+              const has = val !== undefined && val !== null && val !== '';
+              if (!has) continue;
+              const err = validateFieldValue(f, val, true);
+              if (err) errors.push(err);
+            }
+            if (errors.length) {
+              toast(errors.join('; '), 'error');
+              return;
+            }
+
             const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({
               entityId: e.id,
               proposedChange: { action: 'update', data: { type: e.type, properties } }
@@ -2023,11 +2387,22 @@ async function viewNewRecord(main, modelKey) {
     }
     html += `<div class="form-group"><label>${f.label}${f.isRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
     switch (f.fieldType) {
-      case 'string': html += `<input id="rf-${f.key}" type="text">`; break;
-      case 'number':
-        const min = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
-        const max = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
-        html += `<input id="rf-${f.key}" type="number" step="any" ${min} ${max}>`; break;
+      case 'string': {
+        const v = f.validation || {};
+        const attrs = [
+          v.pattern ? `pattern="${v.pattern}"` : '',
+          v.maxLength !== undefined ? `maxlength="${v.maxLength}"` : '',
+          v.minLength !== undefined ? `minlength="${v.minLength}"` : '',
+        ].filter(Boolean).join(' ');
+        html += `<input id="rf-${f.key}" type="text" ${attrs}>`;
+        break;
+      }
+      case 'number': {
+        const minA = f.validation?.min !== undefined ? `min="${f.validation.min}"` : '';
+        const maxA = f.validation?.max !== undefined ? `max="${f.validation.max}"` : '';
+        html += `<input id="rf-${f.key}" type="number" step="any" ${minA} ${maxA}>`;
+        break;
+      }
       case 'boolean': html += `<input id="rf-${f.key}" type="checkbox">`; break;
       case 'date': html += `<input id="rf-${f.key}" type="date">`; break;
       case 'enum_': html += `<select id="rf-${f.key}"><option value="">--</option>${(f.enumValues||[]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select>`; break;
@@ -2035,6 +2410,7 @@ async function viewNewRecord(main, modelKey) {
       case 'reference': html += `<div class="ref-ac" id="rf-${f.key}" data-ref-model="${f.referenceModelKey || ''}"></div>`; break;
       default: html += `<input id="rf-${f.key}" type="text">`;
     }
+    html += renderFieldHint(f);
     html += '</div>';
   }
 
@@ -2059,18 +2435,42 @@ async function viewNewRecord(main, modelKey) {
   $('rf-submit').onclick = async () => {
     try {
       const properties = {};
+      const errors = [];
       for (const f of schema.fields) {
+        let value, hasValue = false;
         if (f.fieldType === 'geometry') {
-          if (formGeoState[f.key]) properties[f.key] = formGeoState[f.key];
-          continue;
+          value = formGeoState[f.key];
+          hasValue = !!value;
+          if (hasValue) properties[f.key] = value;
+        } else {
+          const el = $(`rf-${f.key}`);
+          if (!el) continue;
+          if (f.fieldType === 'reference') {
+            value = el._refValue;
+            hasValue = !!value;
+            if (hasValue) properties[f.key] = value;
+          } else if (f.fieldType === 'boolean') {
+            value = el.checked;
+            hasValue = true;
+            properties[f.key] = value;
+          } else if (f.fieldType === 'number') {
+            if (el.value !== '') { value = parseFloat(el.value); hasValue = true; properties[f.key] = value; }
+          } else if (f.fieldType === 'json') {
+            if (el.value) {
+              try { value = JSON.parse(el.value); hasValue = true; properties[f.key] = value; }
+              catch { toast('Invalid JSON in ' + f.key, 'error'); return; }
+            }
+          } else {
+            if (el.value) { value = el.value; hasValue = true; properties[f.key] = value; }
+          }
         }
-        const el = $(`rf-${f.key}`);
-        if (!el) continue;
-        if (f.fieldType === 'reference') { if (el._refValue) properties[f.key] = el._refValue; }
-        else if (f.fieldType === 'boolean') properties[f.key] = el.checked;
-        else if (f.fieldType === 'number') { if (el.value !== '') properties[f.key] = parseFloat(el.value); }
-        else if (f.fieldType === 'json') { if (el.value) try { properties[f.key] = JSON.parse(el.value); } catch { toast('Invalid JSON in ' + f.key, 'error'); return; } }
-        else { if (el.value) properties[f.key] = el.value; }
+        const err = validateFieldValue(f, value, hasValue);
+        if (err) errors.push(err);
+      }
+
+      if (errors.length) {
+        toast(errors.join('; '), 'error');
+        return;
       }
 
       const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({ proposedChange: { action: 'create', data: { type: schema.key, properties } } }) });
@@ -2141,7 +2541,7 @@ async function viewProposals(main) {
         <td><button class="btn btn-primary btn-sm" onclick="nav('manage/review/${p.id}')">Review</button></td>
       </tr>`).join('')}</tbody>
     </table>
-    ` : '<div class="card"><div class="empty"><h4>No pending proposals</h4><p>All proposals have been reviewed.</p></div></div>'}
+    ` : renderEmptyState({ icon: '✅', title: 'No pending proposals', description: 'All proposals have been reviewed.', size: 'section' })}
 
     ${history.length ? `
     <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px">
@@ -2384,6 +2784,7 @@ async function viewProposalDetail(main, proposalId) {
       </div>
       <div>${badge(p.status)}</div>
     </div>
+    <div id="approve-alert" style="display:none"></div>
     ${diffHtml}
     ${p.status === 'pending' ? `<div style="display:flex;gap:8px">
       <button class="btn btn-success" id="approve-btn">Approve</button>
@@ -2393,7 +2794,51 @@ async function viewProposalDetail(main, proposalId) {
 
   if (p.status === 'pending') {
     $('approve-btn').onclick = async () => {
-      try { await api(`/proposals/${proposalId}/approve`, { method: 'POST' }); toast('Proposal approved'); refreshPendingCount(); nav('manage/review'); } catch (err) { toast(err.message, 'error'); }
+      try {
+        await api(`/proposals/${proposalId}/approve`, { method: 'POST' });
+        toast('Proposal approved');
+        refreshPendingCount();
+        nav('manage/review');
+      } catch (err) {
+        const msg = err.message || '';
+        // If approve fails due to validation, the proposal is structurally invalid
+        // and can't be edited — surface a clear "reject and recreate" path.
+        if (msg.startsWith('Validation failed:')) {
+          const reasons = msg.replace(/^Validation failed:\s*/, '');
+          const modelKey = change.data?.type || currentEntity?.type;
+          const alertEl = $('approve-alert');
+          alertEl.style.display = 'block';
+          alertEl.innerHTML = `<div class="card" style="border-left:4px solid var(--danger);background:rgba(239,68,68,0.05);margin-bottom:16px">
+            <h3 style="margin:0 0 6px;color:var(--danger);font-size:15px">⚠ This proposal can't be approved as-is</h3>
+            <div style="font-size:13px;margin-bottom:10px"><strong>Reason:</strong> ${reasons}</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Proposals are immutable drafts — to fix this, reject it and create a new one with all required fields filled.</div>
+            ${modelKey ? `<button class="btn btn-danger btn-sm" id="reject-restart-btn">Reject and Start Over</button>` : `<button class="btn btn-outline btn-sm" id="reject-only-btn">Reject this proposal</button>`}
+          </div>`;
+          const restartBtn = $('reject-restart-btn');
+          if (restartBtn) {
+            restartBtn.onclick = async () => {
+              try {
+                await api(`/proposals/${proposalId}/reject`, { method: 'POST' });
+                refreshPendingCount();
+                nav(`manage/new/${modelKey}`);
+              } catch (e) { toast(e.message, 'error'); }
+            };
+          }
+          const rejectOnlyBtn = $('reject-only-btn');
+          if (rejectOnlyBtn) {
+            rejectOnlyBtn.onclick = async () => {
+              try {
+                await api(`/proposals/${proposalId}/reject`, { method: 'POST' });
+                toast('Proposal rejected');
+                refreshPendingCount();
+                nav('manage/review');
+              } catch (e) { toast(e.message, 'error'); }
+            };
+          }
+        } else {
+          toast(msg, 'error');
+        }
+      }
     };
     $('reject-btn').onclick = async () => {
       try { await api(`/proposals/${proposalId}/reject`, { method: 'POST' }); toast('Proposal rejected'); refreshPendingCount(); nav('manage/review'); } catch (err) { toast(err.message, 'error'); }
@@ -2459,12 +2904,32 @@ async function viewDatasets(main) {
         } catch (err) { toast(err.message, 'error'); }
       };
     });
+  } else {
+    const wsName = window._currentWorkspaceName || 'This workspace';
+    const wrap = document.createElement('div');
+    wrap.innerHTML = renderEmptyState({
+      icon: '📦',
+      title: `${wsName} has no datasets yet`,
+      description: 'A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.',
+      actions: [`<button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>`],
+      size: 'page',
+    });
+    main.append(wrap.firstElementChild);
   }
 }
 
 // ─── Dataset Detail ────────────────────────────────
 async function viewDatasetDetail(main, datasetId) {
-  const d = await api(`/datasets/${datasetId}`);
+  let d;
+  try {
+    d = await api(`/datasets/${datasetId}`);
+  } catch (err) {
+    setBreadcrumb(['Publish'], ['Datasets', `nav('publish/datasets')`], ['Not found']);
+    setActiveNav('publish/datasets');
+    await renderCrossWorkspaceNotFound(main, 'dataset', datasetId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Dataset not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   const bindings = await api(`/definitions/datasets/${datasetId}/bindings`).catch(() => []);
   setBreadcrumb(['Publish'], ['Datasets', `nav('publish/datasets')`], [d.name]);
   setActiveNav('publish/datasets');
@@ -2861,7 +3326,7 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,
             </div>
           </div>
           <div id="delivery-preview-${d.id}" style="display:none;padding:16px;border-top:1px solid var(--border)"></div>
-        </div>`).join('') : '<p style="color:var(--muted)">No datasets published yet. Publish a dataset snapshot first.</p>'}
+        </div>`).join('') : renderEmptyState({ title: 'No datasets published yet', description: 'Publish a dataset snapshot first to see it here.', size: 'inline' })}
     </div>
 
     <div class="card">
@@ -3095,12 +3560,17 @@ async function viewImportApi(main) {
     <div class="card">
       <h3>Examples</h3>
       <pre style="font-size:12px"># Validate entities (dry-run, no writes)
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+# X-Workspace-Key picks which workspace. Change "default" to your workspace slug.
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/ingestion/validate \\
   -d '{"modelKey":"building","entities":[{"properties":{"name":"Test"}}]}'
 
 # Governed import (respects governance policy)
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/ingestion/governed \\
   -d '{"entities":[{"type":"building","properties":{"name":"Test"}}],"source":"machine"}'</pre>
     </div>
@@ -3151,6 +3621,8 @@ cat buildings.geojson | jq '{
   }],
   options: { skipInvalid: true }
 }' | curl -X POST ${baseUrl}/ingestion/import \\
+  -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
   -H "Content-Type: application/json" \\
   -d @-</pre>
     </div>`;
@@ -3803,16 +4275,26 @@ async function viewManagementApi(main) {
 
     <div class="card">
       <h3>Examples</h3>
-      <pre style="font-size:12px"># List entities
-curl -H "X-API-Key: scms_xxx" ${baseUrl}/entities?type=building&pageSize=10
+      <pre style="font-size:12px"># All Management API requests are scoped to a workspace via the
+# X-Workspace-Key header (default: "default"). The same X-API-Key works
+# across every workspace — change the header to target a different one.
 
-# Create a proposal
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+# List entities (in default workspace)
+curl -H "X-API-Key: scms_xxx" \\
+     -H "X-Workspace-Key: default" \\
+     ${baseUrl}/entities?type=building&pageSize=10
+
+# Create a proposal (target a specific workspace)
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: parks" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/proposals \\
   -d '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"New"}}}}'
 
-# Approve a proposal
-curl -X POST -H "X-API-Key: scms_xxx" ${baseUrl}/proposals/{id}/approve</pre>
+# Approve a proposal (workspace inferred from the proposal's workspaceId)
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: parks" \\
+  ${baseUrl}/proposals/{id}/approve</pre>
     </div>
 
     <div class="card">
@@ -3883,12 +4365,18 @@ async function viewApiKeys(main) {
         Human users authenticate via Keycloak (JWT). Both methods are accepted on all protected endpoints.
         OGC API is always public (no auth required).
       </p>
+      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius);padding:12px;margin-bottom:12px;font-size:13px;color:var(--text)">
+        <strong style="color:var(--primary)">ℹ Keys are workspace-agnostic.</strong>
+        A <code>manage</code> or <code>admin</code> key works across every workspace in this deployment. Workspace scoping is controlled per-request by the <code>X-Workspace-Key</code> header (defaults to <code>default</code> if omitted).
+      </div>
       <table style="box-shadow:none;font-size:12px;margin-bottom:12px"><thead><tr><th>Scope</th><th>Access Level</th><th>Use For</th></tr></thead><tbody>
         <tr><td><code>delivery</code></td><td>Delivery API (read-only)</td><td>Consumer apps, CKAN, data portals</td></tr>
         <tr><td><code>manage</code></td><td>+ Management + Ingestion API</td><td>Dedup tools, ETL, CLI import scripts</td></tr>
         <tr><td><code>admin</code></td><td>+ Definitions + API Key management</td><td>System administration, deployment scripts</td></tr>
       </tbody></table>
-      <pre style="font-size:12px">curl -H "X-API-Key: scms_your_key_here" ${window.location.origin}/api/v1/delivery/datasets</pre>
+      <pre style="font-size:12px">curl -H "X-API-Key: scms_your_key_here" \\
+     -H "X-Workspace-Key: default" \\
+     ${window.location.origin}/api/v1/entities</pre>
     </div>
 
     <div id="key-created-area"></div>
@@ -3907,7 +4395,7 @@ async function viewApiKeys(main) {
     // Active keys
     const activeEl = $('keys-active');
     if (!active.length) {
-      activeEl.innerHTML = '<p style="color:var(--muted)">No active API keys. Generate one above.</p>';
+      activeEl.innerHTML = renderEmptyState({ title: 'No active API keys', description: 'Generate one with the button above.', size: 'inline' });
     } else {
       activeEl.innerHTML = `<table><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th></th></tr></thead>
         <tbody>${active.map(k => `<tr>
@@ -4575,7 +5063,7 @@ async function viewTemplateGallery(main) {
 
     const grid = $('tpl-grid');
     if (!filtered.length) {
-      grid.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1">No templates match your search.</div>';
+      grid.innerHTML = `<div style="grid-column:1/-1">${renderEmptyState({ title: 'No templates match your search', size: 'inline' })}</div>`;
       return;
     }
     grid.innerHTML = filtered.map(t => {
@@ -4827,6 +5315,20 @@ async function viewModels(main) {
         </tr>`;
       }).join('')}</tbody>`;
     main.append(t);
+  } else {
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    const emptyWrap = document.createElement('div');
+    emptyWrap.innerHTML = renderEmptyState({
+      icon: '🗂',
+      title: `${wsName} has no models yet`,
+      description: 'Start by applying a bundled template or creating your first model from scratch.',
+      actions: [
+        `<button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>`,
+        `<button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='block'">+ New Model</button>`,
+      ],
+      size: 'page',
+    });
+    main.append(emptyWrap.firstElementChild);
   }
 }
 
@@ -4843,7 +5345,16 @@ const fieldTypeInfo = {
 };
 
 async function viewModelDetail(main, modelId) {
-  const m = await api(`/definitions/models/${modelId}`);
+  let m;
+  try {
+    m = await api(`/definitions/models/${modelId}`);
+  } catch (err) {
+    setBreadcrumb(['Define'], ['Models', `nav('define/models')`], ['Not found']);
+    setActiveNav('define/models');
+    await renderCrossWorkspaceNotFound(main, 'model', modelId,
+      `<div class="card" style="max-width:520px;margin:40px auto;text-align:center"><h3>Model not found</h3><div style="color:var(--muted)">${err.message}</div></div>`);
+    return;
+  }
   setBreadcrumb(['Define'], ['Models', `nav('define/models')`], [m.name]);
   setActiveNav('define/models');
 
@@ -4853,7 +5364,7 @@ async function viewModelDetail(main, modelId) {
       <button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-model-btn">Delete Model</button>
     </div>
 
-    <div class="card">
+    <div class="card md-section is-primary">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <h3 style="margin:0">Fields</h3>
         <button class="btn btn-primary btn-sm" id="show-add-field">+ Add Field</button>
@@ -4865,6 +5376,7 @@ async function viewModelDetail(main, modelId) {
           <h4 style="font-size:15px">New Field</h4>
           <button class="btn btn-ghost btn-sm" id="cancel-add-field" style="color:var(--muted)">Cancel</button>
         </div>
+        <div class="field-section-label" style="margin-top:0">Identity</div>
         <div class="form-row">
           <div class="form-group"><label>Key <span style="color:var(--danger)">*</span></label><input id="af-key" placeholder="e.g. name, height, category" style="font-family:monospace"></div>
           <div class="form-group"><label>Display Label <span style="color:var(--danger)">*</span></label><input id="af-label" placeholder="e.g. Name, Height (m), Category"></div>
@@ -4890,12 +5402,12 @@ async function viewModelDetail(main, modelId) {
 
       <!-- Field List -->
       <div id="field-list">
-        ${m.fields.length ? m.fields.map((f, i) => renderFieldItem(f, modelId, i)).join('') : '<div class="empty" style="padding:32px"><h4>No fields defined yet</h4><p>Add fields to define the structure of your model.</p></div>'}
+        ${m.fields.length ? m.fields.map((f, i) => renderFieldItem(f, modelId, i)).join('') : renderEmptyState({ title: 'No fields defined yet', description: 'Add fields to define the structure of your model.', size: 'section' })}
       </div>
     </div>
 
 
-    <div class="card">
+    <div class="card md-section">
       <h3>Display Field</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which field identifies a record in lists and dropdowns.</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -4906,7 +5418,7 @@ async function viewModelDetail(main, modelId) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card md-section">
       <h3>Primary Geometry Field</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which geometry field is synced to PostGIS for spatial queries (bbox, near).</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -4918,7 +5430,7 @@ async function viewModelDetail(main, modelId) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card md-section is-warning">
       <h3>Governance Policy</h3>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Controls how proposals for this model are processed.</p>
       <div class="form-row">
@@ -4966,8 +5478,15 @@ async function viewModelDetail(main, modelId) {
     } catch (err) { toast(err.message, 'error'); }
   };
 
-  // Toggle add-field form
-  $('show-add-field').onclick = () => { $('add-field-form').style.display = 'block'; $('show-add-field').style.display = 'none'; $('af-key').focus(); };
+  // Toggle add-field form. Trigger onFieldTypeChange so type-specific inputs
+  // (Pattern, Default Value, etc.) render immediately — they live in #af-extra
+  // which is empty until that handler runs.
+  $('show-add-field').onclick = () => {
+    $('add-field-form').style.display = 'block';
+    $('show-add-field').style.display = 'none';
+    onFieldTypeChange();
+    $('af-key').focus();
+  };
   $('cancel-add-field').onclick = () => { $('add-field-form').style.display = 'none'; $('show-add-field').style.display = ''; };
 
   // Submit new field
@@ -4981,18 +5500,38 @@ async function viewModelDetail(main, modelId) {
       if (refModelEl?.value) body.referenceModelKey = refModelEl.value;
       const enumsEl = $('af-enums');
       if (enumsEl?.value) body.enumValues = enumsEl.value.split(',').map(s => s.trim()).filter(Boolean);
+
+      // Merge all validation rules into one object (instead of overwriting per type group)
+      const validation = {};
       const minEl = $('af-min'), maxEl = $('af-max');
-      if (minEl?.value || maxEl?.value) {
-        body.validationJson = {};
-        if (minEl?.value) body.validationJson.min = parseFloat(minEl.value);
-        if (maxEl?.value) body.validationJson.max = parseFloat(maxEl.value);
-      }
+      if (minEl?.value) validation.min = parseFloat(minEl.value);
+      if (maxEl?.value) validation.max = parseFloat(maxEl.value);
       const minLenEl = $('af-minlen'), maxLenEl = $('af-maxlen');
-      if (minLenEl?.value || maxLenEl?.value) {
-        body.validationJson = {};
-        if (minLenEl?.value) body.validationJson.minLength = parseInt(minLenEl.value);
-        if (maxLenEl?.value) body.validationJson.maxLength = parseInt(maxLenEl.value);
+      if (minLenEl?.value) validation.minLength = parseInt(minLenEl.value);
+      if (maxLenEl?.value) validation.maxLength = parseInt(maxLenEl.value);
+      const patternEl = $('af-pattern');
+      if (patternEl?.value?.trim()) {
+        const p = patternEl.value.trim();
+        try { new RegExp(p); }
+        catch (e) { toast(`Invalid regex pattern: ${e.message}`, 'error'); return; }
+        validation.pattern = p;
       }
+      if (Object.keys(validation).length) body.validationJson = validation;
+
+      // Default value (type-aware parse)
+      const defEl = $('af-default');
+      if (defEl && defEl.value !== '' && defEl.value !== undefined) {
+        const t = body.fieldType;
+        try {
+          if (t === 'number') body.defaultValue = parseFloat(defEl.value);
+          else if (t === 'boolean') body.defaultValue = defEl.value === 'true';
+          else if (t === 'json') body.defaultValue = JSON.parse(defEl.value);
+          else body.defaultValue = defEl.value;
+        } catch (e) {
+          toast(`Default value: ${e.message}`, 'error'); return;
+        }
+      }
+
       // Geometry field config
       const geomTypeEl = $('af-geom-type'), geomSridEl = $('af-geom-srid'), geom3dEl = $('af-geom-3d'), geomPrimaryEl = $('af-geom-primary');
       if (geomTypeEl?.value && body.fieldType === 'geometry') {
@@ -5150,76 +5689,201 @@ async function viewModelDetail(main, modelId) {
 
 function renderFieldItem(f, modelId, index) {
   const info = fieldTypeInfo[f.fieldType] || { icon: '?', color: '#999', desc: '' };
-  const constraints = [];
-  if (f.isRequired) constraints.push('required');
-  if (f.enumValues) constraints.push(`options: ${f.enumValues.join(', ')}`);
+
+  // Build chip array for constraints + state. Each one renders as a pill below
+  // the field name so designers can scan an entire schema's rules at a glance.
+  const chips = [];
+  const typeLabel = f.fieldType === 'enum_' ? 'enum' : f.fieldType;
+  chips.push(`<span class="field-constraint-chip is-primary">${typeLabel}</span>`);
+  if (f.isRequired) {
+    chips.push(`<span class="field-constraint-chip is-required">REQUIRED</span>`);
+  }
+  if (f.fieldType === 'reference' && f.referenceModelKey) {
+    chips.push(`<span class="field-constraint-chip">→ <code>${f.referenceModelKey}</code></span>`);
+  }
   if (f.fieldType === 'geometry') {
-    if (f.geometryType) constraints.push(f.geometryType);
-    if (f.geometrySrid && f.geometrySrid !== 4326) constraints.push(`EPSG:${f.geometrySrid}`);
-    if (f.geometryIs3D) constraints.push('3D');
+    const parts = [];
+    if (f.geometryType) parts.push(f.geometryType);
+    if (f.geometryIs3D) parts.push('3D');
+    if (parts.length) chips.push(`<span class="field-constraint-chip">${parts.join(' ')}</span>`);
+    if (f.geometrySrid && f.geometrySrid !== 4326) {
+      chips.push(`<span class="field-constraint-chip">EPSG:${f.geometrySrid}</span>`);
+    }
+  }
+  if (f.enumValues?.length) {
+    chips.push(`<span class="field-constraint-chip">${f.enumValues.length} option${f.enumValues.length === 1 ? '' : 's'}</span>`);
   }
   if (f.validationJson) {
     const v = f.validationJson;
-    if (v.min !== undefined) constraints.push(`min: ${v.min}`);
-    if (v.max !== undefined) constraints.push(`max: ${v.max}`);
-    if (v.minLength !== undefined) constraints.push(`minLength: ${v.minLength}`);
-    if (v.maxLength !== undefined) constraints.push(`maxLength: ${v.maxLength}`);
+    if (v.min !== undefined) chips.push(`<span class="field-constraint-chip">≥ ${v.min}</span>`);
+    if (v.max !== undefined) chips.push(`<span class="field-constraint-chip">≤ ${v.max}</span>`);
+    if (v.minLength !== undefined) chips.push(`<span class="field-constraint-chip">min ${v.minLength} chars</span>`);
+    if (v.maxLength !== undefined) chips.push(`<span class="field-constraint-chip">max ${v.maxLength} chars</span>`);
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      chips.push(`<span class="field-constraint-chip">pattern: ${human || `<code>${v.pattern}</code>`}</span>`);
+    }
+  }
+  if (f.defaultValue !== undefined && f.defaultValue !== null) {
+    const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
+    chips.push(`<span class="field-constraint-chip">default: <code>${dv}</code></span>`);
   }
 
-  return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
-    <div class="drag-handle" style="cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;padding:0 2px;user-select:none" title="Drag to reorder">⠿</div>
-    <div style="width:36px;height:36px;border-radius:8px;background:${info.color}15;color:${info.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">${info.icon}</div>
+  return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
+    <div class="drag-handle" style="cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;padding:8px 2px 0;user-select:none" title="Drag to reorder">⠿</div>
+    <div style="width:36px;height:36px;border-radius:8px;background:${info.color}15;color:${info.color};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;margin-top:2px">${info.icon}</div>
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-weight:600;font-size:14px">${f.label}</span>
         <code style="font-size:12px;color:var(--muted);background:var(--bg);padding:1px 6px;border-radius:3px">${f.key}</code>
-        ${f.isRequired ? '<span style="font-size:11px;color:var(--danger);font-weight:600">REQUIRED</span>' : ''}
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">${f.fieldType === 'enum_' ? 'enum' : f.fieldType}${constraints.length ? ' &middot; ' + constraints.join(' &middot; ') : ''}</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;margin-top:2px">${chips.join('')}</div>
     </div>
-    <button class="btn btn-ghost btn-sm" data-edit-field="${f.id}" style="color:var(--primary)">Edit</button>
-    <button class="btn btn-ghost btn-sm" data-del-field="${f.id}" data-field-label="${f.label}" style="color:var(--danger)">Delete</button>
+    <div style="display:flex;gap:4px;flex-shrink:0;align-self:center">
+      <button class="btn btn-ghost btn-sm" data-edit-field="${f.id}" style="color:var(--primary)">Edit</button>
+      <button class="btn btn-ghost btn-sm" data-del-field="${f.id}" data-field-label="${f.label}" style="color:var(--danger)">Delete</button>
+    </div>
   </div>
   <div id="edit-area-${f.id}" style="display:none;background:var(--bg);border-radius:var(--radius);padding:16px;margin:-4px 0 8px;border:1px solid var(--border)">
+    <div class="field-section-label">Identity (immutable)</div>
     <div style="display:flex;gap:12px;margin-bottom:8px">
       <div style="flex:1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Key</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:13px;color:var(--muted)">${f.key}</div></div>
       <div style="flex:1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Type</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.fieldType === 'enum_' ? 'enum' : f.fieldType}</div></div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Key and type cannot be changed after creation. To change, delete this field and create a new one.</div>
+
+    <div class="field-section-label">Editable</div>
     <div class="form-row">
       <div class="form-group"><label>Label</label><input id="ef-label-${f.id}" value="${f.label}"></div>
       <div class="form-group" style="flex:0;min-width:100px"><label>Required</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="ef-req-${f.id}" ${f.isRequired ? 'checked' : ''}> Yes</label></div></div>
     </div>
     ${f.fieldType === 'enum_' ? `<div class="form-group"><label>Enum Values (comma separated)</label><input id="ef-enums-${f.id}" value="${(f.enumValues || []).join(', ')}"></div>` : ''}
-    ${f.fieldType === 'geometry' ? `<div style="display:flex;gap:12px;margin-bottom:8px">
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Geometry Type</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryType || 'MIXED'}</div></div>
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">SRID</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">EPSG:${f.geometrySrid || 4326}</div></div>
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">3D</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryIs3D ? 'Yes' : 'No'}</div></div>
-    </div>` : ''}
-    <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
+
+    ${renderFieldReadOnlySummary(f)}
+
+    <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
   </div>`;
+}
+
+// Build a read-only "Schema constraints" panel summarizing everything that
+// CAN'T be changed via edit — so designers can see what's configured and know
+// they have to delete + recreate to change validation rules / default / etc.
+function renderFieldReadOnlySummary(f) {
+  const v = f.validationJson || {};
+  const rows = [];
+  const row = (label, value) => `<tr><td style="padding:4px 8px;color:var(--muted);width:140px;font-size:12px">${label}</td><td style="padding:4px 8px;font-size:13px">${value}</td></tr>`;
+
+  if (f.fieldType === 'string') {
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      rows.push(row('Pattern', `<code>${v.pattern}</code>${human ? ` <span style="color:var(--muted)">— ${human}</span>` : ''}`));
+    }
+    if (v.minLength !== undefined) rows.push(row('Min length', v.minLength));
+    if (v.maxLength !== undefined) rows.push(row('Max length', v.maxLength));
+  }
+  if (f.fieldType === 'number') {
+    if (v.min !== undefined) rows.push(row('Min value', v.min));
+    if (v.max !== undefined) rows.push(row('Max value', v.max));
+  }
+  if (f.fieldType === 'reference' && f.referenceModelKey) {
+    rows.push(row('References', `<code>${f.referenceModelKey}</code>`));
+  }
+  if (f.fieldType === 'geometry') {
+    rows.push(row('Geometry type', `${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}`));
+    rows.push(row('SRID', `EPSG:${f.geometrySrid || 4326}`));
+  }
+  if (f.defaultValue !== undefined && f.defaultValue !== null) {
+    const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
+    rows.push(row('Default value', `<code>${dv}</code>`));
+  }
+
+  if (!rows.length) return '';
+  return `<div class="field-section-label" style="margin-top:20px">Schema constraints (immutable)</div>
+    <div style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <table style="width:100%;box-shadow:none"><tbody>${rows.join('')}</tbody></table>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">To change these, delete this field and create a new one with the desired config.</div>
+    </div>`;
 }
 
 function onFieldTypeChange() {
   const type = $('af-type').value;
   const extra = $('af-extra');
+
+  // --- Section A: type-specific validation rules ---
+  let validationHtml = '';
   if (type === 'enum_') {
-    extra.innerHTML = `<div class="form-group"><label>Enum Values <span style="color:var(--danger)">*</span></label><input id="af-enums" placeholder="e.g. residential, commercial, industrial"><div style="font-size:12px;color:var(--muted);margin-top:4px">Comma-separated list of allowed values</div></div>`;
+    validationHtml = `<div class="form-group"><label>Enum Values <span style="color:var(--danger)">*</span></label><input id="af-enums" placeholder="e.g. residential, commercial, industrial"><div style="font-size:12px;color:var(--muted);margin-top:4px">Comma-separated list of allowed values</div></div>`;
   } else if (type === 'number') {
-    extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Value</label><input id="af-min" type="number" step="any" placeholder="Optional"></div><div class="form-group"><label>Max Value</label><input id="af-max" type="number" step="any" placeholder="Optional"></div></div>`;
+    validationHtml = `<div class="form-row"><div class="form-group"><label>Min Value</label><input id="af-min" type="number" step="any" placeholder="Optional"></div><div class="form-group"><label>Max Value</label><input id="af-max" type="number" step="any" placeholder="Optional"></div></div>`;
   } else if (type === 'string') {
-    extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div><div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div></div>`;
+    validationHtml = `
+      <div class="form-row">
+        <div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div>
+        <div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div>
+      </div>
+      <div class="form-group">
+        <label>Pattern (regex)</label>
+        <input id="af-pattern" type="text" placeholder='e.g. ^[0-9]{2}$ — exactly 2 digits' oninput="updatePatternHint()" style="font-family:monospace">
+        <div id="af-pattern-hint" style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Anchor with <code>^</code> and <code>$</code> for whole-value match.</div>
+      </div>`;
   } else if (type === 'reference') {
-    extra.innerHTML = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
+    validationHtml = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
   } else if (type === 'geometry') {
-    extra.innerHTML = `<div class="form-row">
+    validationHtml = `<div class="form-row">
       <div class="form-group"><label>Geometry Type <span style="color:var(--danger)">*</span></label><select id="af-geom-type"><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div>
       <div class="form-group"><label>CRS (SRID)</label><select id="af-geom-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
       <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="af-geom-3d"> Yes</label></div></div>
     </div>
     <div class="form-group"><label><input type="checkbox" id="af-geom-primary"> Set as primary geometry field</label><div style="font-size:12px;color:var(--muted);margin-top:4px">Primary geometry is synced to the PostGIS column for spatial queries</div></div>`;
-  } else {
-    extra.innerHTML = '';
+  }
+
+  // --- Section B: default value (universal, type-aware) ---
+  // Skipped for reference/geometry — defaults don't make sense there.
+  let defaultHtml = '';
+  if (type === 'string') {
+    defaultHtml = `<input id="af-default" type="text" placeholder="Optional">`;
+  } else if (type === 'number') {
+    defaultHtml = `<input id="af-default" type="number" step="any" placeholder="Optional">`;
+  } else if (type === 'boolean') {
+    defaultHtml = `<select id="af-default"><option value="">— None —</option><option value="true">true</option><option value="false">false</option></select>`;
+  } else if (type === 'date') {
+    defaultHtml = `<input id="af-default" type="date">`;
+  } else if (type === 'enum_') {
+    defaultHtml = `<input id="af-default" type="text" placeholder="Must be one of the enum values above">`;
+  } else if (type === 'json') {
+    defaultHtml = `<textarea id="af-default" rows="2" placeholder='Optional — valid JSON, e.g. {"key":"value"}'></textarea>`;
+  }
+  // Wrap each section with the shared label class so the form looks uniform
+  // with the Edit panel ("EDITABLE" / "SCHEMA CONSTRAINTS" / etc.)
+  const validationSection = validationHtml
+    ? `<div class="field-section-label">Validation rules</div>${validationHtml}`
+    : '';
+  const defaultSection = defaultHtml
+    ? `<div class="field-section-label">Default value</div>
+       <div class="form-group">${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>`
+    : '';
+
+  extra.innerHTML = validationSection + defaultSection;
+}
+
+// Live humanize feedback for the pattern input
+function updatePatternHint() {
+  const el = $('af-pattern');
+  const hint = $('af-pattern-hint');
+  if (!el || !hint) return;
+  const p = el.value.trim();
+  if (!p) {
+    hint.innerHTML = `Optional. Anchor with <code>^</code> and <code>$</code> for whole-value match.`;
+    hint.style.color = 'var(--muted)';
+    return;
+  }
+  try {
+    new RegExp(p);
+    const human = humanizePattern(p);
+    hint.innerHTML = human ? `Format: <strong>${human}</strong>` : `Will match: <code>${p}</code>`;
+    hint.style.color = 'var(--muted)';
+  } catch (e) {
+    hint.innerHTML = `Invalid regex: ${e.message}`;
+    hint.style.color = 'var(--danger)';
   }
 }
 
@@ -5242,7 +5906,14 @@ async function viewGovernance(main) {
   main.append(header);
 
   if (!models.length) {
-    main.append(h('div', { className: 'empty' }, h('h4', {}, 'No models yet'), h('p', {}, 'Create a model first to configure governance policies.'), h('button', { className: 'btn btn-primary', onclick: () => nav('define/models') }, 'Go to Models')));
+    const gWrap = document.createElement('div');
+    gWrap.innerHTML = renderEmptyState({
+      title: 'No models yet',
+      description: 'Create a model first to configure governance policies.',
+      actions: [`<button class="btn btn-primary" onclick="nav('define/models')">Go to Models</button>`],
+      size: 'page',
+    });
+    main.append(gWrap.firstElementChild);
     return;
   }
 
@@ -5260,6 +5931,8 @@ async function viewGovernance(main) {
 
 // ─── Init (called after auth completes) ────────────
 async function startApp() {
+  await renderWorkspaceSwitcher();
+  updateTabTitle();
   await refreshModels();
   await refreshPendingCount();
   router();

@@ -9,3 +9,6 @@ dist/
 *.pem
 deploy/.keycloak_admin_password.txt
 deploy/.deployment_secrets.txt
+
+# Local plan + memory files (per-machine, not for the repo)
+.claude/

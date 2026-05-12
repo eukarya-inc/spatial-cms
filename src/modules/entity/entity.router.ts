@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as entityService from "./entity.service.js";
 import { uuidParamSchema } from "../../shared/validation.js";
+import { workspaceId } from "../../shared/workspace.js";
 
 export const entityRouter = Router();
 
@@ -38,7 +39,7 @@ entityRouter.get("/", async (req, res, next) => {
       options.sort = { field: parts[0], order: parts[1] === "desc" ? "desc" : "asc" };
     }
 
-    const result = await entityService.listEntities(options);
+    const result = await entityService.listEntities(workspaceId(req), options);
     res.json(result);
   } catch (err) {
     next(err);
@@ -49,7 +50,7 @@ entityRouter.get("/", async (req, res, next) => {
 entityRouter.get("/:id/versions", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const versions = await entityService.getEntityVersions(id);
+    const versions = await entityService.getEntityVersions(workspaceId(req), id);
     res.json(versions);
   } catch (err) {
     next(err);
@@ -60,7 +61,7 @@ entityRouter.get("/:id/versions", async (req, res, next) => {
 entityRouter.post("/:id/restore", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const entity = await entityService.restoreEntity(id);
+    const entity = await entityService.restoreEntity(workspaceId(req), id);
     res.json(entity);
   } catch (err) {
     next(err);
@@ -71,7 +72,7 @@ entityRouter.post("/:id/restore", async (req, res, next) => {
 entityRouter.delete("/:id/purge", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const result = await entityService.purgeEntity(id);
+    const result = await entityService.purgeEntity(workspaceId(req), id);
     res.json(result);
   } catch (err) {
     next(err);
@@ -82,7 +83,7 @@ entityRouter.delete("/:id/purge", async (req, res, next) => {
 entityRouter.get("/:id", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const entity = await entityService.getEntity(id);
+    const entity = await entityService.getEntity(workspaceId(req), id);
     if (!entity) return res.status(404).json({ error: "Entity not found" });
     res.json(entity);
   } catch (err) {
