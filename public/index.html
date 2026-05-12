@@ -1684,7 +1684,7 @@ async function viewDashboard(main) {
   }));
 
   main.innerHTML = `
-    <div class="page-header"><h2>Dashboard</h2></div>
+    <div class="page-header"><h2>Dashboard <span style="font-weight:400;color:var(--muted);font-size:14px">— ${window._currentWorkspaceName || 'Default'}</span></h2></div>
 
     <!-- Stats -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
@@ -1806,7 +1806,18 @@ async function viewContentAll(main) {
     </div>
     <div id="rec-table"></div>`;
 
-  if (!entities.length) { $('rec-table').innerHTML = '<div class="empty"><h4>No records yet</h4></div>'; return; }
+  if (!entities.length) {
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    $('rec-table').innerHTML = `<div class="card" style="text-align:center;padding:40px 24px;max-width:520px;margin:24px auto">
+      <div style="font-size:32px;margin-bottom:8px">📋</div>
+      <h3 style="margin:0 0 6px;font-size:18px">No records in ${wsName} yet</h3>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Records are added by creating a proposal for a model. Pick a model from the sidebar's "Manage" section, or jump straight in:</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        ${modelCache.slice(0, 3).map(m => `<button class="btn btn-outline btn-sm" onclick="nav('manage/new/${m.key}')">+ New ${m.name}</button>`).join('')}
+      </div>
+    </div>`;
+    return;
+  }
 
   // Store entities for filtering
   window._allEntities = entities;
@@ -1922,7 +1933,13 @@ async function viewContentByModel(main, modelKey) {
     <div id="model-rec-table"></div>`;
 
   if (!entities.length) {
-    $('model-rec-table').innerHTML = `<div class="empty"><h4>No ${modelName} records yet</h4><p>Click the button above to create your first record.</p></div>`;
+    const wsName = window._currentWorkspaceName || 'this workspace';
+    $('model-rec-table').innerHTML = `<div class="card" style="text-align:center;padding:40px 24px;max-width:520px;margin:24px auto">
+      <div style="font-size:32px;margin-bottom:8px">📋</div>
+      <h3 style="margin:0 0 6px;font-size:18px">No ${modelName} records in ${wsName} yet</h3>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Create your first record — it'll go through the proposal queue (if governance is set to manual) or auto-approve.</div>
+      <button class="btn btn-primary" onclick="nav('manage/new/${modelKey}')">+ New ${modelName}</button>
+    </div>`;
     return;
   }
   window._modelEntities = entities;
@@ -2855,6 +2872,16 @@ async function viewDatasets(main) {
         } catch (err) { toast(err.message, 'error'); }
       };
     });
+  } else {
+    const wsName = window._currentWorkspaceName || 'This workspace';
+    const empty = h('div', { className: 'card', style: { textAlign: 'center', padding: '40px 24px', maxWidth: '520px', margin: '24px auto' } });
+    empty.innerHTML = `
+      <div style="font-size:32px;margin-bottom:8px">📦</div>
+      <h3 style="margin:0 0 6px;font-size:18px">${wsName} has no datasets yet</h3>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.</div>
+      <button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>
+    `;
+    main.append(empty);
   }
 }
 
@@ -3500,12 +3527,17 @@ async function viewImportApi(main) {
     <div class="card">
       <h3>Examples</h3>
       <pre style="font-size:12px"># Validate entities (dry-run, no writes)
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+# X-Workspace-Key picks which workspace. Change "default" to your workspace slug.
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/ingestion/validate \\
   -d '{"modelKey":"building","entities":[{"properties":{"name":"Test"}}]}'
 
 # Governed import (respects governance policy)
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/ingestion/governed \\
   -d '{"entities":[{"type":"building","properties":{"name":"Test"}}],"source":"machine"}'</pre>
     </div>
@@ -3556,6 +3588,8 @@ cat buildings.geojson | jq '{
   }],
   options: { skipInvalid: true }
 }' | curl -X POST ${baseUrl}/ingestion/import \\
+  -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: default" \\
   -H "Content-Type: application/json" \\
   -d @-</pre>
     </div>`;
@@ -4208,16 +4242,26 @@ async function viewManagementApi(main) {
 
     <div class="card">
       <h3>Examples</h3>
-      <pre style="font-size:12px"># List entities
-curl -H "X-API-Key: scms_xxx" ${baseUrl}/entities?type=building&pageSize=10
+      <pre style="font-size:12px"># All Management API requests are scoped to a workspace via the
+# X-Workspace-Key header (default: "default"). The same X-API-Key works
+# across every workspace — change the header to target a different one.
 
-# Create a proposal
-curl -X POST -H "X-API-Key: scms_xxx" -H "Content-Type: application/json" \\
+# List entities (in default workspace)
+curl -H "X-API-Key: scms_xxx" \\
+     -H "X-Workspace-Key: default" \\
+     ${baseUrl}/entities?type=building&pageSize=10
+
+# Create a proposal (target a specific workspace)
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: parks" \\
+  -H "Content-Type: application/json" \\
   ${baseUrl}/proposals \\
   -d '{"proposedChange":{"action":"create","data":{"type":"building","properties":{"name":"New"}}}}'
 
-# Approve a proposal
-curl -X POST -H "X-API-Key: scms_xxx" ${baseUrl}/proposals/{id}/approve</pre>
+# Approve a proposal (workspace inferred from the proposal's workspaceId)
+curl -X POST -H "X-API-Key: scms_xxx" \\
+  -H "X-Workspace-Key: parks" \\
+  ${baseUrl}/proposals/{id}/approve</pre>
     </div>
 
     <div class="card">
@@ -4288,12 +4332,18 @@ async function viewApiKeys(main) {
         Human users authenticate via Keycloak (JWT). Both methods are accepted on all protected endpoints.
         OGC API is always public (no auth required).
       </p>
+      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius);padding:12px;margin-bottom:12px;font-size:13px;color:var(--text)">
+        <strong style="color:var(--primary)">ℹ Keys are workspace-agnostic.</strong>
+        A <code>manage</code> or <code>admin</code> key works across every workspace in this deployment. Workspace scoping is controlled per-request by the <code>X-Workspace-Key</code> header (defaults to <code>default</code> if omitted).
+      </div>
       <table style="box-shadow:none;font-size:12px;margin-bottom:12px"><thead><tr><th>Scope</th><th>Access Level</th><th>Use For</th></tr></thead><tbody>
         <tr><td><code>delivery</code></td><td>Delivery API (read-only)</td><td>Consumer apps, CKAN, data portals</td></tr>
         <tr><td><code>manage</code></td><td>+ Management + Ingestion API</td><td>Dedup tools, ETL, CLI import scripts</td></tr>
         <tr><td><code>admin</code></td><td>+ Definitions + API Key management</td><td>System administration, deployment scripts</td></tr>
       </tbody></table>
-      <pre style="font-size:12px">curl -H "X-API-Key: scms_your_key_here" ${window.location.origin}/api/v1/delivery/datasets</pre>
+      <pre style="font-size:12px">curl -H "X-API-Key: scms_your_key_here" \\
+     -H "X-Workspace-Key: default" \\
+     ${window.location.origin}/api/v1/entities</pre>
     </div>
 
     <div id="key-created-area"></div>

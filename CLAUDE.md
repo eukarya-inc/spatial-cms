@@ -36,7 +36,7 @@ npx tsx scripts/seed-taito.ts
 #    Login: admin / admin (Keycloak)
 ```
 
-Run tests: `npm test` (47 integration tests)
+Run tests: `npm test` (55 integration tests)
 
 ### Dev Service Manager (`dev.sh`)
 
@@ -157,12 +157,13 @@ Geometry is stored in a separate `entity_geometry` table (not on the entity tabl
 Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryIs3D`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.
 
 ### Geometry Map UI (frontend)
-Each geometry field renders as an inline `.geometry-card` with a MapLibre GL preview/editor. Reusable component `renderGeometryCard({field, value, mode, isPrimary, containerEl, onChange})` in `public/index.html` handles both view (read-only) and edit (Mapbox Draw integration) modes. MapLibre + Mapbox Draw are CDN-loaded lazily on first card mount via `loadMapLibs()`. Rules:
+Each geometry field renders as an inline `.geometry-card` with a MapLibre GL preview/editor. Reusable component `renderGeometryCard({field, value, mode, isPrimary, containerEl, onChange, entityProperties})` in `public/index.html` handles both view (read-only) and edit (Mapbox Draw integration) modes. MapLibre + Mapbox Draw are CDN-loaded lazily on first card mount via `loadMapLibs()`. Rules:
 - SRID 4326 only — non-4326 fields show a warning banner and JSON-only editor
-- 3D geometries: 2D map preview, edit-mode confirmation before discarding Z; JSON textarea is the lossless fallback for Z editing
+- **View mode does 2.5D fill-extrusion** for polygons when a height value is present. Height priority: `entityProperties.height_m` → `height` → `measured_height` → max Z from vertex coordinates. When the height is > 0, the layer hides the flat fill and sets pitch=45°/bearing=-20°.
+- 3D geometries: edit mode confirms before discarding Z; JSON textarea is the lossless fallback for Z editing
 - Map ↔ JSON textarea bidirectional sync (textarea synced on map draw events; map updated on textarea blur with valid-JSON check)
 - `router()` calls `__cleanupGeometryCards()` to prevent WebGL context leaks on navigation
-- Use cases: `viewEntityDetail` (mode `'view'`), edit form inside detail (mode `'edit'`), `viewNewRecord` (mode `'edit'`)
+- Use cases: `viewEntityDetail` (mode `'view'`, passes `entityProperties`), edit form inside detail (mode `'edit'`), `viewNewRecord` (mode `'edit'`)
 
 ### Prisma Migrations with Directus
 Directus creates its own tables in the same schema, causing Prisma drift detection. Use this workflow:
@@ -182,6 +183,12 @@ Both exist. `type` is a denormalized string (always = `modelDefinition.key`). `m
 
 ### Proposal Auto-Approval
 When `GovernancePolicy.approvalMode = "auto"` exists for a model, `createProposal()` automatically calls `approveProposal()` after validation passes. This applies to all proposal types (create, update, delete) — the model is resolved from `proposedChange.data.type` or from the entity's `modelDefinitionId` via `entityId`.
+
+### Validation Timing
+For `action: create` proposals, `validateAgainstModel()` runs at **proposal-create time** (not just approve time). An invalid create payload returns 400 before any row is inserted, so the review queue never holds structurally invalid proposals. Update/delete proposals validate only at approve time (partial payloads are allowed).
+
+### Field Immutability
+Once a `FieldDefinition` is created, only `label`, `isRequired`, and `enumValues` (for enum_ fields) can be edited. Everything else — `key`, `fieldType`, `validationJson` (pattern/length/range), `defaultValue`, `referenceModelKey`, `geometryType`/`Srid`/`Is3D` — is immutable. To change them, delete the field and recreate it. The Model Designer surfaces all constraints in a "Schema constraints (immutable)" read-only summary inside the inline edit panel.
 
 ### Entity Status Lifecycle
 Approved create proposals default to `active` status. Status changes (activate/archive) are done via proposals — the frontend creates a proposal and the backend auto-approves if the governance policy allows. No direct status writes.
@@ -296,6 +303,13 @@ Each dataset controls which APIs expose its data:
 - `POST /api/v1/templates/resolve` — fetch + validate from URL or inline JSON (manage scope)
 - `POST /api/v1/templates/apply` — apply template: creates models + fields only, no dataset (admin scope)
 
+### Workspaces
+- `GET /api/v1/workspaces` — list all workspaces (manage scope)
+- `GET /api/v1/workspaces/:slug` — workspace detail
+- `POST /api/v1/workspaces` — create (admin scope)
+- `DELETE /api/v1/workspaces/:slug` — cascade delete; refuses `default` (admin scope)
+- `GET /api/v1/workspaces/locate/{entity|model|dataset}/:id` — find which workspace owns a record; used by the UI to recover from cross-workspace 404s on detail pages
+
 ### Delivery (read-only, for external consumers)
 - `GET /api/v1/delivery/datasets` — list published datasets (publishToDelivery=true)
 - `GET /api/v1/delivery/datasets/:id` — dataset metadata (description, license, CRS, etc.)
@@ -312,6 +326,8 @@ Each dataset controls which APIs expose its data:
   - `?sort=field:asc` — sorting
   - `?format=geojson` — GeoJSON FeatureCollection output
 - `GET /api/v1/delivery/datasets/:id/entities/:entityId` — single entity
+
+**Consumer apps** (e.g. `examples/viewer`) compute extrusion height for 3D rendering using this priority: `properties.height_m` → `properties.height` → `properties.measured_height` → max Z extracted from polygon vertex coordinates. Z is preserved through `ST_AsGeoJSON` so `geometryIs3D: true` fields keep their Z values in the output.
 
 ### OGC API - Features (standard-compliant, for GIS tools)
 Each collection = one model from a publishToOgc=true dataset. Collection ID: `{datasetId}_{modelKey}`.
