@@ -126,6 +126,30 @@ deploy/                       # AWS deployment kit (single-tenant, per-team)
 
 ## Key Patterns
 
+### Workspaces (intra-deployment grouping)
+Every `ModelDefinition` and `DatasetDefinition` belongs to a `Workspace` (via FK).
+Everything below them (fields, entities, proposals, snapshots, publications,
+governance policies, bindings) inherits the workspace transitively through its
+parent. There is a single bootstrap workspace `default` created by migration,
+which is where all pre-workspace data lives.
+
+Requests to Management/Ingestion/Definitions/Template APIs are scoped via the
+`X-Workspace-Key: <slug>` header (or `?workspace=<slug>` query). Missing /
+unknown header falls back to `default` — this is why existing tests, seed
+scripts, and external API clients keep working without changes.
+
+Delivery API and OGC API are **workspace-agnostic** (datasets are
+globally-unique by id; consumers don't need to know about workspaces). API keys
+are also workspace-agnostic for MVP — every key sees every workspace.
+
+Frontend keeps the current workspace in `window.currentWorkspaceSlug` (persisted
+to `localStorage['workspace_slug']`); the `api()` helper auto-attaches the
+header. Switching workspaces clears caches and re-renders the current view.
+
+Model keys are unique **per workspace** (not globally) — the same `building`
+key can exist in workspace A and workspace B. `findModelDefinitionByKey` takes
+`workspaceId` as the first argument. Dataset names follow the same pattern.
+
 ### Prisma + PostGIS
 Geometry is stored in a separate `entity_geometry` table (not on the entity table). Each geometry field value gets its own row with a GIST spatial index, enabling spatial queries on any geometry field. The entity table's `properties` JSONB stores non-geometry field values only; geometry is merged back into properties at read time. All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
 

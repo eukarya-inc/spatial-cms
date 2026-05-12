@@ -144,8 +144,11 @@ function validateGeometryType(
 }
 
 /**
- * Look up ModelDefinition by key (for backward compat with entity.type)
+ * Look up ModelDefinition by key, scoped to a workspace.
+ * (Model keys are unique per workspace, not globally.)
  */
-export async function findModelDefinitionByKey(key: string) {
-  return prisma.modelDefinition.findUnique({ where: { key } });
+export async function findModelDefinitionByKey(workspaceId: string, key: string) {
+  return prisma.modelDefinition.findUnique({
+    where: { workspaceId_key: { workspaceId, key } },
+  });
 }

@@ -95,6 +95,7 @@ export async function resolveTemplateFromUrl(url: string): Promise<Template> {
 
 /** Apply a template: create models, fields, governance, optionally dataset */
 export async function applyTemplate(
+  workspaceId: string,
   template: Template,
   overrides?: Record<string, { key?: string; name?: string }>,
 ) {
@@ -118,12 +119,15 @@ export async function applyTemplate(
     return { ...m, key: ovr?.key || m.key, name: ovr?.name || m.name, fields: newFields };
   });
 
-  // Check for key conflicts
-  const existingModels = await prisma.modelDefinition.findMany({ select: { key: true } });
+  // Check for key conflicts within this workspace (keys can repeat across workspaces)
+  const existingModels = await prisma.modelDefinition.findMany({
+    where: { workspaceId },
+    select: { key: true },
+  });
   const existingKeys = new Set(existingModels.map((m) => m.key));
   const conflicts = models.filter((m) => existingKeys.has(m.key)).map((m) => m.key);
   if (conflicts.length) {
-    throw new Error(`Model key conflict: ${conflicts.join(", ")} already exist`);
+    throw new Error(`Model key conflict: ${conflicts.join(", ")} already exist in this workspace`);
   }
 
   // Use transaction so partial failures roll back (models + fields are atomic)
@@ -134,6 +138,7 @@ export async function applyTemplate(
       // Create model + governance policy
       const model = await tx.modelDefinition.create({
         data: {
+          workspaceId,
           key: tm.key,
           name: tm.name,
           description: tm.description,

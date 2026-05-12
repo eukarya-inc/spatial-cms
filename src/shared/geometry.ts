@@ -135,10 +135,12 @@ export async function findEntitiesNearPoint(
   return rows.map((r) => r.entity_id);
 }
 
-/** Look up SRID for a model type via its primary geometry field definition. */
-export async function getSridForType(type: string): Promise<number> {
+/** Look up SRID for a model type via its primary geometry field definition.
+ *  Scoped to a workspace because keys are unique only per workspace.
+ */
+export async function getSridForType(workspaceId: string, type: string): Promise<number> {
   const model = await prisma.modelDefinition.findUnique({
-    where: { key: type },
+    where: { workspaceId_key: { workspaceId, key: type } },
     include: { fields: true },
   });
   if (!model?.primaryGeometryField) return 4326;

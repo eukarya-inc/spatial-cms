@@ -1,29 +1,34 @@
 import prisma from "../../db/client.js";
 import { NotFoundError, BusinessError } from "../../shared/errors.js";
 
-export async function listDatasetDefinitions() {
+export async function listDatasetDefinitions(workspaceId: string) {
   return prisma.datasetDefinition.findMany({
+    where: { workspaceId },
     include: { activeReleaseState: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function getDatasetDefinition(id: string) {
-  return prisma.datasetDefinition.findUnique({
-    where: { id },
+export async function getDatasetDefinition(workspaceId: string, id: string) {
+  return prisma.datasetDefinition.findFirst({
+    where: { id, workspaceId },
     include: { snapshots: { orderBy: { version: "desc" } } },
   });
 }
 
-export async function createDatasetDefinition(data: {
-  name: string;
-  entityTypes?: string[];
-  filterRule?: object;
-  projectionRule?: object;
-  primaryGeometryRule?: object;
-}) {
+export async function createDatasetDefinition(
+  workspaceId: string,
+  data: {
+    name: string;
+    entityTypes?: string[];
+    filterRule?: object;
+    projectionRule?: object;
+    primaryGeometryRule?: object;
+  },
+) {
   return prisma.datasetDefinition.create({
     data: {
+      workspaceId,
       name: data.name,
       entityTypes: data.entityTypes ?? [],
       filterRule: data.filterRule ?? undefined,
@@ -33,8 +38,12 @@ export async function createDatasetDefinition(data: {
   });
 }
 
-export async function updateDatasetDefinition(id: string, data: Record<string, unknown>) {
-  const dataset = await prisma.datasetDefinition.findUnique({ where: { id } });
+export async function updateDatasetDefinition(
+  workspaceId: string,
+  id: string,
+  data: Record<string, unknown>,
+) {
+  const dataset = await prisma.datasetDefinition.findFirst({ where: { id, workspaceId } });
   if (!dataset) throw new NotFoundError("Dataset definition");
   const allowed = ['name', 'publishToDelivery', 'publishToOgc', 'description', 'license', 'source', 'contactName', 'contactEmail', 'keywords'];
   const updateData: Record<string, unknown> = {};
@@ -44,8 +53,8 @@ export async function updateDatasetDefinition(id: string, data: Record<string, u
   return prisma.datasetDefinition.update({ where: { id }, data: updateData });
 }
 
-export async function deleteDatasetDefinition(id: string) {
-  const dataset = await prisma.datasetDefinition.findUnique({ where: { id } });
+export async function deleteDatasetDefinition(workspaceId: string, id: string) {
+  const dataset = await prisma.datasetDefinition.findFirst({ where: { id, workspaceId } });
   if (!dataset) throw new NotFoundError("Dataset definition");
 
   // Cascade: ActiveReleaseState, Publications, Snapshots, Bindings, GovernancePolicy
@@ -59,9 +68,9 @@ export async function deleteDatasetDefinition(id: string) {
 }
 
 /** Generate a snapshot: select entities matching the definition, build manifest */
-export async function generateSnapshot(datasetDefinitionId: string) {
-  const definition = await prisma.datasetDefinition.findUnique({
-    where: { id: datasetDefinitionId },
+export async function generateSnapshot(workspaceId: string, datasetDefinitionId: string) {
+  const definition = await prisma.datasetDefinition.findFirst({
+    where: { id: datasetDefinitionId, workspaceId },
   });
   if (!definition) throw new NotFoundError("Dataset definition");
 
@@ -89,7 +98,7 @@ export async function generateSnapshot(datasetDefinitionId: string) {
       },
     });
   } else {
-    // Legacy path: query by entityTypes array
+    // Legacy path: query by entityTypes array — scope to this workspace's models
     const entityTypes = (definition.entityTypes as string[] | null) ?? [];
     if (!entityTypes.length) {
       throw new BusinessError("Dataset has no model bindings and no entity types configured");
@@ -98,6 +107,7 @@ export async function generateSnapshot(datasetDefinitionId: string) {
       where: {
         type: { in: entityTypes },
         status: "active",
+        modelDefinition: { workspaceId },
       },
       include: {
         versions: {

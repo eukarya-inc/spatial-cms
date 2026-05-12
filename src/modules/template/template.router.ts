@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireApiKey } from "../../middleware/apiKeyAuth.js";
 import * as templateService from "./template.service.js";
+import { workspaceId } from "../../shared/workspace.js";
 
 export const templateRouter = Router();
 const adminOnly = requireApiKey("admin");
@@ -57,7 +58,7 @@ templateRouter.post("/apply", adminOnly, async (req, res, next) => {
     } else {
       return res.status(400).json({ error: "Provide 'templateId' or 'template' in request body" });
     }
-    const result = await templateService.applyTemplate(toApply, overrides);
+    const result = await templateService.applyTemplate(workspaceId(req), toApply, overrides);
     res.status(201).json(result);
   } catch (err: any) {
     if (err.message?.includes("conflict")) {

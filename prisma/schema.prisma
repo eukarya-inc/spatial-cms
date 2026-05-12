@@ -149,7 +149,8 @@ model Proposal {
 
 model DatasetDefinition {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                String   @unique
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  name                String
   entityTypes         Json     @map("entity_types")
   filterRule          Json?    @map("filter_rule")
   projectionRule      Json?    @map("projection_rule")
@@ -164,10 +165,13 @@ model DatasetDefinition {
   keywords            Json?    @default("[]")
   createdAt           DateTime @default(now()) @map("created_at")
 
+  workspace          Workspace             @relation(fields: [workspaceId], references: [id])
   snapshots          DatasetSnapshot[]
   activeReleaseState ActiveReleaseState?
   modelBindings      DatasetModelBinding[]
 
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
   @@map("dataset_definition")
 }
 
@@ -216,7 +220,8 @@ model ActiveReleaseState {
 
 model ModelDefinition {
   id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  key                  String   @unique
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  key                  String
   name                 String
   description          String?
   primaryGeometryField String?  @map("primary_geometry_field")
@@ -224,10 +229,13 @@ model ModelDefinition {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id])
   fields          FieldDefinition[]
   datasetBindings DatasetModelBinding[]
   entities        Entity[]
 
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
   @@map("model_definition")
 }
 
@@ -292,4 +300,20 @@ model ApiKey {
   createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("api_key")
+}
+
+// Intra-deployment grouping. Lets one CMS deployment host multiple
+// unrelated demo / project datasets without cross-contamination.
+// All users see all workspaces (MVP — no per-user membership).
+model Workspace {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  models   ModelDefinition[]
+  datasets DatasetDefinition[]
+
+  @@map("workspace")
 }

@@ -4,13 +4,14 @@ import {
   createDatasetDefinitionSchema,
   uuidParamSchema,
 } from "../../shared/validation.js";
+import { workspaceId } from "../../shared/workspace.js";
 
 export const datasetRouter = Router();
 
 // GET /api/v1/datasets
-datasetRouter.get("/", async (_req, res, next) => {
+datasetRouter.get("/", async (req, res, next) => {
   try {
-    const datasets = await datasetService.listDatasetDefinitions();
+    const datasets = await datasetService.listDatasetDefinitions(workspaceId(req));
     res.json(datasets);
   } catch (err) {
     next(err);
@@ -21,7 +22,7 @@ datasetRouter.get("/", async (_req, res, next) => {
 datasetRouter.get("/:id", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const dataset = await datasetService.getDatasetDefinition(id);
+    const dataset = await datasetService.getDatasetDefinition(workspaceId(req), id);
     if (!dataset)
       return res.status(404).json({ error: "Dataset definition not found" });
     res.json(dataset);
@@ -34,7 +35,7 @@ datasetRouter.get("/:id", async (req, res, next) => {
 datasetRouter.post("/", async (req, res, next) => {
   try {
     const data = createDatasetDefinitionSchema.parse(req.body);
-    const dataset = await datasetService.createDatasetDefinition(data);
+    const dataset = await datasetService.createDatasetDefinition(workspaceId(req), data);
     res.status(201).json(dataset);
   } catch (err) {
     next(err);
@@ -45,7 +46,7 @@ datasetRouter.post("/", async (req, res, next) => {
 datasetRouter.put("/:id", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const dataset = await datasetService.updateDatasetDefinition(id, req.body);
+    const dataset = await datasetService.updateDatasetDefinition(workspaceId(req), id, req.body);
     res.json(dataset);
   } catch (err) {
     next(err);
@@ -56,7 +57,7 @@ datasetRouter.put("/:id", async (req, res, next) => {
 datasetRouter.delete("/:id", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    await datasetService.deleteDatasetDefinition(id);
+    await datasetService.deleteDatasetDefinition(workspaceId(req), id);
     res.json({ deleted: true });
   } catch (err) {
     next(err);
@@ -67,7 +68,7 @@ datasetRouter.delete("/:id", async (req, res, next) => {
 datasetRouter.post("/:id/snapshot", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const snapshot = await datasetService.generateSnapshot(id);
+    const snapshot = await datasetService.generateSnapshot(workspaceId(req), id);
     res.status(201).json(snapshot);
   } catch (err) {
     next(err);

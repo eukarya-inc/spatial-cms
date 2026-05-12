@@ -1,12 +1,21 @@
 import prisma from "../../db/client.js";
 import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
-/** Publish a snapshot: mark as published, update active release state */
-export async function publishSnapshot(datasetSnapshotId: string) {
-  const snapshot = await prisma.datasetSnapshot.findUnique({
-    where: { id: datasetSnapshotId },
+/** Verify snapshot's dataset is in the workspace. Throws NotFoundError otherwise. */
+async function assertSnapshotInWorkspace(workspaceId: string, snapshotId: string) {
+  const snap = await prisma.datasetSnapshot.findUnique({
+    where: { id: snapshotId },
+    include: { datasetDefinition: { select: { workspaceId: true } } },
   });
-  if (!snapshot) throw new NotFoundError("Snapshot");
+  if (!snap || snap.datasetDefinition.workspaceId !== workspaceId) {
+    throw new NotFoundError("Snapshot");
+  }
+  return snap;
+}
+
+/** Publish a snapshot: mark as published, update active release state */
+export async function publishSnapshot(workspaceId: string, datasetSnapshotId: string) {
+  const snapshot = await assertSnapshotInWorkspace(workspaceId, datasetSnapshotId);
   if (snapshot.status !== "ready")
     throw new BusinessError("Snapshot must be in 'ready' status to publish");
 
@@ -41,7 +50,13 @@ export async function publishSnapshot(datasetSnapshotId: string) {
 }
 
 /** Rollback: switch active release to a previous snapshot */
-export async function rollback(datasetDefinitionId: string) {
+export async function rollback(workspaceId: string, datasetDefinitionId: string) {
+  // Verify dataset is in workspace
+  const ds = await prisma.datasetDefinition.findFirst({
+    where: { id: datasetDefinitionId, workspaceId },
+  });
+  if (!ds) throw new NotFoundError("Dataset definition");
+
   const activeRelease = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
   });
@@ -80,12 +95,14 @@ export async function rollback(datasetDefinitionId: string) {
  * Publish hook: simulates sending publication event to a Serve layer.
  * In production this would call an external service or message queue.
  */
-export async function triggerPublishHook(datasetSnapshotId: string) {
+export async function triggerPublishHook(workspaceId: string, datasetSnapshotId: string) {
   const snapshot = await prisma.datasetSnapshot.findUnique({
     where: { id: datasetSnapshotId },
     include: { datasetDefinition: true },
   });
-  if (!snapshot) throw new NotFoundError("Snapshot");
+  if (!snapshot || snapshot.datasetDefinition.workspaceId !== workspaceId) {
+    throw new NotFoundError("Snapshot");
+  }
 
   const payload = {
     event: "publish",
@@ -112,8 +129,9 @@ export async function triggerPublishHook(datasetSnapshotId: string) {
   return { sent: true, payload };
 }
 
-export async function listPublications() {
+export async function listPublications(workspaceId: string) {
   return prisma.publication.findMany({
+    where: { datasetSnapshot: { datasetDefinition: { workspaceId } } },
     include: { datasetSnapshot: true },
     orderBy: { createdAt: "desc" },
   });

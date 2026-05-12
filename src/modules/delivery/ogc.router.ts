@@ -237,9 +237,17 @@ ogcRouter.get("/collections/:collectionId/items/:featureId", async (req, res, ne
     const entity = await deliveryService.getPublishedEntity(parsed.datasetId, featureId);
     if (!entity) return res.status(404).json({ error: "Feature not found in this collection" });
 
-    // Extract primary geometry from properties for GeoJSON Feature output
-    const pgfKey = parsed.modelKey; // need to look up primaryGeometryField
-    const model = await prisma.modelDefinition.findUnique({ where: { key: parsed.modelKey } });
+    // Extract primary geometry from properties for GeoJSON Feature output.
+    // Resolve model in the dataset's workspace (keys aren't globally unique).
+    const dataset = await prisma.datasetDefinition.findUnique({
+      where: { id: parsed.datasetId },
+      select: { workspaceId: true },
+    });
+    const model = dataset
+      ? await prisma.modelDefinition.findUnique({
+          where: { workspaceId_key: { workspaceId: dataset.workspaceId, key: parsed.modelKey } },
+        })
+      : null;
     const pgf = model?.primaryGeometryField;
     const geometry = pgf ? (entity.properties[pgf] as object ?? null) : null;
 

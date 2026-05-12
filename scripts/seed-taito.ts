@@ -4,11 +4,16 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const API_BASE = `http://localhost:${process.env.PORT || 3001}/api/v1`;
+const SEED_WORKSPACE = process.env.SEED_WORKSPACE || "default";
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Workspace-Key": SEED_WORKSPACE,
+      ...((opts.headers as Record<string, string> | undefined) ?? {}),
+    },
   });
   if (!res.ok) {
     const text = await res.text();
