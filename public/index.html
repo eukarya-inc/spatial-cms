@@ -291,6 +291,19 @@
     .md-section { border-left: 4px solid var(--border); }
     .md-section.is-primary { border-left-color: var(--primary); }
     .md-section.is-warning { border-left-color: #f59e0b; }
+
+    /* Unified empty-state component. Use renderEmptyState() to build. */
+    .empty-state { text-align: center; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .empty-state-page    { padding: 48px 24px; margin: 16px 0; }
+    .empty-state-section { padding: 32px 24px; margin: 8px 0; }
+    .empty-state-inline  { padding: 16px 12px; background: transparent; border: none; }
+    .empty-state-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.9; line-height: 1; }
+    .empty-state-inline .empty-state-icon { font-size: 20px; margin-bottom: 6px; }
+    .empty-state-title { font-size: 16px; color: var(--text); font-weight: 600; margin: 0 0 6px; }
+    .empty-state-inline .empty-state-title { font-size: 13px; font-weight: 500; color: var(--muted); }
+    .empty-state-desc { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 0 auto 16px; max-width: 520px; }
+    .empty-state-inline .empty-state-desc { font-size: 12px; margin-bottom: 8px; }
+    .empty-state-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -663,6 +676,24 @@ function entityDisplayName(entity, model) {
   // Fallback: try common field names
   const props = entity.properties || {};
   return props.name || props.title || props.gmlid || props.key_code || entity.id?.substring(0, 12) || 'Untitled';
+}
+
+// ─── Empty state helper ─────────────────────────────
+// Used everywhere a view has no data. Produces consistent markup across the
+// app so we don't end up with the "lone narrow card" / "bare <p>" / `.empty`-
+// class / inline-stylesheet zoo we had before.
+//   size: 'page' (full-width hero) | 'section' (smaller, inside a card) | 'inline' (compact)
+//   actions: array of button HTML strings (call-site decides which buttons)
+function renderEmptyState({ icon, title, description, actions = [], size = 'page' }) {
+  const iconHtml = icon ? `<div class="empty-state-icon">${icon}</div>` : '';
+  const descHtml = description ? `<div class="empty-state-desc">${description}</div>` : '';
+  const actionsHtml = actions.length ? `<div class="empty-state-actions">${actions.join('')}</div>` : '';
+  return `<div class="empty-state empty-state-${size}">
+    ${iconHtml}
+    <div class="empty-state-title">${title}</div>
+    ${descHtml}
+    ${actionsHtml}
+  </div>`;
 }
 
 // ─── Field constraint helpers ───────────────────────
@@ -1719,14 +1750,14 @@ async function viewDashboard(main) {
               <button class="btn btn-ghost btn-sm" onclick="nav('manage/records/${m.key}')">View</button>
             </div>
           </div>`;
-        }).join('') : '<div class="empty"><h4>No models yet</h4><p>Define your first model to get started.</p><button class="btn btn-primary" onclick="nav(\'define/models\')">Go to Models</button></div>'}
+        }).join('') : renderEmptyState({ title: 'No models yet', description: 'Define your first model to get started.', actions: [`<button class="btn btn-primary" onclick="nav('define/models')">Go to Models</button>`], size: 'section' })}
       </div>
 
       <!-- Recent activity (grouped by batch) -->
       <div class="card">
         <h3>Recent Activity</h3>
         ${(function() {
-          if (!recentProposals.length) return '<p style="color:var(--muted)">No activity yet.</p>';
+          if (!recentProposals.length) return renderEmptyState({ title: 'No activity yet', size: 'inline' });
           // Group proposals by: same action + type + status + same minute
           const groups = [];
           for (const p of recentProposals) {
@@ -1778,15 +1809,16 @@ async function viewContentAll(main) {
   main.innerHTML = '';
 
   if (modelCache.length === 0) {
-    main.innerHTML = `<div class="card" style="text-align:center;padding:48px 24px">
-      <h2 style="margin-bottom:8px">Welcome to Spatial CMS</h2>
-      <p style="color:var(--muted);margin-bottom:24px">Get started in 3 steps:</p>
-      <div style="text-align:left;max-width:400px;margin:0 auto;font-size:15px;line-height:2">
-        <div>1. Define your data models <button class="btn btn-ghost btn-sm" onclick="nav('define/models')">Go to Models &rarr;</button></div>
-        <div>2. Create records through proposals</div>
-        <div>3. Publish datasets to consumers</div>
-      </div>
-    </div>`;
+    main.innerHTML = renderEmptyState({
+      icon: '👋',
+      title: 'Welcome to Spatial CMS',
+      description: 'No models defined yet. The typical flow is: <strong>1)</strong> define data models, <strong>2)</strong> create records through proposals, <strong>3)</strong> publish datasets to consumers.',
+      actions: [
+        `<button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>`,
+        `<button class="btn btn-outline" onclick="nav('define/models')">Go to Models</button>`,
+      ],
+      size: 'page',
+    });
     return;
   }
 
@@ -1808,14 +1840,13 @@ async function viewContentAll(main) {
 
   if (!entities.length) {
     const wsName = window._currentWorkspaceName || 'this workspace';
-    $('rec-table').innerHTML = `<div class="card" style="text-align:center;padding:40px 24px;max-width:520px;margin:24px auto">
-      <div style="font-size:32px;margin-bottom:8px">📋</div>
-      <h3 style="margin:0 0 6px;font-size:18px">No records in ${wsName} yet</h3>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Records are added by creating a proposal for a model. Pick a model from the sidebar's "Manage" section, or jump straight in:</div>
-      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        ${modelCache.slice(0, 3).map(m => `<button class="btn btn-outline btn-sm" onclick="nav('manage/new/${m.key}')">+ New ${m.name}</button>`).join('')}
-      </div>
-    </div>`;
+    $('rec-table').innerHTML = renderEmptyState({
+      icon: '📋',
+      title: `No records in ${wsName} yet`,
+      description: 'Records are added by creating a proposal for a model. Pick one from the sidebar, or jump straight in:',
+      actions: modelCache.slice(0, 3).map(m => `<button class="btn btn-outline btn-sm" onclick="nav('manage/new/${m.key}')">+ New ${m.name}</button>`),
+      size: 'page',
+    });
     return;
   }
 
@@ -1844,7 +1875,7 @@ function filterRecords() {
     return true;
   });
   const container = $('rec-table');
-  if (!entities.length) { container.innerHTML = '<div class="empty" style="padding:24px"><p>No matching records.</p></div>'; return; }
+  if (!entities.length) { container.innerHTML = renderEmptyState({ title: 'No matching records', size: 'inline' }); return; }
   const isArchived = ($('rec-filter-status')?.value === 'archived');
 
   let html = '';
@@ -1934,12 +1965,13 @@ async function viewContentByModel(main, modelKey) {
 
   if (!entities.length) {
     const wsName = window._currentWorkspaceName || 'this workspace';
-    $('model-rec-table').innerHTML = `<div class="card" style="text-align:center;padding:40px 24px;max-width:520px;margin:24px auto">
-      <div style="font-size:32px;margin-bottom:8px">📋</div>
-      <h3 style="margin:0 0 6px;font-size:18px">No ${modelName} records in ${wsName} yet</h3>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Create your first record — it'll go through the proposal queue (if governance is set to manual) or auto-approve.</div>
-      <button class="btn btn-primary" onclick="nav('manage/new/${modelKey}')">+ New ${modelName}</button>
-    </div>`;
+    $('model-rec-table').innerHTML = renderEmptyState({
+      icon: '📋',
+      title: `No ${modelName} records in ${wsName} yet`,
+      description: 'Create your first record — it goes through the proposal queue (if governance is manual) or auto-approves.',
+      actions: [`<button class="btn btn-primary" onclick="nav('manage/new/${modelKey}')">+ New ${modelName}</button>`],
+      size: 'page',
+    });
     return;
   }
   window._modelEntities = entities;
@@ -1969,7 +2001,7 @@ function filterModelRecords(modelKey) {
     return true;
   });
   const container = $('model-rec-table');
-  if (!entities.length) { container.innerHTML = '<div class="empty" style="padding:24px"><p>No matching records.</p></div>'; return; }
+  if (!entities.length) { container.innerHTML = renderEmptyState({ title: 'No matching records', size: 'inline' }); return; }
   const isArchived = ($('model-filter-status')?.value === 'archived');
 
   let html = '';
@@ -2509,7 +2541,7 @@ async function viewProposals(main) {
         <td><button class="btn btn-primary btn-sm" onclick="nav('manage/review/${p.id}')">Review</button></td>
       </tr>`).join('')}</tbody>
     </table>
-    ` : '<div class="card"><div class="empty"><h4>No pending proposals</h4><p>All proposals have been reviewed.</p></div></div>'}
+    ` : renderEmptyState({ icon: '✅', title: 'No pending proposals', description: 'All proposals have been reviewed.', size: 'section' })}
 
     ${history.length ? `
     <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px">
@@ -2874,14 +2906,15 @@ async function viewDatasets(main) {
     });
   } else {
     const wsName = window._currentWorkspaceName || 'This workspace';
-    const empty = h('div', { className: 'card', style: { textAlign: 'center', padding: '40px 24px', maxWidth: '520px', margin: '24px auto' } });
-    empty.innerHTML = `
-      <div style="font-size:32px;margin-bottom:8px">📦</div>
-      <h3 style="margin:0 0 6px;font-size:18px">${wsName} has no datasets yet</h3>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.</div>
-      <button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>
-    `;
-    main.append(empty);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = renderEmptyState({
+      icon: '📦',
+      title: `${wsName} has no datasets yet`,
+      description: 'A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.',
+      actions: [`<button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>`],
+      size: 'page',
+    });
+    main.append(wrap.firstElementChild);
   }
 }
 
@@ -3293,7 +3326,7 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,
             </div>
           </div>
           <div id="delivery-preview-${d.id}" style="display:none;padding:16px;border-top:1px solid var(--border)"></div>
-        </div>`).join('') : '<p style="color:var(--muted)">No datasets published yet. Publish a dataset snapshot first.</p>'}
+        </div>`).join('') : renderEmptyState({ title: 'No datasets published yet', description: 'Publish a dataset snapshot first to see it here.', size: 'inline' })}
     </div>
 
     <div class="card">
@@ -4362,7 +4395,7 @@ async function viewApiKeys(main) {
     // Active keys
     const activeEl = $('keys-active');
     if (!active.length) {
-      activeEl.innerHTML = '<p style="color:var(--muted)">No active API keys. Generate one above.</p>';
+      activeEl.innerHTML = renderEmptyState({ title: 'No active API keys', description: 'Generate one with the button above.', size: 'inline' });
     } else {
       activeEl.innerHTML = `<table><thead><tr><th>Name</th><th>Scope</th><th>Key Prefix</th><th>Created</th><th></th></tr></thead>
         <tbody>${active.map(k => `<tr>
@@ -5030,7 +5063,7 @@ async function viewTemplateGallery(main) {
 
     const grid = $('tpl-grid');
     if (!filtered.length) {
-      grid.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center;grid-column:1/-1">No templates match your search.</div>';
+      grid.innerHTML = `<div style="grid-column:1/-1">${renderEmptyState({ title: 'No templates match your search', size: 'inline' })}</div>`;
       return;
     }
     grid.innerHTML = filtered.map(t => {
@@ -5283,19 +5316,19 @@ async function viewModels(main) {
       }).join('')}</tbody>`;
     main.append(t);
   } else {
-    // Empty workspace — show a clear CTA so user knows where to start
     const wsName = window._currentWorkspaceName || 'this workspace';
-    const empty = h('div', { className: 'card', style: { maxWidth: '520px', margin: '40px auto', textAlign: 'center', padding: '32px 24px' } });
-    empty.innerHTML = `
-      <div style="font-size:32px;margin-bottom:8px">🗂</div>
-      <h3 style="margin:0 0 6px;font-size:18px">${wsName} is empty</h3>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Start by applying a bundled template or creating your first model from scratch.</div>
-      <div style="display:flex;gap:8px;justify-content:center">
-        <button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>
-        <button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='block'">+ New Model</button>
-      </div>
-    `;
-    main.append(empty);
+    const emptyWrap = document.createElement('div');
+    emptyWrap.innerHTML = renderEmptyState({
+      icon: '🗂',
+      title: `${wsName} has no models yet`,
+      description: 'Start by applying a bundled template or creating your first model from scratch.',
+      actions: [
+        `<button class="btn btn-primary" onclick="nav('define/templates')">Browse Templates</button>`,
+        `<button class="btn btn-outline" onclick="document.getElementById('md-create').style.display='block'">+ New Model</button>`,
+      ],
+      size: 'page',
+    });
+    main.append(emptyWrap.firstElementChild);
   }
 }
 
@@ -5369,7 +5402,7 @@ async function viewModelDetail(main, modelId) {
 
       <!-- Field List -->
       <div id="field-list">
-        ${m.fields.length ? m.fields.map((f, i) => renderFieldItem(f, modelId, i)).join('') : '<div class="empty" style="padding:32px"><h4>No fields defined yet</h4><p>Add fields to define the structure of your model.</p></div>'}
+        ${m.fields.length ? m.fields.map((f, i) => renderFieldItem(f, modelId, i)).join('') : renderEmptyState({ title: 'No fields defined yet', description: 'Add fields to define the structure of your model.', size: 'section' })}
       </div>
     </div>
 
@@ -5873,7 +5906,14 @@ async function viewGovernance(main) {
   main.append(header);
 
   if (!models.length) {
-    main.append(h('div', { className: 'empty' }, h('h4', {}, 'No models yet'), h('p', {}, 'Create a model first to configure governance policies.'), h('button', { className: 'btn btn-primary', onclick: () => nav('define/models') }, 'Go to Models')));
+    const gWrap = document.createElement('div');
+    gWrap.innerHTML = renderEmptyState({
+      title: 'No models yet',
+      description: 'Create a model first to configure governance policies.',
+      actions: [`<button class="btn btn-primary" onclick="nav('define/models')">Go to Models</button>`],
+      size: 'page',
+    });
+    main.append(gWrap.firstElementChild);
     return;
   }
 
