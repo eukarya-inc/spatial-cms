@@ -43,6 +43,24 @@ describe("Proposal workflow", () => {
     assert.strictEqual(data.status, "pending");
   });
 
+  it("should reject create proposal that's missing required fields up-front (not at approve)", async () => {
+    // Test model has `name` as required. Send without it.
+    const { status, data } = await apiRequest("/proposals", {
+      method: "POST",
+      body: {
+        proposedChange: {
+          action: "create",
+          data: {
+            type: modelKey,
+            properties: { height: 10 }, // no name
+          },
+        },
+      },
+    });
+    assert.strictEqual(status, 400, "Should reject at create time");
+    assert.match(data.error || "", /name.*required/i, "Error should mention required field");
+  });
+
   it("should approve a proposal and create an entity", async () => {
     const { data: proposals } = await apiRequest("/proposals?status=pending");
     const proposalId = proposals[0].id;

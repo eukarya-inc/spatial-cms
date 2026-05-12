@@ -2267,18 +2267,39 @@ async function viewNewRecord(main, modelKey) {
   $('rf-submit').onclick = async () => {
     try {
       const properties = {};
+      const missing = [];
       for (const f of schema.fields) {
         if (f.fieldType === 'geometry') {
-          if (formGeoState[f.key]) properties[f.key] = formGeoState[f.key];
+          const gv = formGeoState[f.key];
+          if (gv) properties[f.key] = gv;
+          else if (f.isRequired) missing.push(f.label);
           continue;
         }
         const el = $(`rf-${f.key}`);
         if (!el) continue;
-        if (f.fieldType === 'reference') { if (el._refValue) properties[f.key] = el._refValue; }
-        else if (f.fieldType === 'boolean') properties[f.key] = el.checked;
-        else if (f.fieldType === 'number') { if (el.value !== '') properties[f.key] = parseFloat(el.value); }
-        else if (f.fieldType === 'json') { if (el.value) try { properties[f.key] = JSON.parse(el.value); } catch { toast('Invalid JSON in ' + f.key, 'error'); return; } }
-        else { if (el.value) properties[f.key] = el.value; }
+        let hasValue = false;
+        if (f.fieldType === 'reference') {
+          if (el._refValue) { properties[f.key] = el._refValue; hasValue = true; }
+        } else if (f.fieldType === 'boolean') {
+          // Boolean always has a value (true or false). Required just means the field exists.
+          properties[f.key] = el.checked;
+          hasValue = true;
+        } else if (f.fieldType === 'number') {
+          if (el.value !== '') { properties[f.key] = parseFloat(el.value); hasValue = true; }
+        } else if (f.fieldType === 'json') {
+          if (el.value) {
+            try { properties[f.key] = JSON.parse(el.value); hasValue = true; }
+            catch { toast('Invalid JSON in ' + f.key, 'error'); return; }
+          }
+        } else {
+          if (el.value) { properties[f.key] = el.value; hasValue = true; }
+        }
+        if (f.isRequired && !hasValue) missing.push(f.label);
+      }
+
+      if (missing.length) {
+        toast(`Required fields missing: ${missing.join(', ')}`, 'error');
+        return;
       }
 
       const prop = await api('/proposals', { method: 'POST', body: JSON.stringify({ proposedChange: { action: 'create', data: { type: schema.key, properties } } }) });
@@ -2592,6 +2613,7 @@ async function viewProposalDetail(main, proposalId) {
       </div>
       <div>${badge(p.status)}</div>
     </div>
+    <div id="approve-alert" style="display:none"></div>
     ${diffHtml}
     ${p.status === 'pending' ? `<div style="display:flex;gap:8px">
       <button class="btn btn-success" id="approve-btn">Approve</button>
@@ -2601,7 +2623,51 @@ async function viewProposalDetail(main, proposalId) {
 
   if (p.status === 'pending') {
     $('approve-btn').onclick = async () => {
-      try { await api(`/proposals/${proposalId}/approve`, { method: 'POST' }); toast('Proposal approved'); refreshPendingCount(); nav('manage/review'); } catch (err) { toast(err.message, 'error'); }
+      try {
+        await api(`/proposals/${proposalId}/approve`, { method: 'POST' });
+        toast('Proposal approved');
+        refreshPendingCount();
+        nav('manage/review');
+      } catch (err) {
+        const msg = err.message || '';
+        // If approve fails due to validation, the proposal is structurally invalid
+        // and can't be edited — surface a clear "reject and recreate" path.
+        if (msg.startsWith('Validation failed:')) {
+          const reasons = msg.replace(/^Validation failed:\s*/, '');
+          const modelKey = change.data?.type || currentEntity?.type;
+          const alertEl = $('approve-alert');
+          alertEl.style.display = 'block';
+          alertEl.innerHTML = `<div class="card" style="border-left:4px solid var(--danger);background:rgba(239,68,68,0.05);margin-bottom:16px">
+            <h3 style="margin:0 0 6px;color:var(--danger);font-size:15px">⚠ This proposal can't be approved as-is</h3>
+            <div style="font-size:13px;margin-bottom:10px"><strong>Reason:</strong> ${reasons}</div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Proposals are immutable drafts — to fix this, reject it and create a new one with all required fields filled.</div>
+            ${modelKey ? `<button class="btn btn-danger btn-sm" id="reject-restart-btn">Reject and Start Over</button>` : `<button class="btn btn-outline btn-sm" id="reject-only-btn">Reject this proposal</button>`}
+          </div>`;
+          const restartBtn = $('reject-restart-btn');
+          if (restartBtn) {
+            restartBtn.onclick = async () => {
+              try {
+                await api(`/proposals/${proposalId}/reject`, { method: 'POST' });
+                refreshPendingCount();
+                nav(`manage/new/${modelKey}`);
+              } catch (e) { toast(e.message, 'error'); }
+            };
+          }
+          const rejectOnlyBtn = $('reject-only-btn');
+          if (rejectOnlyBtn) {
+            rejectOnlyBtn.onclick = async () => {
+              try {
+                await api(`/proposals/${proposalId}/reject`, { method: 'POST' });
+                toast('Proposal rejected');
+                refreshPendingCount();
+                nav('manage/review');
+              } catch (e) { toast(e.message, 'error'); }
+            };
+          }
+        } else {
+          toast(msg, 'error');
+        }
+      }
     };
     $('reject-btn').onclick = async () => {
       try { await api(`/proposals/${proposalId}/reject`, { method: 'POST' }); toast('Proposal rejected'); refreshPendingCount(); nav('manage/review'); } catch (err) { toast(err.message, 'error'); }

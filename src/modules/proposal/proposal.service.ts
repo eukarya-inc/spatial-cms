@@ -53,12 +53,26 @@ export async function createProposal(workspaceId: string, input: ProposalInput) 
   }
 
   // For create proposals, verify the named type exists in this workspace
+  // and validate the proposed properties up front (matches CLAUDE.md:
+  // "create only — full properties required"). Catching invalid creates
+  // here means the proposal never makes it into the queue in a state that
+  // would later fail at approve time.
   if (!input.entityId && input.proposedChange.data.type) {
     const model = await findModelDefinitionByKey(workspaceId, input.proposedChange.data.type);
     if (!model) {
       throw new BusinessError(`Model "${input.proposedChange.data.type}" not found in this workspace`);
     }
     input.proposedChange.data.modelDefinitionId = model.id;
+
+    if (input.proposedChange.action === "create") {
+      const validation = await validateAgainstModel(
+        model.id,
+        input.proposedChange.data.properties ?? {},
+      );
+      if (!validation.valid) {
+        throw new BusinessError(`Validation failed: ${validation.errors.join("; ")}`);
+      }
+    }
   }
 
   const proposal = await prisma.proposal.create({
