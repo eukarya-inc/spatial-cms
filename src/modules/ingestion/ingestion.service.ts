@@ -149,6 +149,7 @@ export async function bulkImport(
 
     await prisma.proposal.create({
       data: {
+        workspaceId,
         entityId: entity.id,
         proposedChange: ({
           action: "create",
@@ -207,6 +208,7 @@ export async function createProposalSet(
 
   const created = await prisma.proposal.createManyAndReturn({
     data: proposals.map((p) => ({
+      workspaceId,
       entityId: p.entityId,
       proposedChange: p.proposedChange as object,
       source,

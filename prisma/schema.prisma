@@ -134,14 +134,17 @@ model EntityVersion {
 
 model Proposal {
   id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
   entityId       String?        @map("entity_id") @db.Uuid
   proposedChange Json           @map("proposed_change")
   source         ProposalSource @default(human)
   status         ProposalStatus @default(pending)
   createdAt      DateTime       @default(now()) @map("created_at")
 
-  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entity    Entity?   @relation(fields: [entityId], references: [id], onDelete: SetNull)
 
+  @@index([workspaceId])
   @@index([entityId])
   @@index([status])
   @@map("proposal")
@@ -312,8 +315,9 @@ model Workspace {
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
 
-  models   ModelDefinition[]
-  datasets DatasetDefinition[]
+  models    ModelDefinition[]
+  datasets  DatasetDefinition[]
+  proposals Proposal[]
 
   @@map("workspace")
 }

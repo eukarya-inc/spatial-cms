@@ -23,18 +23,10 @@ interface ProposalInput {
   source?: "human" | "machine" | "import_";
 }
 
-/** Verifies proposal is in workspace (via its entity's model). Throws NotFoundError otherwise. */
+/** Verifies proposal is in workspace via its direct workspaceId FK. */
 async function assertProposalInWorkspace(workspaceId: string, id: string) {
-  const proposal = await prisma.proposal.findUnique({
-    where: { id },
-    include: { entity: { include: { modelDefinition: { select: { workspaceId: true } } } } },
-  });
+  const proposal = await prisma.proposal.findFirst({ where: { id, workspaceId } });
   if (!proposal) throw new NotFoundError("Proposal");
-  // For proposals with no entityId (e.g. create), workspace ownership is implicit via
-  // the resolved model.key — we'll validate it inside approveProposal. For now allow.
-  if (proposal.entityId && proposal.entity?.modelDefinition?.workspaceId !== workspaceId) {
-    throw new NotFoundError("Proposal");
-  }
   return proposal;
 }
 
@@ -71,6 +63,7 @@ export async function createProposal(workspaceId: string, input: ProposalInput) 
 
   const proposal = await prisma.proposal.create({
     data: {
+      workspaceId,
       entityId: input.entityId,
       proposedChange: input.proposedChange as object,
       source: input.source ?? "human",
@@ -114,35 +107,9 @@ export async function createProposal(workspaceId: string, input: ProposalInput) 
 }
 
 export async function listProposals(workspaceId: string, filters?: { status?: string }) {
-  const where: Record<string, unknown> = {
-    OR: [
-      // Proposals attached to entities — entity's model must be in workspace
-      { entity: { modelDefinition: { workspaceId } } },
-      // Create proposals (no entityId yet) — match by resolved model.key
-      {
-        entityId: null,
-        // Match the proposed type to a model in the workspace
-        // Prisma doesn't support nested JSON field filters easily, so post-filter
-      },
-    ],
-  };
-  if (filters?.status) where.status = filters.status;
-
-  const result = await prisma.proposal.findMany({
-    where,
+  return prisma.proposal.findMany({
+    where: { workspaceId, ...(filters?.status ? { status: filters.status as any } : {}) },
     orderBy: { createdAt: "desc" },
-  });
-
-  // Post-filter create proposals against the workspace's models by .key
-  const wsModels = await prisma.modelDefinition.findMany({
-    where: { workspaceId },
-    select: { key: true },
-  });
-  const wsKeys = new Set(wsModels.map((m) => m.key));
-  return result.filter((p) => {
-    if (p.entityId) return true; // already filtered by relation
-    const change = p.proposedChange as { data?: { type?: string } };
-    return change?.data?.type ? wsKeys.has(change.data.type) : false;
   });
 }
 

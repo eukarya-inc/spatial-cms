@@ -55,13 +55,8 @@ export async function deleteWorkspace(slug: string) {
       });
     }
 
-    // Proposals attached to in-workspace entities — wipe them entirely (audit trail
-    // for a deleted workspace isn't worth keeping in MVP).
-    if (modelIds.length) {
-      await tx.proposal.deleteMany({
-        where: { entity: { modelDefinitionId: { in: modelIds } } },
-      });
-    }
+    // Proposals cascade automatically via the workspace_id FK (ON DELETE CASCADE).
+    // No explicit deleteMany needed here.
 
     // Entities — raw SQL because of PostGIS Unsupported geometry column.
     // EntityVersion + EntityGeometry cascade via Entity's FK.
