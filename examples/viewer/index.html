@@ -507,6 +507,8 @@ async function loadMapDataCustom(spatialParam) {
         const props = { ...(f.properties || {}), _id: f.id };
         if (!props._height) {
           if (props.height) props._height = parseFloat(props.height) || 0;
+          else if (props.height_m) props._height = parseFloat(props.height_m) || 0;
+          else if (props.measured_height) props._height = parseFloat(props.measured_height) || 0;
           else {
             const maxZ = extractMaxZ(f.geometry?.coordinates);
             if (maxZ > 0) props._height = maxZ;
