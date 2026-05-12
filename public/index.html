@@ -1106,6 +1106,15 @@ function geomTo2D(geo) {
   return { ...geo, coordinates: stripCoord(geo.coordinates) };
 }
 
+// Max Z across all vertices in a GeoJSON coordinate array (0 if no Z anywhere)
+function extractMaxZ(coords) {
+  if (!coords) return 0;
+  if (typeof coords[0] === 'number') return coords[2] || 0;
+  let max = 0;
+  for (const c of coords) { const z = extractMaxZ(c); if (z > max) max = z; }
+  return max;
+}
+
 // Walk all coordinates [lng,lat] pairs in a geometry
 function flattenCoords(geo) {
   if (!geo?.coordinates) return [];
@@ -1155,7 +1164,7 @@ const BASEMAP_STYLE = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
 };
 
-function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChange }) {
+function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChange, entityProperties }) {
   const fieldKey = field.key;
   const geomType = (field.geometryType || 'MIXED').toUpperCase();
   const srid = field.geometrySrid || 4326;
@@ -1273,8 +1282,19 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
 
     map.on('load', () => {
-      // Add a source/layer for the geometry rendering (used in view mode and as initial in edit mode)
-      const renderValue = value ? geomTo2D(value) : null;
+      // Compute extrusion height in view mode (priority matches viewer):
+      // entityProperties.height_m | .height | .measured_height | extractMaxZ(geom)
+      let extrudeHeight = 0;
+      if (mode === 'view' && value && (value.type === 'Polygon' || value.type === 'MultiPolygon')) {
+        const p = entityProperties || {};
+        if (p.height_m) extrudeHeight = parseFloat(p.height_m) || 0;
+        else if (p.height) extrudeHeight = parseFloat(p.height) || 0;
+        else if (p.measured_height) extrudeHeight = parseFloat(p.measured_height) || 0;
+        else extrudeHeight = extractMaxZ(value.coordinates);
+      }
+      // View mode keeps Z (harmless for 2D layers, needed for extrusion).
+      // Edit mode strips Z so Mapbox Draw doesn't choke.
+      const renderValue = mode === 'view' ? value : (value ? geomTo2D(value) : null);
       map.addSource('feature', {
         type: 'geojson',
         data: renderValue ? { type: 'Feature', geometry: renderValue, properties: {} } : { type: 'FeatureCollection', features: [] }
@@ -1294,6 +1314,23 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         filter: ['==', '$type', 'Point'],
         paint: { 'circle-radius': 6, 'circle-color': '#3b82f6', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }
       });
+
+      if (extrudeHeight > 0) {
+        map.addLayer({
+          id: 'feature-extrude', type: 'fill-extrusion', source: 'feature',
+          filter: ['==', '$type', 'Polygon'],
+          paint: {
+            'fill-extrusion-color': '#3b82f6',
+            'fill-extrusion-height': extrudeHeight,
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': 0.7,
+          },
+        });
+        // Hide flat 2D fill — extrusion replaces it; line layer still draws the footprint edge
+        map.setLayoutProperty('feature-fill', 'visibility', 'none');
+        map.setPitch(45);
+        map.setBearing(-20);
+      }
 
       if (mode !== 'edit') return;
 
@@ -2116,7 +2153,7 @@ async function viewEntityDetail(main, entityId) {
             if (!mountEl) return;
             const gv = e.properties?.[gf.key] || null;
             const isPrimary = gf.key === schema.primaryGeometryField;
-            renderGeometryCard({ field: gf, value: gv, mode: 'view', isPrimary, containerEl: mountEl });
+            renderGeometryCard({ field: gf, value: gv, mode: 'view', isPrimary, containerEl: mountEl, entityProperties: e.properties });
           });
         } else {
           geoDisplay.innerHTML = '<div style="color:var(--muted);font-size:13px">No geometry fields defined for this model.</div>';
@@ -2147,7 +2184,7 @@ async function viewEntityDetail(main, entityId) {
         const mountEl = geoDisplay.querySelector('.gc-mount');
         renderGeometryCard({
           field: { key: 'geometry', label: 'Geometry', geometryType: e.geometry.type?.toUpperCase() || 'MIXED', geometrySrid: 4326, geometryIs3D: false },
-          value: e.geometry, mode: 'view', isPrimary: true, containerEl: mountEl
+          value: e.geometry, mode: 'view', isPrimary: true, containerEl: mountEl, entityProperties: e.properties
         });
       } else {
         geoDisplay.innerHTML = '<span style="color:var(--muted)">None</span>';
