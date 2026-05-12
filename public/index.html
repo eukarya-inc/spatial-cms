@@ -5398,18 +5398,38 @@ async function viewModelDetail(main, modelId) {
       if (refModelEl?.value) body.referenceModelKey = refModelEl.value;
       const enumsEl = $('af-enums');
       if (enumsEl?.value) body.enumValues = enumsEl.value.split(',').map(s => s.trim()).filter(Boolean);
+
+      // Merge all validation rules into one object (instead of overwriting per type group)
+      const validation = {};
       const minEl = $('af-min'), maxEl = $('af-max');
-      if (minEl?.value || maxEl?.value) {
-        body.validationJson = {};
-        if (minEl?.value) body.validationJson.min = parseFloat(minEl.value);
-        if (maxEl?.value) body.validationJson.max = parseFloat(maxEl.value);
-      }
+      if (minEl?.value) validation.min = parseFloat(minEl.value);
+      if (maxEl?.value) validation.max = parseFloat(maxEl.value);
       const minLenEl = $('af-minlen'), maxLenEl = $('af-maxlen');
-      if (minLenEl?.value || maxLenEl?.value) {
-        body.validationJson = {};
-        if (minLenEl?.value) body.validationJson.minLength = parseInt(minLenEl.value);
-        if (maxLenEl?.value) body.validationJson.maxLength = parseInt(maxLenEl.value);
+      if (minLenEl?.value) validation.minLength = parseInt(minLenEl.value);
+      if (maxLenEl?.value) validation.maxLength = parseInt(maxLenEl.value);
+      const patternEl = $('af-pattern');
+      if (patternEl?.value?.trim()) {
+        const p = patternEl.value.trim();
+        try { new RegExp(p); }
+        catch (e) { toast(`Invalid regex pattern: ${e.message}`, 'error'); return; }
+        validation.pattern = p;
       }
+      if (Object.keys(validation).length) body.validationJson = validation;
+
+      // Default value (type-aware parse)
+      const defEl = $('af-default');
+      if (defEl && defEl.value !== '' && defEl.value !== undefined) {
+        const t = body.fieldType;
+        try {
+          if (t === 'number') body.defaultValue = parseFloat(defEl.value);
+          else if (t === 'boolean') body.defaultValue = defEl.value === 'true';
+          else if (t === 'json') body.defaultValue = JSON.parse(defEl.value);
+          else body.defaultValue = defEl.value;
+        } catch (e) {
+          toast(`Default value: ${e.message}`, 'error'); return;
+        }
+      }
+
       // Geometry field config
       const geomTypeEl = $('af-geom-type'), geomSridEl = $('af-geom-srid'), geom3dEl = $('af-geom-3d'), geomPrimaryEl = $('af-geom-primary');
       if (geomTypeEl?.value && body.fieldType === 'geometry') {
@@ -5567,20 +5587,34 @@ async function viewModelDetail(main, modelId) {
 
 function renderFieldItem(f, modelId, index) {
   const info = fieldTypeInfo[f.fieldType] || { icon: '?', color: '#999', desc: '' };
+  // Constraint pills shown inline below the field name. We surface every
+  // configured attribute so schema designers can audit at a glance.
   const constraints = [];
-  if (f.isRequired) constraints.push('required');
   if (f.enumValues) constraints.push(`options: ${f.enumValues.join(', ')}`);
+  if (f.fieldType === 'reference' && f.referenceModelKey) {
+    constraints.push(`→ ${f.referenceModelKey}`);
+  }
   if (f.fieldType === 'geometry') {
-    if (f.geometryType) constraints.push(f.geometryType);
+    const parts = [];
+    if (f.geometryType) parts.push(f.geometryType);
+    if (f.geometryIs3D) parts.push('3D');
+    if (parts.length) constraints.push(parts.join(' '));
     if (f.geometrySrid && f.geometrySrid !== 4326) constraints.push(`EPSG:${f.geometrySrid}`);
-    if (f.geometryIs3D) constraints.push('3D');
   }
   if (f.validationJson) {
     const v = f.validationJson;
-    if (v.min !== undefined) constraints.push(`min: ${v.min}`);
-    if (v.max !== undefined) constraints.push(`max: ${v.max}`);
-    if (v.minLength !== undefined) constraints.push(`minLength: ${v.minLength}`);
-    if (v.maxLength !== undefined) constraints.push(`maxLength: ${v.maxLength}`);
+    if (v.min !== undefined) constraints.push(`≥ ${v.min}`);
+    if (v.max !== undefined) constraints.push(`≤ ${v.max}`);
+    if (v.minLength !== undefined) constraints.push(`min ${v.minLength} chars`);
+    if (v.maxLength !== undefined) constraints.push(`max ${v.maxLength} chars`);
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      constraints.push(human ? `pattern: ${human}` : `pattern: ${v.pattern}`);
+    }
+  }
+  if (f.defaultValue !== undefined && f.defaultValue !== null) {
+    const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
+    constraints.push(`default: ${dv}`);
   }
 
   return `<div class="field-item" draggable="true" data-field-key="${f.key}" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:#fff;transition:opacity 0.15s,border-color 0.15s">
@@ -5608,35 +5642,125 @@ function renderFieldItem(f, modelId, index) {
       <div class="form-group" style="flex:0;min-width:100px"><label>Required</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="ef-req-${f.id}" ${f.isRequired ? 'checked' : ''}> Yes</label></div></div>
     </div>
     ${f.fieldType === 'enum_' ? `<div class="form-group"><label>Enum Values (comma separated)</label><input id="ef-enums-${f.id}" value="${(f.enumValues || []).join(', ')}"></div>` : ''}
-    ${f.fieldType === 'geometry' ? `<div style="display:flex;gap:12px;margin-bottom:8px">
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Geometry Type</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryType || 'MIXED'}</div></div>
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">SRID</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">EPSG:${f.geometrySrid || 4326}</div></div>
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">3D</div><div style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:13px;color:var(--muted)">${f.geometryIs3D ? 'Yes' : 'No'}</div></div>
-    </div>` : ''}
+    ${renderFieldReadOnlySummary(f)}
     <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
+  </div>`;
+}
+
+// Build a read-only "Schema constraints" panel summarizing everything that
+// CAN'T be changed via edit — so designers can see what's configured and know
+// they have to delete + recreate to change validation rules / default / etc.
+function renderFieldReadOnlySummary(f) {
+  const v = f.validationJson || {};
+  const rows = [];
+  const row = (label, value) => `<tr><td style="padding:4px 8px;color:var(--muted);width:140px;font-size:12px">${label}</td><td style="padding:4px 8px;font-size:13px">${value}</td></tr>`;
+
+  if (f.fieldType === 'string') {
+    if (v.pattern) {
+      const human = humanizePattern(v.pattern);
+      rows.push(row('Pattern', `<code>${v.pattern}</code>${human ? ` <span style="color:var(--muted)">— ${human}</span>` : ''}`));
+    }
+    if (v.minLength !== undefined) rows.push(row('Min length', v.minLength));
+    if (v.maxLength !== undefined) rows.push(row('Max length', v.maxLength));
+  }
+  if (f.fieldType === 'number') {
+    if (v.min !== undefined) rows.push(row('Min value', v.min));
+    if (v.max !== undefined) rows.push(row('Max value', v.max));
+  }
+  if (f.fieldType === 'reference' && f.referenceModelKey) {
+    rows.push(row('References', `<code>${f.referenceModelKey}</code>`));
+  }
+  if (f.fieldType === 'geometry') {
+    rows.push(row('Geometry type', `${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}`));
+    rows.push(row('SRID', `EPSG:${f.geometrySrid || 4326}`));
+  }
+  if (f.defaultValue !== undefined && f.defaultValue !== null) {
+    const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
+    rows.push(row('Default value', `<code>${dv}</code>`));
+  }
+
+  if (!rows.length) return '';
+  return `<div style="margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+    <div style="font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Schema constraints (read-only)</div>
+    <table style="width:100%;box-shadow:none"><tbody>${rows.join('')}</tbody></table>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">To change these, delete this field and create a new one with the desired config.</div>
   </div>`;
 }
 
 function onFieldTypeChange() {
   const type = $('af-type').value;
   const extra = $('af-extra');
+
+  // --- Section A: type-specific validation rules ---
+  let validationHtml = '';
   if (type === 'enum_') {
-    extra.innerHTML = `<div class="form-group"><label>Enum Values <span style="color:var(--danger)">*</span></label><input id="af-enums" placeholder="e.g. residential, commercial, industrial"><div style="font-size:12px;color:var(--muted);margin-top:4px">Comma-separated list of allowed values</div></div>`;
+    validationHtml = `<div class="form-group"><label>Enum Values <span style="color:var(--danger)">*</span></label><input id="af-enums" placeholder="e.g. residential, commercial, industrial"><div style="font-size:12px;color:var(--muted);margin-top:4px">Comma-separated list of allowed values</div></div>`;
   } else if (type === 'number') {
-    extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Value</label><input id="af-min" type="number" step="any" placeholder="Optional"></div><div class="form-group"><label>Max Value</label><input id="af-max" type="number" step="any" placeholder="Optional"></div></div>`;
+    validationHtml = `<div class="form-row"><div class="form-group"><label>Min Value</label><input id="af-min" type="number" step="any" placeholder="Optional"></div><div class="form-group"><label>Max Value</label><input id="af-max" type="number" step="any" placeholder="Optional"></div></div>`;
   } else if (type === 'string') {
-    extra.innerHTML = `<div class="form-row"><div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div><div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div></div>`;
+    validationHtml = `
+      <div class="form-row">
+        <div class="form-group"><label>Min Length</label><input id="af-minlen" type="number" placeholder="Optional"></div>
+        <div class="form-group"><label>Max Length</label><input id="af-maxlen" type="number" placeholder="Optional"></div>
+      </div>
+      <div class="form-group">
+        <label>Pattern (regex)</label>
+        <input id="af-pattern" type="text" placeholder='e.g. ^[0-9]{2}$ — exactly 2 digits' oninput="updatePatternHint()" style="font-family:monospace">
+        <div id="af-pattern-hint" style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Anchor with <code>^</code> and <code>$</code> for whole-value match.</div>
+      </div>`;
   } else if (type === 'reference') {
-    extra.innerHTML = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
+    validationHtml = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
   } else if (type === 'geometry') {
-    extra.innerHTML = `<div class="form-row">
+    validationHtml = `<div class="form-row">
       <div class="form-group"><label>Geometry Type <span style="color:var(--danger)">*</span></label><select id="af-geom-type"><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div>
       <div class="form-group"><label>CRS (SRID)</label><select id="af-geom-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
       <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="af-geom-3d"> Yes</label></div></div>
     </div>
     <div class="form-group"><label><input type="checkbox" id="af-geom-primary"> Set as primary geometry field</label><div style="font-size:12px;color:var(--muted);margin-top:4px">Primary geometry is synced to the PostGIS column for spatial queries</div></div>`;
-  } else {
-    extra.innerHTML = '';
+  }
+
+  // --- Section B: default value (universal, type-aware) ---
+  // Skipped for reference/geometry — defaults don't make sense there.
+  let defaultHtml = '';
+  if (type === 'string') {
+    defaultHtml = `<input id="af-default" type="text" placeholder="Optional">`;
+  } else if (type === 'number') {
+    defaultHtml = `<input id="af-default" type="number" step="any" placeholder="Optional">`;
+  } else if (type === 'boolean') {
+    defaultHtml = `<select id="af-default"><option value="">— None —</option><option value="true">true</option><option value="false">false</option></select>`;
+  } else if (type === 'date') {
+    defaultHtml = `<input id="af-default" type="date">`;
+  } else if (type === 'enum_') {
+    defaultHtml = `<input id="af-default" type="text" placeholder="Must be one of the enum values above">`;
+  } else if (type === 'json') {
+    defaultHtml = `<textarea id="af-default" rows="2" placeholder='Optional — valid JSON, e.g. {"key":"value"}'></textarea>`;
+  }
+  const defaultSection = defaultHtml
+    ? `<div class="form-group"><label>Default Value</label>${defaultHtml}<div style="font-size:12px;color:var(--muted);margin-top:4px">Optional. Used when a record is created without specifying this field.</div></div>`
+    : '';
+
+  extra.innerHTML = validationHtml + defaultSection;
+}
+
+// Live humanize feedback for the pattern input
+function updatePatternHint() {
+  const el = $('af-pattern');
+  const hint = $('af-pattern-hint');
+  if (!el || !hint) return;
+  const p = el.value.trim();
+  if (!p) {
+    hint.innerHTML = `Optional. Anchor with <code>^</code> and <code>$</code> for whole-value match.`;
+    hint.style.color = 'var(--muted)';
+    return;
+  }
+  try {
+    new RegExp(p);
+    const human = humanizePattern(p);
+    hint.innerHTML = human ? `Format: <strong>${human}</strong>` : `Will match: <code>${p}</code>`;
+    hint.style.color = 'var(--muted)';
+  } catch (e) {
+    hint.innerHTML = `Invalid regex: ${e.message}`;
+    hint.style.color = 'var(--danger)';
   }
 }
 
