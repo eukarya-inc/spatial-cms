@@ -360,6 +360,55 @@ docker run --rm -it postgres:17 psql \
 - `KEYCLOAK_URL` in CMS env must match Keycloak's issuer URL
 - If domain changed, Keycloak needs restart to pick up new `KC_HOSTNAME`
 
+## Known Pitfalls
+
+### AWS-managed RDS password rotation can drift silently
+
+If you let RDS create its own password (via `--manage-master-user-password`),
+AWS schedules a Lambda to rotate the password every N days and store it in
+Secrets Manager. **In practice this Lambda has been observed to advance the
+Secrets Manager pointers (`AWSCURRENT` / `AWSPENDING`) without successfully
+updating RDS** — so both the "current" and "previous" Secrets Manager values
+end up rejected by RDS, and any service reading from Secrets Manager (or
+worse, an `.env` snapshot from the last working day) loses authentication.
+
+**Symptom**: `prisma:error Authentication failed against database server,
+the provided database credentials for cms_admin are not valid.` repeating in
+`docker logs cms`. `/health` returns `500 Database unreachable`. Both
+`AWSCURRENT` and `AWSPREVIOUS` values from Secrets Manager fail.
+
+**Recovery** (`scripts/reset-rds-master-password.sh`, run from your local
+admin machine):
+1. Generates a fresh password locally
+2. `aws rds modify-db-instance --no-manage-master-user-password
+   --master-user-password <new> --apply-immediately` — this both (a) sets
+   RDS's password to a value we control and (b) disables the AWS-managed
+   rotation feature entirely (the Secrets Manager secret is removed by AWS)
+3. Updates `RDS_PASSWORD` in the VM's `deploy/.env`
+4. `docker compose up -d --force-recreate cms keycloak`
+5. Appends the new password to local `deploy/.deployment_secrets.txt`
+   (gitignored)
+
+**After running, password management is manual** — record it in your own
+secrets store and rotate by hand. Don't re-enable AWS rotation unless you've
+verified the Lambda's behavior in a non-production environment first.
+
+### `docker compose up -d` doesn't always pick up `.env` changes
+
+Compose decides whether to recreate based on its hash of the service config;
+`.env` value changes via `--env-file` don't always trigger that. After
+editing `.env`, **use `up -d --force-recreate <service>`** or you'll think
+the change took effect when the old container is still running with stale
+env.
+
+### `printf … | ssh host 'bash -s' <<'HEREDOC'` is broken
+
+Both the pipe and the heredoc try to be `ssh`'s stdin and only one wins;
+the heredoc body silently never runs. If you need to pass a secret to a
+remote bash invocation, either embed it into an unquoted heredoc
+(`<<HEREDOC` so `$VAR` expands locally) or pass via the ssh command string
+argument. The reset script above uses the latter.
+
 ## Verification Checklist
 
 - [ ] AWS account root has MFA, IAM user for daily use

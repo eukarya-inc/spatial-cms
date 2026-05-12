@@ -106,6 +106,7 @@ tests/
     ingestion.test.ts         # Validate, import, governed, skipInvalid
     api-keys-auth.test.ts     # API Key scopes, auth middleware, bootstrap, revoke
     publish-metadata.test.ts  # Publish channels, field projection, DCAT metadata
+    multi-geometry.test.ts    # Multi-geometry fields, primaryGeometryField, field reorder
 examples/
   viewer/                     # Consumer demo app (Delivery API + MapLibre GL JS)
     index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
