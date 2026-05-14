@@ -165,14 +165,14 @@ Each geometry field declares its dimensionality explicitly via `geometryMode: "2
 
 - **2D** — pure footprint, no height. Z coords in input are **rejected** (400). Storage uses `ST_Force2D`. Renders as flat fill.
 - **2.5D** — 2D footprint + height stored in a separate **property field** (linked via `heightFieldKey`, optionally `baseHeightFieldKey`). Z in geometry input is rejected. Mode requires `heightFieldKey` to be set, point to a same-model field of `fieldType: "number"`, and not self-reference. Renders as fill-extrusion with `height = props[heightFieldKey]`, `base = props[baseHeightFieldKey] || 0`. Matches OSM `height`/`min_height` and MapLibre `fill-extrusion-height`/`fill-extrusion-base` conventions.
-- **3D** — vertex-Z geometry (LOD1 capable). **Every** vertex must include Z. Storage preserves Z. MapLibre fill-extrusion flattens varying Z to `maxZ(coords)` for rendering — this is a known LOD1 ceiling (no per-vertex extrusion until 3D Tiles / glTF arrive).
+- **3D** — vertex-Z geometry (LOD1 / LOD2 capable). **Every** vertex must include Z. Storage preserves Z. Rendered via **deck.gl `SolidPolygonLayer` with `extruded: false`** as a flat panel in 3D space — so a wall polygon (4 corners in a vertical plane) shows as an upright panel, a roof (4 corners at Z=h) shows as a horizontal panel at that height, etc. This is the LOD2 semantics. MapLibre's native fill-extrusion is NOT used for 3D mode (it can only extrude a 2D footprint).
 
 Mode is **immutable** after field create (same rule as `fieldType`, `geometryType`, etc.). To change, delete and recreate the field. Legacy fields with `geometryMode = NULL` skip the Z-presence check (backward compat for pre-migration data; new fields require an explicit mode).
 
 ### Geometry Map UI (frontend)
 Each geometry field renders as an inline `.geometry-card` with a MapLibre GL preview/editor. Reusable component `renderGeometryCard({field, value, mode, isPrimary, containerEl, onChange, entityProperties})` in `public/index.html` handles both view (read-only) and edit (Mapbox Draw integration) modes. MapLibre + Mapbox Draw are CDN-loaded lazily on first card mount via `loadMapLibs()`. Rules:
 - SRID 4326 only — non-4326 fields show a warning banner and JSON-only editor
-- **View mode renders extrusion driven by `field.geometryMode`** (no more heuristic chain): `2.5D` reads `props[field.heightFieldKey]` (top) and `props[field.baseHeightFieldKey] || 0` (base); `3D` uses `extractMaxZ(coords)`; `2D`/null skips extrusion. When extrudeHeight > 0, the layer hides the flat fill and sets pitch=45°/bearing=-20°.
+- **View mode rendering is `field.geometryMode`-driven** (no more heuristics). `2D`/null → flat MapLibre fill only. `2.5D` → MapLibre fill-extrusion with `height = props[field.heightFieldKey]` (top) and `base = props[field.baseHeightFieldKey] || 0`. `3D` → deck.gl `SolidPolygonLayer` (extruded=false) overlay, color from `props.material_color || props.color || #1e40af`, MapLibre flat fill hidden, camera tilted to 45°/bearing -20°. deck.gl is lazy-loaded via the same `loadMapLibs()` queue as MapLibre + Mapbox Draw.
 - 3D geometries: edit mode confirms before discarding Z; JSON textarea is the lossless fallback for Z editing
 - Map ↔ JSON textarea bidirectional sync (textarea synced on map draw events; map updated on textarea blur with valid-JSON check)
 - `router()` calls `__cleanupGeometryCards()` to prevent WebGL context leaks on navigation
@@ -341,7 +341,7 @@ Each dataset controls which APIs expose its data:
   - `?format=geojson` — GeoJSON FeatureCollection output
 - `GET /api/v1/delivery/datasets/:id/entities/:entityId` — single entity
 
-**Consumer apps** (e.g. `examples/viewer`) compute extrusion driven by the dataset schema (`geometryMode` + `heightFieldKey` + `baseHeightFieldKey`), not heuristics. `2.5D` reads the linked property fields for top/base; `3D` extracts `maxZ` from coordinates; `2D` renders flat. Z is preserved through `ST_AsGeoJSON` for 3D-mode fields.
+**Consumer apps** (e.g. `examples/viewer`) render by the dataset schema's primary geometry mode: `2D` → flat MapLibre fill; `2.5D` → MapLibre fill-extrusion using the linked height fields; `3D` → deck.gl `SolidPolygonLayer` (extruded=false) overlay with per-feature color from `properties.material_color`. The viewer eager-loads deck.gl in the HTML head; 2D/2.5D paths still use MapLibre native layers.
 
 ### OGC API - Features (standard-compliant, for GIS tools)
 Each collection = one model from a publishToOgc=true dataset. Collection ID: `{datasetId}_{modelKey}`.

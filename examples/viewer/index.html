@@ -6,6 +6,9 @@
   <title>Spatial CMS Viewer</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- deck.gl for true 3D rendering (SolidPolygonLayer + MapboxOverlay).
+       Used when the dataset's primary geometry is mode=3D (per-vertex Z). -->
+  <script src="https://unpkg.com/deck.gl@9.0.40/dist.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }
@@ -161,6 +164,7 @@ let mapReady = false;
 let titleField = null;
 let subtitleFields = [];
 let primaryGeomConfig = null; // { mode, heightFieldKey, baseHeightFieldKey } from dataset schema
+let deckOverlay = null;       // deck.gl MapboxOverlay; only attached in 3D mode
 let enumField = null;
 let numberField = null;
 let modelName = '';
@@ -249,6 +253,55 @@ const map = new maplibregl.Map({
   bearing: 0,
   antialias: true,
 });
+
+// hex → [r,g,b,a]; fallback to dataset-neutral blue. Used for 3D solid polygons.
+function hexToRgba(hex, alpha = 220) {
+  if (!hex || typeof hex !== 'string') return [96, 165, 250, alpha];
+  const m = hex.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) return [96, 165, 250, alpha];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha];
+}
+
+// Refresh the deck.gl SolidPolygonLayer with current 3D features. Mounts the
+// overlay lazily on first 3D-mode dataset, then setProps on subsequent updates.
+function refresh3DOverlay(features) {
+  if (!window.deck) return;
+  const data = [];
+  for (const f of features) {
+    if (!f.geometry || (f.geometry.type !== 'Polygon' && f.geometry.type !== 'MultiPolygon')) continue;
+    const polys = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates];
+    const fill = hexToRgba(f.properties?.material_color || f.properties?.color);
+    for (const rings of polys) {
+      data.push({ ring: rings[0], color: fill, id: f.id });
+    }
+  }
+  const layer = new window.deck.SolidPolygonLayer({
+    id: 'entities-3d-solid',
+    data,
+    getPolygon: (d) => d.ring,
+    getFillColor: (d) => d.color,
+    getLineColor: [255, 255, 255, 200],
+    extruded: false,
+    filled: true,
+    stroked: true,
+    wireframe: true,
+    lineWidthMinPixels: 1,
+    pickable: false,
+  });
+  if (deckOverlay) {
+    deckOverlay.setProps({ layers: [layer] });
+  } else {
+    deckOverlay = new window.deck.MapboxOverlay({ layers: [layer] });
+    map.addControl(deckOverlay);
+    // First mount in 3D mode: hide MapLibre's flat fill (2D shadows would otherwise
+    // double-draw under the deck.gl panels) and tilt the camera so the 3D structure
+    // is visible.
+    if (map.getLayer('entities-fill')) map.setLayoutProperty('entities-fill', 'visibility', 'none');
+    if (map.getLayer('entities-3d'))   map.setLayoutProperty('entities-3d', 'visibility', 'none');
+    map.easeTo({ pitch: 45, bearing: -20, duration: 600 });
+  }
+}
 
 map.on('load', () => {
   mapReady = true;
@@ -515,29 +568,18 @@ async function loadMapDataCustom(spatialParam) {
       mapFeatures = mapFeatures.filter(f => (f.properties?.[titleField.key] || '').toLowerCase().includes(q));
     }
 
-    // Enrich with _height / _base / _id for MapLibre, schema-driven from primaryGeomConfig:
-    // 2D   → no extrusion
-    // 2.5D → _height = props[heightFieldKey], _base = props[baseHeightFieldKey] || 0
-    // 3D   → _height = max Z extracted from coords, _base = 0
+    // Enrich features for MapLibre (2D / 2.5D) — 3D mode is delegated to deck.gl below.
     const enriched = {
       type: 'FeatureCollection',
       features: mapFeatures.map(f => {
         const props = { ...(f.properties || {}), _id: f.id };
-        if (primaryGeomConfig) {
-          if (primaryGeomConfig.mode === '2.5D' && primaryGeomConfig.heightFieldKey) {
-            props._height = parseFloat(props[primaryGeomConfig.heightFieldKey]) || 0;
-            props._base = primaryGeomConfig.baseHeightFieldKey
-              ? (parseFloat(props[primaryGeomConfig.baseHeightFieldKey]) || 0)
-              : 0;
-          } else if (primaryGeomConfig.mode === '3D') {
-            props._height = extractMaxZ(f.geometry?.coordinates);
-            props._base = 0;
-          } else {
-            props._height = 0;
-            props._base = 0;
-          }
+        if (primaryGeomConfig?.mode === '2.5D' && primaryGeomConfig.heightFieldKey) {
+          props._height = parseFloat(props[primaryGeomConfig.heightFieldKey]) || 0;
+          props._base = primaryGeomConfig.baseHeightFieldKey
+            ? (parseFloat(props[primaryGeomConfig.baseHeightFieldKey]) || 0)
+            : 0;
         } else {
-          // No schema-declared mode (legacy dataset) — no extrusion
+          // 2D / 3D / null → no fill-extrusion (3D goes to deck.gl)
           props._height = 0;
           props._base = 0;
         }
@@ -547,6 +589,8 @@ async function loadMapDataCustom(spatialParam) {
 
     if (mapReady) {
       map.getSource('entities')?.setData(enriched);
+      // Update deck.gl 3D overlay when in 3D mode
+      if (primaryGeomConfig?.mode === '3D') refresh3DOverlay(mapFeatures);
     }
 
     const allListItems = mapFeatures.map(f => ({ id: f.id, properties: f.properties || {}, geometry: f.geometry }));
