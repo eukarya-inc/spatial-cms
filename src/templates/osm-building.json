@@ -13,8 +13,7 @@
       "key": "osm_building",
       "name": "OSM Building",
       "description": "Building footprint with OSM-compatible attributes",
-      "geometryType": "POLYGON",
-      "srid": 4326,
+      "primaryGeometryField": "geometry",
       "displayField": "name",
       "governance": {
         "approvalMode": "manual",
@@ -98,6 +97,17 @@
           "fieldType": "string",
           "isRequired": false,
           "orderIndex": 9
+        },
+        {
+          "key": "geometry",
+          "label": "Footprint",
+          "fieldType": "geometry",
+          "geometryType": "POLYGON",
+          "geometrySrid": 4326,
+          "geometryMode": "2.5D",
+          "heightFieldKey": "height",
+          "isRequired": true,
+          "orderIndex": 10
         }
       ]
     }

@@ -107,8 +107,19 @@ export async function validateAgainstModel(
         const geo = value as GeoJsonGeometry;
         if (!geo.type || !geo.coordinates) {
           errors.push(`Field "${field.key}" must be a valid GeoJSON geometry (requires "type" and "coordinates")`);
-        } else if (field.geometryType && field.geometryType !== "NONE") {
-          validateGeometryType(field.geometryType, field.key, geo, errors);
+        } else {
+          if (field.geometryType && field.geometryType !== "NONE") {
+            validateGeometryType(field.geometryType, field.key, geo, errors);
+          }
+          validateGeometryMode(
+            field.geometryMode,
+            field.key,
+            geo,
+            properties,
+            field.heightFieldKey,
+            field.baseHeightFieldKey,
+            errors,
+          );
         }
         break;
       }
@@ -116,6 +127,80 @@ export async function validateAgainstModel(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Walk all coordinate triples in a GeoJSON coordinates payload and return
+ * - `hasZ`: true if ANY position is [x, y, z] (length >= 3)
+ * - `allHaveZ`: true if EVERY position is [x, y, z]
+ * - `count`: total number of position arrays encountered
+ */
+function inspectZ(coords: unknown): { hasZ: boolean; allHaveZ: boolean; count: number } {
+  let hasZ = false;
+  let allHaveZ = true;
+  let count = 0;
+  function walk(node: unknown) {
+    if (!Array.isArray(node)) return;
+    // Position (innermost array of numbers)
+    if (node.length > 0 && typeof node[0] === "number") {
+      count++;
+      if (node.length >= 3) hasZ = true;
+      else allHaveZ = false;
+      return;
+    }
+    for (const child of node) walk(child);
+  }
+  walk(coords);
+  return { hasZ, allHaveZ, count };
+}
+
+/**
+ * Enforce per-mode invariants on geometry input:
+ * - 2D    : NO Z permitted on any coordinate
+ * - 2.5D  : NO Z on coordinates; height comes from a referenced property field
+ * - 3D    : Z REQUIRED on every coordinate
+ * Mode = null/undefined (legacy / non-strict) → no Z check, but log a soft note.
+ */
+function validateGeometryMode(
+  mode: string | null,
+  fieldKey: string,
+  geometry: GeoJsonGeometry,
+  properties: Record<string, unknown>,
+  heightFieldKey: string | null,
+  baseHeightFieldKey: string | null,
+  errors: string[],
+) {
+  if (!mode) return; // legacy field — no enforcement
+  const z = inspectZ(geometry.coordinates);
+
+  if (mode === "2D") {
+    if (z.hasZ) errors.push(`Field "${fieldKey}" is 2D — coordinates must not contain Z values`);
+    return;
+  }
+  if (mode === "2.5D") {
+    if (z.hasZ) errors.push(`Field "${fieldKey}" is 2.5D — coordinates must not contain Z; put the height in the linked property field instead`);
+    if (heightFieldKey) {
+      const h = properties[heightFieldKey];
+      if (h !== undefined && h !== null && typeof h !== "number") {
+        errors.push(`Field "${fieldKey}" links heightFieldKey="${heightFieldKey}" but property is not a number (got ${typeof h})`);
+      }
+    }
+    if (baseHeightFieldKey) {
+      const b = properties[baseHeightFieldKey];
+      if (b !== undefined && b !== null && typeof b !== "number") {
+        errors.push(`Field "${fieldKey}" links baseHeightFieldKey="${baseHeightFieldKey}" but property is not a number (got ${typeof b})`);
+      }
+    }
+    return;
+  }
+  if (mode === "3D") {
+    if (z.count === 0) {
+      errors.push(`Field "${fieldKey}" is 3D — geometry has no coordinates`);
+    } else if (!z.allHaveZ) {
+      errors.push(`Field "${fieldKey}" is 3D — every coordinate must include a Z value`);
+    }
+    return;
+  }
 }
 
 function validateGeometryType(

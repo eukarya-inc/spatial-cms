@@ -37,7 +37,9 @@ const createFieldSchema = z.object({
   referenceModelKey: z.string().optional(),
   geometryType: z.enum(["NONE", "POINT", "LINESTRING", "POLYGON", "MIXED"]).optional(),
   geometrySrid: z.number().int().optional(),
-  geometryIs3D: z.boolean().optional(),
+  geometryMode: z.enum(["2D", "2.5D", "3D"]).optional(),
+  heightFieldKey: z.string().optional(),
+  baseHeightFieldKey: z.string().optional(),
   orderIndex: z.number().int().optional(),
 });
 

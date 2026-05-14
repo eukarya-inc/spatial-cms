@@ -1,7 +1,7 @@
 /**
  * Seed ~20 buildings whose footprint geometry is true 3D (per-vertex Z coords),
  * with NO height_m attribute. Forces the viewer's extractMaxZ path so we
- * exercise the geometryIs3D=true end-to-end data flow.
+ * exercise the geometryMode="3D" end-to-end data flow.
  *
  * 15 uniform-Z (flat-top), 5 varied-Z (sloped roof — exposes MapLibre limit).
  *
@@ -175,7 +175,7 @@ async function main() {
         fieldType: "geometry",
         geometryType: "POLYGON",
         geometrySrid: 4326,
-        geometryIs3D: true,
+        geometryMode: "3D",
         isRequired: true,
         orderIndex: 0,
       },

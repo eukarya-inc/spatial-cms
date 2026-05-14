@@ -6,20 +6,36 @@ interface GeoJsonGeometry {
   coordinates: unknown;
 }
 
-/** Upsert a geometry value for an entity field into entity_geometry table */
+/** Upsert a geometry value for an entity field into entity_geometry table.
+ *  `mode` enforces storage-layer invariant:
+ *    "3D" → preserve Z (PostGIS column ends up PolygonZ etc.)
+ *    "2D" / "2.5D" / null / undefined → ST_Force2D, Z stripped before insert
+ */
 export async function setEntityGeometry(
   entityId: string,
   fieldKey: string,
   geojson: GeoJsonGeometry,
   srid: number = 4326,
+  mode?: string | null,
 ): Promise<void> {
-  await prisma.$executeRaw`
-    INSERT INTO entity_geometry (id, entity_id, field_key, geometry)
-    VALUES (gen_random_uuid(), ${entityId}::uuid, ${fieldKey},
-            ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), ${srid}::int))
-    ON CONFLICT (entity_id, field_key)
-    DO UPDATE SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(geojson)}), ${srid}::int)
-  `;
+  const geojsonStr = JSON.stringify(geojson);
+  if (mode === "3D") {
+    await prisma.$executeRaw`
+      INSERT INTO entity_geometry (id, entity_id, field_key, geometry)
+      VALUES (gen_random_uuid(), ${entityId}::uuid, ${fieldKey},
+              ST_SetSRID(ST_GeomFromGeoJSON(${geojsonStr}), ${srid}::int))
+      ON CONFLICT (entity_id, field_key)
+      DO UPDATE SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(${geojsonStr}), ${srid}::int)
+    `;
+  } else {
+    await prisma.$executeRaw`
+      INSERT INTO entity_geometry (id, entity_id, field_key, geometry)
+      VALUES (gen_random_uuid(), ${entityId}::uuid, ${fieldKey},
+              ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON(${geojsonStr}), ${srid}::int)))
+      ON CONFLICT (entity_id, field_key)
+      DO UPDATE SET geometry = ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON(${geojsonStr}), ${srid}::int))
+    `;
+  }
 }
 
 /** Remove a geometry field from an entity */

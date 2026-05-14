@@ -13,8 +13,7 @@
       "key": "building",
       "name": "Building",
       "description": "Building footprint with basic attributes",
-      "geometryType": "POLYGON",
-      "srid": 4326,
+      "primaryGeometryField": "geometry",
       "displayField": "name",
       "governance": {
         "approvalMode": "manual",
@@ -81,6 +80,17 @@
           "isRequired": false,
           "validationJson": { "min": 0 },
           "orderIndex": 7
+        },
+        {
+          "key": "geometry",
+          "label": "Footprint",
+          "fieldType": "geometry",
+          "geometryType": "POLYGON",
+          "geometrySrid": 4326,
+          "geometryMode": "2.5D",
+          "heightFieldKey": "height_m",
+          "isRequired": true,
+          "orderIndex": 8
         }
       ]
     }

@@ -773,7 +773,7 @@ function renderFieldHint(f) {
   } else if (f.fieldType === 'enum_' && f.enumValues?.length) {
     parts.push(`One of: ${f.enumValues.join(', ')}`);
   } else if (f.fieldType === 'geometry') {
-    const gt = f.geometryType ? `${f.geometryType}${f.geometryIs3D ? ' 3D' : ''}` : null;
+    const gt = f.geometryType ? `${f.geometryType}${f.geometryMode ? ' ' + f.geometryMode : ''}` : null;
     const srid = f.geometrySrid && f.geometrySrid !== 4326 ? `EPSG:${f.geometrySrid}` : null;
     [gt, srid].filter(Boolean).forEach(s => parts.push(s));
   }
@@ -1057,7 +1057,7 @@ function getModelGeometry(model) {
   if (!model?.primaryGeometryField || !model?.fields) return null;
   const field = model.fields.find(f => f.key === model.primaryGeometryField);
   if (!field || field.fieldType !== 'geometry') return null;
-  return { key: field.key, geometryType: field.geometryType || 'MIXED', srid: field.geometrySrid || 4326, is3D: field.geometryIs3D || false };
+  return { key: field.key, geometryType: field.geometryType || 'MIXED', srid: field.geometrySrid || 4326, mode: field.geometryMode || null, heightFieldKey: field.heightFieldKey || null, baseHeightFieldKey: field.baseHeightFieldKey || null };
 }
 // Get geometry fields from a schema (returned by /definitions/models/:id/schema)
 function getSchemaGeometryFields(schema) {
@@ -1211,14 +1211,15 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
   const fieldKey = field.key;
   const geomType = (field.geometryType || 'MIXED').toUpperCase();
   const srid = field.geometrySrid || 4326;
-  const is3D = !!field.geometryIs3D;
+  const geomMode = field.geometryMode || null; // "2D" | "2.5D" | "3D" | null
+  const is3D = geomMode === '3D';
   const isLatLng = (srid === 4326);
 
   // Build header
   const badges = [];
   if (isPrimary) badges.push('<span class="gc-badge gc-badge-primary">PRIMARY</span>');
   badges.push(`<span class="gc-badge gc-badge-type">${geomType}</span>`);
-  if (is3D) badges.push('<span class="gc-badge gc-badge-3d">3D</span>');
+  if (geomMode) badges.push(`<span class="gc-badge gc-badge-3d">${geomMode}</span>`);
   if (srid !== 4326) badges.push(`<span class="gc-badge gc-badge-srid">EPSG:${srid}</span>`);
 
   // Build initial JSON string for textarea
@@ -1325,16 +1326,21 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
 
     map.on('load', () => {
-      // Compute extrusion height in view mode (priority matches viewer):
-      // entityProperties.height_m | .height | .measured_height | extractMaxZ(geom)
-      let extrudeHeight = 0;
+      // Compute extrusion from geometryMode (no heuristics — schema-driven):
+      // 2D    → no extrusion
+      // 2.5D  → top = properties[heightFieldKey], base = properties[baseHeightFieldKey] || 0
+      // 3D    → top = extractMaxZ(coords), base = 0 (LOD1 ceiling: per-vertex Z flattened to maxZ for fill-extrusion)
+      let extrudeTop = 0, extrudeBase = 0;
       if (mode === 'view' && value && (value.type === 'Polygon' || value.type === 'MultiPolygon')) {
         const p = entityProperties || {};
-        if (p.height_m) extrudeHeight = parseFloat(p.height_m) || 0;
-        else if (p.height) extrudeHeight = parseFloat(p.height) || 0;
-        else if (p.measured_height) extrudeHeight = parseFloat(p.measured_height) || 0;
-        else extrudeHeight = extractMaxZ(value.coordinates);
+        if (geomMode === '2.5D' && field.heightFieldKey) {
+          extrudeTop = parseFloat(p[field.heightFieldKey]) || 0;
+          if (field.baseHeightFieldKey) extrudeBase = parseFloat(p[field.baseHeightFieldKey]) || 0;
+        } else if (geomMode === '3D') {
+          extrudeTop = extractMaxZ(value.coordinates);
+        }
       }
+      const extrudeHeight = extrudeTop; // alias for downstream code
       // View mode keeps Z (harmless for 2D layers, needed for extrusion).
       // Edit mode strips Z so Mapbox Draw doesn't choke.
       const renderValue = mode === 'view' ? value : (value ? geomTo2D(value) : null);
@@ -1365,7 +1371,7 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
           paint: {
             'fill-extrusion-color': '#3b82f6',
             'fill-extrusion-height': extrudeHeight,
-            'fill-extrusion-base': 0,
+            'fill-extrusion-base': extrudeBase,
             'fill-extrusion-opacity': 0.7,
           },
         });
@@ -2226,7 +2232,7 @@ async function viewEntityDetail(main, entityId) {
         geoDisplay.innerHTML = '<div class="gc-mount" data-field-key="geometry"></div>';
         const mountEl = geoDisplay.querySelector('.gc-mount');
         renderGeometryCard({
-          field: { key: 'geometry', label: 'Geometry', geometryType: e.geometry.type?.toUpperCase() || 'MIXED', geometrySrid: 4326, geometryIs3D: false },
+          field: { key: 'geometry', label: 'Geometry', geometryType: e.geometry.type?.toUpperCase() || 'MIXED', geometrySrid: 4326, geometryMode: null },
           value: e.geometry, mode: 'view', isPrimary: true, containerEl: mountEl, entityProperties: e.properties
         });
       } else {
@@ -5198,7 +5204,7 @@ async function viewTemplateGallery(main) {
           <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
             <div style="font-size:13px;font-weight:600;margin-bottom:2px">${m.name} <code style="font-size:11px;color:var(--muted);font-weight:normal">${m.key}</code></div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
-              ${(() => { const gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null; return gf ? `${gf.geometryType || 'MIXED'}${gf.geometryIs3D ? ' 3D' : ''} · EPSG:${gf.geometrySrid || 4326}` : 'No geometry'; })()}
+              ${(() => { const gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null; return gf ? `${gf.geometryType || 'MIXED'}${gf.geometryMode ? ' ' + gf.geometryMode : ''} · EPSG:${gf.geometrySrid || 4326}` : 'No geometry'; })()}
               ${m.governance?.approvalMode === 'auto' ? ' · Auto-approve' : ''}
             </div>
             <table style="width:100%;font-size:12px;box-shadow:none;border-collapse:collapse">
@@ -5206,7 +5212,7 @@ async function viewTemplateGallery(main) {
               <tbody>${m.fields.map(f => `
                 <tr>
                   <td style="padding:3px 6px"><code style="font-size:11px">${f.key}</code> <span style="color:var(--muted);font-size:11px">${f.label}</span></td>
-                  <td style="padding:3px 6px;font-size:11px">${f.fieldType}${f.fieldType === 'geometry' ? ` (${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}${f.geometrySrid && f.geometrySrid !== 4326 ? ' EPSG:' + f.geometrySrid : ''})` : ''}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
+                  <td style="padding:3px 6px;font-size:11px">${f.fieldType}${f.fieldType === 'geometry' ? ` (${f.geometryType || 'MIXED'}${f.geometryMode ? ' ' + f.geometryMode : ''}${f.geometrySrid && f.geometrySrid !== 4326 ? ' EPSG:' + f.geometrySrid : ''})` : ''}${f.enumValues ? ' (' + f.enumValues.slice(0,3).join(', ') + (f.enumValues.length > 3 ? '...' : '') + ')' : ''}</td>
                   <td style="padding:3px 6px">${f.isRequired ? '✓' : ''}</td>
                 </tr>
               `).join('')}</tbody>
@@ -5246,7 +5252,7 @@ async function viewTemplateGallery(main) {
         const conflict = existingKeys.has(m.key);
         const _gf = m.primaryGeometryField && m.fields ? m.fields.find(f => f.key === m.primaryGeometryField) : null;
         const geomBadge = _gf
-          ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${_gf.geometryType || 'MIXED'}${_gf.geometryIs3D ? ' 3D' : ''}</span>` : '';
+          ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--primary);color:#fff">${_gf.geometryType || 'MIXED'}${_gf.geometryMode ? ' ' + _gf.geometryMode : ''}</span>` : '';
         const sridBadge = _gf && _gf.geometrySrid && _gf.geometrySrid !== 4326
           ? `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;background:var(--bg);color:var(--muted)">EPSG:${_gf.geometrySrid}</span>` : '';
         const fieldCount = `<span style="font-size:11px;color:var(--muted)">${m.fields.length} fields</span>`;
@@ -5387,7 +5393,7 @@ async function viewModels(main) {
         const publish = pol ? pol.publishMode : 'manual';
         return `<tr>
           <td><code>${m.key}</code></td><td>${m.name}</td>
-          <td>${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.is3D ? ' 3D' : ''}</span>${g.srid !== 4326 ? ` <span style="font-size:10px;color:var(--warning)">EPSG:${g.srid}</span>` : ''}` : '<span style="color:var(--muted)">—</span>'; })()}</td>
+          <td>${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.mode ? ' ' + g.mode : ''}</span>${g.srid !== 4326 ? ` <span style="font-size:10px;color:var(--warning)">EPSG:${g.srid}</span>` : ''}` : '<span style="color:var(--muted)">—</span>'; })()}</td>
           <td>${m.fields.length}</td><td>${m._count?.entities ?? 0}</td>
           <td><span style="font-size:12px;color:${approval === 'auto' ? 'var(--success)' : 'var(--muted)'}">${approval}</span></td>
           <td><span style="font-size:12px;color:${publish === 'auto' ? 'var(--success)' : 'var(--muted)'}">${publish}</span></td>
@@ -5437,10 +5443,11 @@ async function viewModelDetail(main, modelId) {
   }
   setBreadcrumb(['Define'], ['Models', `nav('define/models')`], [m.name]);
   setActiveNav('define/models');
+  window._editingModelFields = m.fields || []; // for af-geom 2.5D dropdowns
 
   main.innerHTML = `
     <div class="page-header">
-      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; ${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.is3D ? ' 3D' : ''}</span> &middot; ${g.srid === 4326 ? 'WGS84' : 'EPSG:' + g.srid}` : '<span style="color:var(--muted)">No geometry</span>'; })()} &middot; ${m.fields.length} fields</div></div>
+      <div><h2>${m.name}</h2><div class="sub"><code>${m.key}</code> &middot; ${(() => { const g = getModelGeometry(m); return g ? `<span class="badge badge-none">${g.geometryType}${g.mode ? ' ' + g.mode : ''}</span> &middot; ${g.srid === 4326 ? 'WGS84' : 'EPSG:' + g.srid}` : '<span style="color:var(--muted)">No geometry</span>'; })()} &middot; ${m.fields.length} fields</div></div>
       <button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-model-btn">Delete Model</button>
     </div>
 
@@ -5613,11 +5620,18 @@ async function viewModelDetail(main, modelId) {
       }
 
       // Geometry field config
-      const geomTypeEl = $('af-geom-type'), geomSridEl = $('af-geom-srid'), geom3dEl = $('af-geom-3d'), geomPrimaryEl = $('af-geom-primary');
+      const geomTypeEl = $('af-geom-type'), geomSridEl = $('af-geom-srid'), geomPrimaryEl = $('af-geom-primary');
+      const geomModeEl = document.querySelector('input[name="af-geom-mode"]:checked');
+      const heightFieldEl = $('af-height-field'), baseHeightFieldEl = $('af-base-height-field');
       if (geomTypeEl?.value && body.fieldType === 'geometry') {
         body.geometryType = geomTypeEl.value;
         if (geomSridEl?.value) body.geometrySrid = parseInt(geomSridEl.value);
-        if (geom3dEl) body.geometryIs3D = geom3dEl.checked;
+        if (geomModeEl) body.geometryMode = geomModeEl.value;
+        if (geomModeEl?.value === '2.5D') {
+          if (!heightFieldEl?.value) { toast('2.5D mode requires a height field', 'error'); return; }
+          body.heightFieldKey = heightFieldEl.value;
+          if (baseHeightFieldEl?.value) body.baseHeightFieldKey = baseHeightFieldEl.value;
+        }
       }
       await api(`/definitions/models/${modelId}/fields`, { method: 'POST', body: JSON.stringify(body) });
       // Auto-set primaryGeometryField if checkbox checked
@@ -5784,10 +5798,13 @@ function renderFieldItem(f, modelId, index) {
   if (f.fieldType === 'geometry') {
     const parts = [];
     if (f.geometryType) parts.push(f.geometryType);
-    if (f.geometryIs3D) parts.push('3D');
+    if (f.geometryMode) parts.push(f.geometryMode);
     if (parts.length) chips.push(`<span class="field-constraint-chip">${parts.join(' ')}</span>`);
     if (f.geometrySrid && f.geometrySrid !== 4326) {
       chips.push(`<span class="field-constraint-chip">EPSG:${f.geometrySrid}</span>`);
+    }
+    if (f.geometryMode === '2.5D' && f.heightFieldKey) {
+      chips.push(`<span class="field-constraint-chip">height: <code>${f.heightFieldKey}</code>${f.baseHeightFieldKey ? `, base: <code>${f.baseHeightFieldKey}</code>` : ''}</span>`);
     }
   }
   if (f.enumValues?.length) {
@@ -5868,8 +5885,13 @@ function renderFieldReadOnlySummary(f) {
     rows.push(row('References', `<code>${f.referenceModelKey}</code>`));
   }
   if (f.fieldType === 'geometry') {
-    rows.push(row('Geometry type', `${f.geometryType || 'MIXED'}${f.geometryIs3D ? ' 3D' : ''}`));
+    rows.push(row('Geometry type', `${f.geometryType || 'MIXED'}`));
+    rows.push(row('Geometry mode', `${f.geometryMode || '—'}`));
     rows.push(row('SRID', `EPSG:${f.geometrySrid || 4326}`));
+    if (f.geometryMode === '2.5D') {
+      rows.push(row('Height field', `<code>${f.heightFieldKey || '—'}</code>`));
+      rows.push(row('Base height field', `<code>${f.baseHeightFieldKey || '— (defaults to 0)'}</code>`));
+    }
   }
   if (f.defaultValue !== undefined && f.defaultValue !== null) {
     const dv = typeof f.defaultValue === 'object' ? JSON.stringify(f.defaultValue) : String(f.defaultValue);
@@ -5882,6 +5904,12 @@ function renderFieldReadOnlySummary(f) {
       <table style="width:100%;box-shadow:none"><tbody>${rows.join('')}</tbody></table>
       <div style="font-size:11px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">To change these, delete this field and create a new one with the desired config.</div>
     </div>`;
+}
+
+function onGeomModeChange() {
+  const sel = document.querySelector('input[name="af-geom-mode"]:checked');
+  const panel = document.getElementById('af-geom-25d-fields');
+  if (panel) panel.style.display = sel?.value === '2.5D' ? 'block' : 'none';
 }
 
 function onFieldTypeChange() {
@@ -5908,10 +5936,31 @@ function onFieldTypeChange() {
   } else if (type === 'reference') {
     validationHtml = `<div class="form-group"><label>Target Model <span style="color:var(--danger)">*</span></label><select id="af-ref-model"><option value="">Select model...</option>${modelCache.map(m => `<option value="${m.key}">${m.name} (${m.key})</option>`).join('')}</select><div style="font-size:12px;color:var(--muted);margin-top:4px">Which model does this field reference?</div></div>`;
   } else if (type === 'geometry') {
+    // Build number-field options for height/baseHeight dropdowns. Pulled from the
+    // currently-edited model's fields (passed in via window._editingModelFields when
+    // the form is opened — set by viewModelDetail).
+    const numFields = (window._editingModelFields || []).filter(f => f.fieldType === 'number');
+    const numOpts = numFields.map(f => `<option value="${f.key}">${f.label} (${f.key})</option>`).join('');
     validationHtml = `<div class="form-row">
       <div class="form-group"><label>Geometry Type <span style="color:var(--danger)">*</span></label><select id="af-geom-type"><option value="POINT">POINT</option><option value="LINESTRING">LINESTRING</option><option value="POLYGON">POLYGON</option><option value="MIXED">MIXED</option></select></div>
       <div class="form-group"><label>CRS (SRID)</label><select id="af-geom-srid"><option value="4326">EPSG:4326 — WGS84 (default)</option><option value="6677">EPSG:6677 — JGD2011 / Zone 9</option><option value="6668">EPSG:6668 — JGD2011 Geographic</option><option value="3857">EPSG:3857 — Web Mercator</option></select></div>
-      <div class="form-group" style="flex:0;min-width:60px"><label>3D</label><div style="padding:8px 0"><label style="font-weight:normal;cursor:pointer"><input type="checkbox" id="af-geom-3d"> Yes</label></div></div>
+    </div>
+    <div class="form-group">
+      <label>Geometry Mode</label>
+      <div style="display:flex;gap:16px;padding:6px 0">
+        <label style="font-weight:normal;cursor:pointer"><input type="radio" name="af-geom-mode" value="2D" onchange="onGeomModeChange()"> 2D <span style="font-size:11px;color:var(--muted)">— footprint only</span></label>
+        <label style="font-weight:normal;cursor:pointer"><input type="radio" name="af-geom-mode" value="2.5D" onchange="onGeomModeChange()"> 2.5D <span style="font-size:11px;color:var(--muted)">— footprint + height attribute</span></label>
+        <label style="font-weight:normal;cursor:pointer"><input type="radio" name="af-geom-mode" value="3D" onchange="onGeomModeChange()"> 3D <span style="font-size:11px;color:var(--muted)">— vertex-Z, varying heights</span></label>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Mode is immutable after the field is created.</div>
+    </div>
+    <div id="af-geom-25d-fields" class="form-group" style="display:none;background:rgba(59,130,246,0.06);padding:12px;border-radius:6px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">2.5D extrusion height comes from these property fields (must be of type <code>number</code>):</div>
+      <div class="form-row">
+        <div class="form-group"><label>Height field <span style="color:var(--danger)">*</span></label><select id="af-height-field"><option value="">— Select number field —</option>${numOpts}</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Top of the extrusion (required)</div></div>
+        <div class="form-group"><label>Base height field</label><select id="af-base-height-field"><option value="">— None (base = 0) —</option>${numOpts}</select><div style="font-size:11px;color:var(--muted);margin-top:4px">Bottom of the extrusion (optional; default 0)</div></div>
+      </div>
+      ${numFields.length === 0 ? '<div style="color:var(--warning);font-size:12px;margin-top:8px">⚠ This model has no number fields yet. Create a number field first (e.g. <code>height_m</code>), then come back to set 2.5D mode.</div>' : ''}
     </div>
     <div class="form-group"><label><input type="checkbox" id="af-geom-primary"> Set as primary geometry field</label><div style="font-size:12px;color:var(--muted);margin-top:4px">Primary geometry is synced to the PostGIS column for spatial queries</div></div>`;
   }

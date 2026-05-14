@@ -36,7 +36,7 @@ npx tsx scripts/seed-taito.ts
 #    Login: admin / admin (Keycloak)
 ```
 
-Run tests: `npm test` (61 integration tests)
+Run tests: `npm test` (70 integration tests)
 
 ### Dev Service Manager (`dev.sh`)
 
@@ -108,6 +108,7 @@ tests/
     publish-metadata.test.ts  # Publish channels, field projection, DCAT metadata
     multi-geometry.test.ts    # Multi-geometry fields, primaryGeometryField, field reorder
     workspace-crud.test.ts    # Workspace rename (PATCH /workspaces/:slug)
+    geometry-mode.test.ts     # 2D / 2.5D / 3D mode invariants (Z presence, heightFieldKey)
 examples/
   viewer/                     # Consumer demo app (Delivery API + MapLibre GL JS)
     index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
@@ -156,12 +157,21 @@ key can exist in workspace A and workspace B. `findModelDefinitionByKey` takes
 Geometry is stored in a separate `entity_geometry` table (not on the entity table). Each geometry field value gets its own row with a GIST spatial index, enabling spatial queries on any geometry field. The entity table's `properties` JSONB stores non-geometry field values only; geometry is merged back into properties at read time. All geometry reads/writes go through `src/shared/geometry.ts` via `$queryRaw`/`$executeRaw`.
 
 ### Geometry as a Field Type
-Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryIs3D`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.
+Geometry is a FieldDefinition type (`fieldType: "geometry"`), not a model-level property. Each geometry field has its own `geometryType` (POINT/POLYGON/etc.), `geometrySrid`, and `geometryMode`. A model can have 0, 1, or many geometry fields. `ModelDefinition.primaryGeometryField` points to the field key used for spatial indexing and GeoJSON output. Geometry values are stored in `properties` alongside regular fields — no separate top-level `geometry` on entities or proposals.
+
+### Geometry Modes: 2D / 2.5D / 3D
+Each geometry field declares its dimensionality explicitly via `geometryMode: "2D" | "2.5D" | "3D"` (replaced the legacy `geometryIs3D: boolean`). The three modes are orthogonal and enforced by the validator:
+
+- **2D** — pure footprint, no height. Z coords in input are **rejected** (400). Storage uses `ST_Force2D`. Renders as flat fill.
+- **2.5D** — 2D footprint + height stored in a separate **property field** (linked via `heightFieldKey`, optionally `baseHeightFieldKey`). Z in geometry input is rejected. Mode requires `heightFieldKey` to be set, point to a same-model field of `fieldType: "number"`, and not self-reference. Renders as fill-extrusion with `height = props[heightFieldKey]`, `base = props[baseHeightFieldKey] || 0`. Matches OSM `height`/`min_height` and MapLibre `fill-extrusion-height`/`fill-extrusion-base` conventions.
+- **3D** — vertex-Z geometry (LOD1 capable). **Every** vertex must include Z. Storage preserves Z. MapLibre fill-extrusion flattens varying Z to `maxZ(coords)` for rendering — this is a known LOD1 ceiling (no per-vertex extrusion until 3D Tiles / glTF arrive).
+
+Mode is **immutable** after field create (same rule as `fieldType`, `geometryType`, etc.). To change, delete and recreate the field. Legacy fields with `geometryMode = NULL` skip the Z-presence check (backward compat for pre-migration data; new fields require an explicit mode).
 
 ### Geometry Map UI (frontend)
 Each geometry field renders as an inline `.geometry-card` with a MapLibre GL preview/editor. Reusable component `renderGeometryCard({field, value, mode, isPrimary, containerEl, onChange, entityProperties})` in `public/index.html` handles both view (read-only) and edit (Mapbox Draw integration) modes. MapLibre + Mapbox Draw are CDN-loaded lazily on first card mount via `loadMapLibs()`. Rules:
 - SRID 4326 only — non-4326 fields show a warning banner and JSON-only editor
-- **View mode does 2.5D fill-extrusion** for polygons when a height value is present. Height priority: `entityProperties.height_m` → `height` → `measured_height` → max Z from vertex coordinates. When the height is > 0, the layer hides the flat fill and sets pitch=45°/bearing=-20°.
+- **View mode renders extrusion driven by `field.geometryMode`** (no more heuristic chain): `2.5D` reads `props[field.heightFieldKey]` (top) and `props[field.baseHeightFieldKey] || 0` (base); `3D` uses `extractMaxZ(coords)`; `2D`/null skips extrusion. When extrudeHeight > 0, the layer hides the flat fill and sets pitch=45°/bearing=-20°.
 - 3D geometries: edit mode confirms before discarding Z; JSON textarea is the lossless fallback for Z editing
 - Map ↔ JSON textarea bidirectional sync (textarea synced on map draw events; map updated on textarea blur with valid-JSON check)
 - `router()` calls `__cleanupGeometryCards()` to prevent WebGL context leaks on navigation
@@ -281,7 +291,7 @@ Each dataset controls which APIs expose its data:
 
 ### Definitions
 - `CRUD /api/v1/definitions/models` — model definitions (primaryGeometryField, displayField)
-- `CRUD /api/v1/definitions/models/:id/fields` — field definitions (geometry fields have geometryType/geometrySrid/geometryIs3D)
+- `CRUD /api/v1/definitions/models/:id/fields` — field definitions (geometry fields have geometryType/geometrySrid/geometryMode/heightFieldKey/baseHeightFieldKey)
 - `PUT /api/v1/definitions/models/:id/fields/reorder` — batch reorder fields (`{ order: ["key1", "key2", ...] }`)
 - `GET /api/v1/definitions/models/:id/schema` — JSON schema for frontend
 - `CRUD /api/v1/definitions/datasets/:id/bindings` — model-dataset bindings
@@ -330,7 +340,7 @@ Each dataset controls which APIs expose its data:
   - `?format=geojson` — GeoJSON FeatureCollection output
 - `GET /api/v1/delivery/datasets/:id/entities/:entityId` — single entity
 
-**Consumer apps** (e.g. `examples/viewer`) compute extrusion height for 3D rendering using this priority: `properties.height_m` → `properties.height` → `properties.measured_height` → max Z extracted from polygon vertex coordinates. Z is preserved through `ST_AsGeoJSON` so `geometryIs3D: true` fields keep their Z values in the output.
+**Consumer apps** (e.g. `examples/viewer`) compute extrusion driven by the dataset schema (`geometryMode` + `heightFieldKey` + `baseHeightFieldKey`), not heuristics. `2.5D` reads the linked property fields for top/base; `3D` extracts `maxZ` from coordinates; `2D` renders flat. Z is preserved through `ST_AsGeoJSON` for 3D-mode fields.
 
 ### OGC API - Features (standard-compliant, for GIS tools)
 Each collection = one model from a publishToOgc=true dataset. Collection ID: `{datasetId}_{modelKey}`.

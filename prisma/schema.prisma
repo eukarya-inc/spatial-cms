@@ -255,7 +255,11 @@ model FieldDefinition {
   referenceModelKey String?      @map("reference_model_key")
   geometryType      GeometryType? @map("geometry_type")
   geometrySrid      Int?         @map("geometry_srid")
-  geometryIs3D      Boolean?     @map("geometry_is_3d")
+  // geometryMode: "2D" | "2.5D" | "3D" — validated at app layer (TS enum identifiers
+  // can't start with a digit, so we use String + CHECK constraint instead of a Prisma enum)
+  geometryMode      String?      @map("geometry_mode")
+  heightFieldKey    String?      @map("height_field_key")
+  baseHeightFieldKey String?     @map("base_height_field_key")
   orderIndex        Int          @default(0) @map("order_index")
 
   modelDefinition ModelDefinition @relation(fields: [modelDefinitionId], references: [id], onDelete: Cascade)

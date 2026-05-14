@@ -19,7 +19,9 @@ interface TemplateField {
   referenceModelKey?: string;
   geometryType?: string;
   geometrySrid?: number;
-  geometryIs3D?: boolean;
+  geometryMode?: string;
+  heightFieldKey?: string;
+  baseHeightFieldKey?: string;
   orderIndex?: number;
 }
 
@@ -171,7 +173,9 @@ export async function applyTemplate(
             referenceModelKey: tf.referenceModelKey,
             geometryType: tf.geometryType as any,
             geometrySrid: tf.geometrySrid,
-            geometryIs3D: tf.geometryIs3D,
+            geometryMode: tf.geometryMode,
+            heightFieldKey: tf.heightFieldKey,
+            baseHeightFieldKey: tf.baseHeightFieldKey,
             orderIndex: tf.orderIndex ?? 0,
           },
         });
