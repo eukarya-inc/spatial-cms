@@ -57,7 +57,7 @@ app.use("/api/v1", (
   next: express.NextFunction,
 ) => {
   res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Workspace-Key, Authorization");
   if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
   next();

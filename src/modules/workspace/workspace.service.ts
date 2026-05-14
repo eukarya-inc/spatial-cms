@@ -17,6 +17,21 @@ export async function createWorkspace(data: { slug: string; name: string; descri
   return prisma.workspace.create({ data });
 }
 
+export async function updateWorkspace(
+  slug: string,
+  data: { name?: string; description?: string | null },
+) {
+  const ws = await prisma.workspace.findUnique({ where: { slug } });
+  if (!ws) throw new NotFoundError(`Workspace '${slug}'`);
+  return prisma.workspace.update({
+    where: { id: ws.id },
+    data: {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+    },
+  });
+}
+
 /**
  * Cascade-delete a workspace and ALL its contents:
  * models, fields, datasets, snapshots, publications, bindings, governance

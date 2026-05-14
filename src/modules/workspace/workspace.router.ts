@@ -13,6 +13,15 @@ const createSchema = z.object({
   description: z.string().optional(),
 });
 
+const updateSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+  })
+  .refine((d) => d.name !== undefined || d.description !== undefined, {
+    message: "Provide at least one of: name, description",
+  });
+
 // GET /api/v1/workspaces — visible to everyone (no scope check)
 workspaceRouter.get("/", async (_req, res, next) => {
   try {
@@ -50,6 +59,15 @@ workspaceRouter.post("/", adminOnly, async (req, res, next) => {
     const data = createSchema.parse(req.body);
     const ws = await workspaceService.createWorkspace(data);
     res.status(201).json(ws);
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/v1/workspaces/:slug — rename (name and/or description only)
+workspaceRouter.patch("/:slug", adminOnly, async (req, res, next) => {
+  try {
+    const data = updateSchema.parse(req.body);
+    const ws = await workspaceService.updateWorkspace(String(req.params.slug), data);
+    res.json(ws);
   } catch (err) { next(err); }
 });
 
