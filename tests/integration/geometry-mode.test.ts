@@ -250,7 +250,7 @@ describe("Geometry mode invariants", () => {
     assert.strictEqual(byKey.shell, 3, "3D field stored as 3D (Z preserved)");
   });
 
-  it("makes geometryMode immutable after create", async () => {
+  it("makes geometryMode immutable after a real value is set", async () => {
     // Try to update the 2D field's mode to 3D — should fail
     const field = await prisma.fieldDefinition.findFirst({
       where: { modelDefinitionId: model2DId, key: "boundary" },
@@ -262,5 +262,47 @@ describe("Geometry mode invariants", () => {
     });
     assert.strictEqual(status, 400);
     assert.match(data.error || "", /immutable/i);
+  });
+
+  it("allows one-way upgrade from NULL geometryMode to a real mode (legacy fix-up)", async () => {
+    // Create a legacy-style field: insert directly to bypass current validation, simulating
+    // a field created before geometryMode existed.
+    const { data: m } = await apiRequest("/definitions/models", {
+      method: "POST",
+      body: { key: "legacy_model", name: "Legacy" },
+    });
+    await apiRequest(`/definitions/models/${m.id}/fields`, {
+      method: "POST",
+      body: { key: "height_m", label: "Height", fieldType: "number", orderIndex: 0 },
+    });
+    const legacyGeo = await prisma.fieldDefinition.create({
+      data: {
+        modelDefinitionId: m.id,
+        key: "footprint",
+        label: "Footprint",
+        fieldType: "geometry" as any,
+        geometryType: "POLYGON",
+        geometrySrid: 4326,
+        // geometryMode + heightFieldKey deliberately NULL (legacy state)
+        orderIndex: 1,
+      },
+    });
+
+    // Upgrade NULL → 2.5D with heightFieldKey — should succeed
+    const { status, data } = await apiRequest(`/definitions/models/${m.id}/fields/${legacyGeo.id}`, {
+      method: "PUT",
+      body: { geometryMode: "2.5D", heightFieldKey: "height_m" },
+    });
+    assert.strictEqual(status, 200, JSON.stringify(data));
+    assert.strictEqual(data.geometryMode, "2.5D");
+    assert.strictEqual(data.heightFieldKey, "height_m");
+
+    // Now that mode is set, a second mode change should be rejected
+    const { status: s2, data: d2 } = await apiRequest(`/definitions/models/${m.id}/fields/${legacyGeo.id}`, {
+      method: "PUT",
+      body: { geometryMode: "3D" },
+    });
+    assert.strictEqual(s2, 400);
+    assert.match(d2.error || "", /immutable/i);
   });
 });

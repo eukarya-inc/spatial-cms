@@ -5710,6 +5710,24 @@ async function viewModelDetail(main, modelId) {
         if (labelEl) body.label = labelEl.value;
         if (reqEl) body.isRequired = reqEl.checked;
         if (enumsEl?.value) body.enumValues = enumsEl.value.split(',').map(s => s.trim()).filter(Boolean);
+
+        // Geometry-mode upgrade (legacy NULL → real mode) and 2.5D height-field edits
+        const geomModeEl = $(`ef-geommode-${fieldId}`);
+        const heightEl   = $(`ef-height-${fieldId}`);
+        const baseEl     = $(`ef-base-height-${fieldId}`);
+        if (geomModeEl?.value) {
+          body.geometryMode = geomModeEl.value;
+          if (geomModeEl.value === '2.5D') {
+            if (!heightEl?.value) { toast('2.5D requires a height field', 'error'); return; }
+            body.heightFieldKey = heightEl.value;
+            if (baseEl?.value) body.baseHeightFieldKey = baseEl.value;
+          }
+        } else if (heightEl) {
+          // No mode change (already-2.5D field) — just push any height-field edits
+          body.heightFieldKey = heightEl.value || null;
+          body.baseHeightFieldKey = baseEl?.value || null;
+        }
+
         await api(`/definitions/models/${modelId}/fields/${fieldId}`, { method: 'PUT', body: JSON.stringify(body) });
         toast('Field updated');
         reload();
@@ -5855,6 +5873,8 @@ function renderFieldItem(f, modelId, index) {
     </div>
     ${f.fieldType === 'enum_' ? `<div class="form-group"><label>Enum Values (comma separated)</label><input id="ef-enums-${f.id}" value="${(f.enumValues || []).join(', ')}"></div>` : ''}
 
+    ${renderGeomEditControls(f)}
+
     ${renderFieldReadOnlySummary(f)}
 
     <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary btn-sm" data-save-field="${f.id}">Save</button><button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-area-${f.id}').style.display='none'">Cancel</button></div>
@@ -5909,6 +5929,79 @@ function renderFieldReadOnlySummary(f) {
 function onGeomModeChange() {
   const sel = document.querySelector('input[name="af-geom-mode"]:checked');
   const panel = document.getElementById('af-geom-25d-fields');
+  if (panel) panel.style.display = sel?.value === '2.5D' ? 'block' : 'none';
+}
+
+// Render the geometry-mode controls inside the Edit Field inline panel.
+// Two scenarios:
+//   1. mode = NULL (legacy)   → one-time "Upgrade to 2D/2.5D/3D" select. Picking 2.5D
+//                                reveals heightFieldKey + baseHeightFieldKey dropdowns.
+//   2. mode = "2.5D"          → editable heightFieldKey + baseHeightFieldKey (the only
+//                                bits backend allows mutating after a real mode is set).
+//   3. mode = "2D" / "3D"     → no editable controls; the immutable summary shows the
+//                                mode and that's all there is.
+function renderGeomEditControls(f) {
+  if (f.fieldType !== 'geometry') return '';
+  const numFields = (window._editingModelFields || []).filter(x => x.fieldType === 'number');
+  const numOpts = (sel) => numFields.map(nf =>
+    `<option value="${nf.key}"${nf.key === sel ? ' selected' : ''}>${nf.label} (${nf.key})</option>`
+  ).join('');
+
+  // Case 2: existing 2.5D — just allow editing the linked attribute fields
+  if (f.geometryMode === '2.5D') {
+    if (numFields.length === 0) {
+      return `<div class="form-group" style="margin-top:8px;color:var(--warning);font-size:12px">
+        ⚠ This model has no number fields. Add one (e.g. <code>height_m</code>) before linking it as the height source.
+      </div>`;
+    }
+    return `<div class="form-group" style="background:rgba(59,130,246,0.06);padding:12px;border-radius:6px;margin-top:8px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">2.5D extrusion is driven by these property fields:</div>
+      <div class="form-row">
+        <div class="form-group"><label>Height field <span style="color:var(--danger)">*</span></label>
+          <select id="ef-height-${f.id}"><option value="">— Select —</option>${numOpts(f.heightFieldKey)}</select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Top of the extrusion (required)</div>
+        </div>
+        <div class="form-group"><label>Base height field</label>
+          <select id="ef-base-height-${f.id}"><option value="">— None (base = 0) —</option>${numOpts(f.baseHeightFieldKey)}</select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Bottom of the extrusion (optional)</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Case 3: mode is 2D or 3D — nothing to edit (immutable + no linked fields)
+  if (f.geometryMode === '2D' || f.geometryMode === '3D') return '';
+
+  // Case 1: legacy NULL mode → one-shot upgrade
+  return `<div class="form-group" style="background:rgba(234,179,8,0.08);padding:12px;border-radius:6px;border:1px solid rgba(234,179,8,0.2);margin-top:8px">
+    <div style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:4px">Upgrade Geometry Mode (one-time)</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">This field has no mode set (legacy). Pick one to enable mode-driven rendering. <strong>Once set, mode is immutable.</strong></div>
+    <select id="ef-geommode-${f.id}" onchange="onEfGeomModeChange('${f.id}')">
+      <option value="">— Keep unset —</option>
+      <option value="2D">2D — flat footprint only</option>
+      <option value="2.5D">2.5D — footprint + height attribute (recommended for buildings)</option>
+      <option value="3D">3D — vertex-Z geometry (requires Z in coordinates)</option>
+    </select>
+    <div id="ef-geommode-25d-${f.id}" style="display:none;margin-top:8px;padding:10px;background:var(--surface);border-radius:4px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">2.5D linked attribute fields (number type only):</div>
+      ${numFields.length === 0
+        ? '<div style="color:var(--warning);font-size:12px">⚠ No number fields exist on this model. Add one first (e.g. <code>height_m</code>).</div>'
+        : `<div class="form-row">
+            <div class="form-group"><label>Height field <span style="color:var(--danger)">*</span></label>
+              <select id="ef-height-${f.id}"><option value="">— Select —</option>${numOpts(null)}</select>
+            </div>
+            <div class="form-group"><label>Base height field</label>
+              <select id="ef-base-height-${f.id}"><option value="">— None —</option>${numOpts(null)}</select>
+            </div>
+          </div>`
+      }
+    </div>
+  </div>`;
+}
+
+function onEfGeomModeChange(fieldId) {
+  const sel = document.getElementById(`ef-geommode-${fieldId}`);
+  const panel = document.getElementById(`ef-geommode-25d-${fieldId}`);
   if (panel) panel.style.display = sel?.value === '2.5D' ? 'block' : 'none';
 }
 

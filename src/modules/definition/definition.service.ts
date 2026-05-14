@@ -241,17 +241,26 @@ export async function updateField(
   });
   if (!field || field.modelDefinition.workspaceId !== workspaceId) throw new NotFoundError("Field");
 
-  // Geometry mode is immutable (same as fieldType / geometryType — see field-immutability rules).
+  // Geometry mode is a one-way ratchet: legacy fields with NULL mode can be upgraded to a real
+  // mode once (2D / 2.5D / 3D); once a real value is set, it's immutable. Prevents data-shape
+  // surprises while letting users adopt the new schema without destroying existing data.
   if (data.geometryMode !== undefined && data.geometryMode !== field.geometryMode) {
-    throw new BusinessError(
-      `geometryMode is immutable; delete and recreate the field to change it (current: "${field.geometryMode}", requested: "${data.geometryMode}")`,
-    );
+    if (field.geometryMode !== null) {
+      throw new BusinessError(
+        `geometryMode is immutable once set; delete and recreate the field to change it (current: "${field.geometryMode}", requested: "${data.geometryMode}")`,
+      );
+    }
+    // NULL → real mode upgrade is allowed.
   }
 
-  // If the field IS a 2.5D geometry, allow editing heightFieldKey / baseHeightFieldKey (these are
-  // attribute-references, not geometry-intrinsic, so they're safer to mutate).
-  if (field.fieldType === "geometry" && field.geometryMode === "2.5D" &&
-      (data.heightFieldKey !== undefined || data.baseHeightFieldKey !== undefined)) {
+  // Validate any 2.5D-related references — applies both when the field is already 2.5D and when
+  // it's being upgraded to 2.5D. Use the *effective* mode (request value if set, else stored).
+  const effectiveMode = data.geometryMode !== undefined ? data.geometryMode : field.geometryMode;
+  const touches25D =
+    data.geometryMode !== undefined ||
+    data.heightFieldKey !== undefined ||
+    data.baseHeightFieldKey !== undefined;
+  if (field.fieldType === "geometry" && effectiveMode === "2.5D" && touches25D) {
     await validateGeometryMode(field.modelDefinitionId, field.key, {
       geometryMode: "2.5D",
       heightFieldKey: data.heightFieldKey !== undefined ? data.heightFieldKey : field.heightFieldKey,
@@ -268,6 +277,7 @@ export async function updateField(
   if (data.validationJson !== undefined) updateData.validationJson = data.validationJson;
   if (data.geometryType !== undefined) updateData.geometryType = data.geometryType;
   if (data.geometrySrid !== undefined) updateData.geometrySrid = data.geometrySrid;
+  if (data.geometryMode !== undefined) updateData.geometryMode = data.geometryMode;
   if (data.heightFieldKey !== undefined) updateData.heightFieldKey = data.heightFieldKey;
   if (data.baseHeightFieldKey !== undefined) updateData.baseHeightFieldKey = data.baseHeightFieldKey;
   if (data.orderIndex !== undefined) updateData.orderIndex = data.orderIndex;
