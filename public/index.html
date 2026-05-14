@@ -1101,13 +1101,17 @@ function loadMapLibs() {
         window.mapboxgl = window.maplibregl;
         return loadJs('https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js');
       })
+      // deck.gl: needed for true 3D mode rendering (SolidPolygonLayer + MapboxOverlay).
+      // 2D / 2.5D modes don't need it — but lazy-loading per-mode adds complexity, so
+      // we always load it once when the first geometry card mounts.
+      .then(() => loadJs('https://unpkg.com/deck.gl@9.0.40/dist.min.js'))
       .then(() => {
         clearTimeout(timeout);
-        if (!window.maplibregl || !window.MapboxDraw) {
+        if (!window.maplibregl || !window.MapboxDraw || !window.deck) {
           reject(new Error('Map libs missing after load'));
           return;
         }
-        resolve({ maplibregl: window.maplibregl, MapboxDraw: window.MapboxDraw });
+        resolve({ maplibregl: window.maplibregl, MapboxDraw: window.MapboxDraw, deck: window.deck });
       })
       .catch(err => { clearTimeout(timeout); reject(err); });
   });
@@ -1156,6 +1160,16 @@ function extractMaxZ(coords) {
   let max = 0;
   for (const c of coords) { const z = extractMaxZ(c); if (z > max) max = z; }
   return max;
+}
+
+// Parse "#rrggbb" → [r, g, b, alpha]; fallback to deep blue if missing/invalid.
+// Used by the 3D solid-polygon renderer to color a face by properties.material_color.
+function hexToRgba(hex, alpha = 220) {
+  if (!hex || typeof hex !== 'string') return [30, 64, 175, alpha];
+  const m = hex.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) return [30, 64, 175, alpha];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha];
 }
 
 // Walk all coordinates [lng,lat] pairs in a geometry
@@ -1326,23 +1340,22 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
 
     map.on('load', () => {
-      // Compute extrusion from geometryMode (no heuristics — schema-driven):
-      // 2D    → no extrusion
-      // 2.5D  → top = properties[heightFieldKey], base = properties[baseHeightFieldKey] || 0
-      // 3D    → top = extractMaxZ(coords), base = 0 (LOD1 ceiling: per-vertex Z flattened to maxZ for fill-extrusion)
+      // Mode-driven rendering:
+      //   2D    → flat fill (MapLibre)
+      //   2.5D  → fill-extrusion (MapLibre), height = props[heightFieldKey]
+      //   3D    → deck.gl SolidPolygonLayer (extruded=false), renders per-vertex Z as flat panel
+      const isViewPolygon = mode === 'view' && value && (value.type === 'Polygon' || value.type === 'MultiPolygon');
+      const props = entityProperties || {};
+
+      // 2.5D extrusion params
       let extrudeTop = 0, extrudeBase = 0;
-      if (mode === 'view' && value && (value.type === 'Polygon' || value.type === 'MultiPolygon')) {
-        const p = entityProperties || {};
-        if (geomMode === '2.5D' && field.heightFieldKey) {
-          extrudeTop = parseFloat(p[field.heightFieldKey]) || 0;
-          if (field.baseHeightFieldKey) extrudeBase = parseFloat(p[field.baseHeightFieldKey]) || 0;
-        } else if (geomMode === '3D') {
-          extrudeTop = extractMaxZ(value.coordinates);
-        }
+      if (isViewPolygon && geomMode === '2.5D' && field.heightFieldKey) {
+        extrudeTop = parseFloat(props[field.heightFieldKey]) || 0;
+        if (field.baseHeightFieldKey) extrudeBase = parseFloat(props[field.baseHeightFieldKey]) || 0;
       }
-      const extrudeHeight = extrudeTop; // alias for downstream code
-      // View mode keeps Z (harmless for 2D layers, needed for extrusion).
-      // Edit mode strips Z so Mapbox Draw doesn't choke.
+      const extrudeHeight = extrudeTop;
+
+      // Edit mode strips Z so Mapbox Draw doesn't choke; view mode keeps Z.
       const renderValue = mode === 'view' ? value : (value ? geomTo2D(value) : null);
       map.addSource('feature', {
         type: 'geojson',
@@ -1364,7 +1377,36 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         paint: { 'circle-radius': 6, 'circle-color': '#3b82f6', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }
       });
 
-      if (extrudeHeight > 0) {
+      if (geomMode === '3D' && isViewPolygon && window.deck) {
+        // True 3D: render per-vertex-Z polygon as a flat panel in 3D space via deck.gl
+        // (MapLibre's fill-extrusion only handles 2D + height scalar — wrong for walls / roofs).
+        const fillColor = hexToRgba(props.material_color || props.color);
+        const polygons = value.type === 'MultiPolygon' ? value.coordinates : [value.coordinates];
+        const data = polygons.map((rings) => ({ ring: rings[0] })); // outer ring only; holes not modeled
+        const overlay = new window.deck.MapboxOverlay({
+          layers: [
+            new window.deck.SolidPolygonLayer({
+              id: 'feature-3d-solid',
+              data,
+              getPolygon: (d) => d.ring,
+              getFillColor: fillColor,
+              getLineColor: [255, 255, 255, 200],
+              extruded: false,
+              filled: true,
+              stroked: true,
+              wireframe: true,
+              lineWidthMinPixels: 1,
+              pickable: false,
+            }),
+          ],
+        });
+        map.addControl(overlay);
+        // Hide MapLibre's flat-projected fill so it doesn't double-draw underneath the 3D face
+        map.setLayoutProperty('feature-fill', 'visibility', 'none');
+        map.setPitch(45);
+        map.setBearing(-20);
+      } else if (extrudeHeight > 0) {
+        // 2.5D: classic fill-extrusion
         map.addLayer({
           id: 'feature-extrude', type: 'fill-extrusion', source: 'feature',
           filter: ['==', '$type', 'Polygon'],
