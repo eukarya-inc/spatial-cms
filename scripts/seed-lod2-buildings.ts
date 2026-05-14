@@ -325,8 +325,9 @@ async function main() {
     const footprint = rect2D(center, b.w, b.d);
     const fpCorners = corners(center, b.w, b.d);
 
-    // Create Building
-    const bldgRes = await api<{ entity?: { id: string } }>("/proposals", {
+    // Create Building (auto-approved by governance, but the create-proposal endpoint
+    // doesn't echo the created entity back. Query by type+name to find it afterwards.)
+    await api("/proposals", {
       method: "POST",
       body: JSON.stringify({
         proposedChange: {
@@ -345,8 +346,13 @@ async function main() {
         },
       }),
     });
-    const buildingId = bldgRes.entity?.id;
-    if (!buildingId) throw new Error(`Building "${b.name}" creation didn't return entity id: ${JSON.stringify(bldgRes)}`);
+    // Look up the just-created entity by name (loop is serial → no race).
+    const listed = await api<{ entities: Array<{ id: string; properties: Record<string, unknown> }> }>(
+      `/entities?type=building_lod2&sort=createdAt:desc&pageSize=5`,
+    );
+    const match = listed.entities.find((e) => e.properties?.name === b.name);
+    const buildingId = match?.id;
+    if (!buildingId) throw new Error(`Building "${b.name}" was created but not found in subsequent list query`);
     bldgCount++;
     console.log(`  ✓ Building "${b.name}" — ${buildingId.slice(0, 8)}…`);
 
