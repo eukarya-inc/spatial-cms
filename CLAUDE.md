@@ -36,7 +36,7 @@ npx tsx scripts/seed-taito.ts
 #    Login: admin / admin (Keycloak)
 ```
 
-Run tests: `npm test` (70 integration tests)
+Run tests: `npm test` (71 integration tests)
 
 ### Dev Service Manager (`dev.sh`)
 
