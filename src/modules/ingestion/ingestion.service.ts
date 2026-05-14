@@ -129,7 +129,7 @@ export async function bulkImport(
             where: { modelDefinitionId_key: { modelDefinitionId: modelDefId, key: model.primaryGeometryField } },
           });
           const srid = geoField?.geometrySrid ?? 4326;
-          await setEntityGeometry(entity.id, model.primaryGeometryField, geoValue as { type: string; coordinates: unknown }, srid);
+          await setEntityGeometry(entity.id, model.primaryGeometryField, geoValue as { type: string; coordinates: unknown }, srid, geoField?.geometryMode ?? null);
         }
       }
     }

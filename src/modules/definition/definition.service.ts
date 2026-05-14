@@ -120,6 +120,54 @@ async function assertModelInWorkspace(workspaceId: string, modelId: string) {
   return m;
 }
 
+/**
+ * Enforce mode-specific invariants on geometry field creation/update.
+ * - 2D / 3D: heightFieldKey + baseHeightFieldKey must NOT be set
+ * - 2.5D: heightFieldKey REQUIRED, must point to a "number" field on the same model;
+ *         baseHeightFieldKey optional, same rules; both must differ from the geometry field's own key
+ *         and from each other.
+ * Called with `selfKey` = the geometry field's own key (so we can exclude it from same-model lookups
+ * and reject self-references).
+ */
+async function validateGeometryMode(
+  modelDefinitionId: string,
+  selfKey: string,
+  data: { geometryMode?: string | null; heightFieldKey?: string | null; baseHeightFieldKey?: string | null },
+) {
+  const mode = data.geometryMode ?? null;
+  const h = data.heightFieldKey ?? null;
+  const b = data.baseHeightFieldKey ?? null;
+
+  if (mode === null || mode === "2D" || mode === "3D") {
+    if (h || b) {
+      throw new BusinessError(
+        `heightFieldKey / baseHeightFieldKey only valid when geometryMode = "2.5D" (got mode="${mode}")`,
+      );
+    }
+    return;
+  }
+  if (mode === "2.5D") {
+    if (!h) throw new BusinessError(`2.5D geometry requires heightFieldKey to be set`);
+    if (h === selfKey) throw new BusinessError(`heightFieldKey cannot reference the geometry field itself ("${selfKey}")`);
+    if (b === selfKey) throw new BusinessError(`baseHeightFieldKey cannot reference the geometry field itself ("${selfKey}")`);
+    if (b && b === h) throw new BusinessError(`baseHeightFieldKey must differ from heightFieldKey`);
+
+    const referencedKeys = b ? [h, b] : [h];
+    const fields = await prisma.fieldDefinition.findMany({
+      where: { modelDefinitionId, key: { in: referencedKeys } },
+      select: { key: true, fieldType: true },
+    });
+    const byKey = new Map(fields.map((f) => [f.key, f.fieldType]));
+    for (const k of referencedKeys) {
+      const ft = byKey.get(k);
+      if (!ft) throw new BusinessError(`Referenced field "${k}" does not exist on this model — create it before linking to the geometry field`);
+      if (ft !== "number") throw new BusinessError(`Referenced field "${k}" must be of fieldType "number" (found "${ft}")`);
+    }
+    return;
+  }
+  throw new BusinessError(`Invalid geometryMode "${mode}" — expected "2D", "2.5D", or "3D"`);
+}
+
 export async function addField(
   workspaceId: string,
   modelDefinitionId: string,
@@ -134,11 +182,20 @@ export async function addField(
     referenceModelKey?: string;
     geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
     geometrySrid?: number;
-    geometryIs3D?: boolean;
+    geometryMode?: "2D" | "2.5D" | "3D";
+    heightFieldKey?: string;
+    baseHeightFieldKey?: string;
     orderIndex?: number;
   },
 ) {
   await assertModelInWorkspace(workspaceId, modelDefinitionId);
+  if (data.fieldType === "geometry") {
+    await validateGeometryMode(modelDefinitionId, data.key, {
+      geometryMode: data.geometryMode,
+      heightFieldKey: data.heightFieldKey,
+      baseHeightFieldKey: data.baseHeightFieldKey,
+    });
+  }
   return prisma.fieldDefinition.create({
     data: {
       modelDefinitionId,
@@ -152,7 +209,9 @@ export async function addField(
       referenceModelKey: data.referenceModelKey ?? undefined,
       geometryType: data.geometryType ?? undefined,
       geometrySrid: data.geometrySrid ?? undefined,
-      geometryIs3D: data.geometryIs3D ?? undefined,
+      geometryMode: data.geometryMode ?? undefined,
+      heightFieldKey: data.heightFieldKey ?? undefined,
+      baseHeightFieldKey: data.baseHeightFieldKey ?? undefined,
       orderIndex: data.orderIndex ?? 0,
     },
   });
@@ -170,7 +229,9 @@ export async function updateField(
     validationJson?: object;
     geometryType?: "NONE" | "POINT" | "LINESTRING" | "POLYGON" | "MIXED";
     geometrySrid?: number;
-    geometryIs3D?: boolean;
+    geometryMode?: "2D" | "2.5D" | "3D";
+    heightFieldKey?: string | null;
+    baseHeightFieldKey?: string | null;
     orderIndex?: number;
   },
 ) {
@@ -179,6 +240,24 @@ export async function updateField(
     include: { modelDefinition: { select: { workspaceId: true } } },
   });
   if (!field || field.modelDefinition.workspaceId !== workspaceId) throw new NotFoundError("Field");
+
+  // Geometry mode is immutable (same as fieldType / geometryType — see field-immutability rules).
+  if (data.geometryMode !== undefined && data.geometryMode !== field.geometryMode) {
+    throw new BusinessError(
+      `geometryMode is immutable; delete and recreate the field to change it (current: "${field.geometryMode}", requested: "${data.geometryMode}")`,
+    );
+  }
+
+  // If the field IS a 2.5D geometry, allow editing heightFieldKey / baseHeightFieldKey (these are
+  // attribute-references, not geometry-intrinsic, so they're safer to mutate).
+  if (field.fieldType === "geometry" && field.geometryMode === "2.5D" &&
+      (data.heightFieldKey !== undefined || data.baseHeightFieldKey !== undefined)) {
+    await validateGeometryMode(field.modelDefinitionId, field.key, {
+      geometryMode: "2.5D",
+      heightFieldKey: data.heightFieldKey !== undefined ? data.heightFieldKey : field.heightFieldKey,
+      baseHeightFieldKey: data.baseHeightFieldKey !== undefined ? data.baseHeightFieldKey : field.baseHeightFieldKey,
+    });
+  }
 
   const updateData: Record<string, unknown> = {};
   if (data.label !== undefined) updateData.label = data.label;
@@ -189,7 +268,8 @@ export async function updateField(
   if (data.validationJson !== undefined) updateData.validationJson = data.validationJson;
   if (data.geometryType !== undefined) updateData.geometryType = data.geometryType;
   if (data.geometrySrid !== undefined) updateData.geometrySrid = data.geometrySrid;
-  if (data.geometryIs3D !== undefined) updateData.geometryIs3D = data.geometryIs3D;
+  if (data.heightFieldKey !== undefined) updateData.heightFieldKey = data.heightFieldKey;
+  if (data.baseHeightFieldKey !== undefined) updateData.baseHeightFieldKey = data.baseHeightFieldKey;
   if (data.orderIndex !== undefined) updateData.orderIndex = data.orderIndex;
 
   return prisma.fieldDefinition.update({
@@ -248,7 +328,9 @@ export async function getModelSchemaById(modelDefinitionId: string) {
         ? {
             geometryType: f.geometryType,
             geometrySrid: f.geometrySrid,
-            geometryIs3D: f.geometryIs3D,
+            geometryMode: f.geometryMode,
+            heightFieldKey: f.heightFieldKey,
+            baseHeightFieldKey: f.baseHeightFieldKey,
           }
         : {}),
     })),
@@ -282,7 +364,9 @@ export async function getModelSchema(workspaceId: string, modelDefinitionId: str
         ? {
             geometryType: f.geometryType,
             geometrySrid: f.geometrySrid,
-            geometryIs3D: f.geometryIs3D,
+            geometryMode: f.geometryMode,
+            heightFieldKey: f.heightFieldKey,
+            baseHeightFieldKey: f.baseHeightFieldKey,
           }
         : {}),
     })),

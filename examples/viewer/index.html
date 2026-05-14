@@ -160,6 +160,7 @@ let mapReady = false;
 
 let titleField = null;
 let subtitleFields = [];
+let primaryGeomConfig = null; // { mode, heightFieldKey, baseHeightFieldKey } from dataset schema
 let enumField = null;
 let numberField = null;
 let modelName = '';
@@ -270,7 +271,7 @@ map.on('load', () => {
     paint: {
       'fill-extrusion-color': ['interpolate', ['linear'], ['get', '_height'], 0, '#60a5fa', 20, '#818cf8', 50, '#a78bfa', 100, '#c084fc'],
       'fill-extrusion-height': ['get', '_height'],
-      'fill-extrusion-base': 0,
+      'fill-extrusion-base': ['coalesce', ['get', '_base'], 0],
       'fill-extrusion-opacity': 0.8,
     }
   });
@@ -429,6 +430,20 @@ async function loadDataset(datasetId) {
   allFields.forEach(f => { if (!fieldMap[f.key]) fieldMap[f.key] = f; });
   const mergedFields = Object.values(fieldMap);
 
+  // Capture the primary geometry field's mode + height links from the first
+  // model that has them. Multi-model datasets with mixed modes fall back to
+  // the first model — single-mode datasets are the common case for the viewer.
+  primaryGeomConfig = null;
+  for (const m of models) {
+    const pf = m.primaryGeometryField;
+    if (!pf) continue;
+    const gf = (m.fields || []).find(f => f.key === pf);
+    if (gf?.geometryMode) {
+      primaryGeomConfig = { mode: gf.geometryMode, heightFieldKey: gf.heightFieldKey || null, baseHeightFieldKey: gf.baseHeightFieldKey || null };
+      break;
+    }
+  }
+
   modelName = models.map(m => m.name).join(' + ') || 'Data';
   document.title = `${schemaData?.dataset || modelName} — Viewer`;
   document.getElementById('search').placeholder = `Search ${modelName}...`;
@@ -500,19 +515,31 @@ async function loadMapDataCustom(spatialParam) {
       mapFeatures = mapFeatures.filter(f => (f.properties?.[titleField.key] || '').toLowerCase().includes(q));
     }
 
-    // Enrich with _height and _id for MapLibre
+    // Enrich with _height / _base / _id for MapLibre, schema-driven from primaryGeomConfig:
+    // 2D   → no extrusion
+    // 2.5D → _height = props[heightFieldKey], _base = props[baseHeightFieldKey] || 0
+    // 3D   → _height = max Z extracted from coords, _base = 0
     const enriched = {
       type: 'FeatureCollection',
       features: mapFeatures.map(f => {
         const props = { ...(f.properties || {}), _id: f.id };
-        if (!props._height) {
-          if (props.height) props._height = parseFloat(props.height) || 0;
-          else if (props.height_m) props._height = parseFloat(props.height_m) || 0;
-          else if (props.measured_height) props._height = parseFloat(props.measured_height) || 0;
-          else {
-            const maxZ = extractMaxZ(f.geometry?.coordinates);
-            if (maxZ > 0) props._height = maxZ;
+        if (primaryGeomConfig) {
+          if (primaryGeomConfig.mode === '2.5D' && primaryGeomConfig.heightFieldKey) {
+            props._height = parseFloat(props[primaryGeomConfig.heightFieldKey]) || 0;
+            props._base = primaryGeomConfig.baseHeightFieldKey
+              ? (parseFloat(props[primaryGeomConfig.baseHeightFieldKey]) || 0)
+              : 0;
+          } else if (primaryGeomConfig.mode === '3D') {
+            props._height = extractMaxZ(f.geometry?.coordinates);
+            props._base = 0;
+          } else {
+            props._height = 0;
+            props._base = 0;
           }
+        } else {
+          // No schema-declared mode (legacy dataset) — no extrusion
+          props._height = 0;
+          props._base = 0;
         }
         return { ...f, properties: props };
       }),

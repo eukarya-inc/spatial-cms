@@ -21,21 +21,23 @@ function isGeometryValue(v: unknown): v is { type: string; coordinates: unknown 
  * Geometry values are removed from the returned non-geometry properties.
  * Returns { cleanProps, geometryEntries } where geometryEntries are to be written to entity_geometry.
  */
+type GeoEntry = { fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number; mode: string | null };
+
 async function extractGeometries(
   modelDefinitionId: string,
   properties: Record<string, unknown>,
-): Promise<{ cleanProps: Record<string, unknown>; geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> }> {
+): Promise<{ cleanProps: Record<string, unknown>; geoEntries: GeoEntry[] }> {
   const geoFields = await prisma.fieldDefinition.findMany({
     where: { modelDefinitionId, fieldType: "geometry" },
   });
   const geoKeys = new Set(geoFields.map((f) => f.key));
   const cleanProps: Record<string, unknown> = {};
-  const geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> = [];
+  const geoEntries: GeoEntry[] = [];
 
   for (const [key, value] of Object.entries(properties)) {
     if (geoKeys.has(key) && isGeometryValue(value)) {
       const field = geoFields.find((f) => f.key === key)!;
-      geoEntries.push({ fieldKey: key, geojson: value, srid: field.geometrySrid ?? 4326 });
+      geoEntries.push({ fieldKey: key, geojson: value, srid: field.geometrySrid ?? 4326, mode: field.geometryMode ?? null });
     } else {
       cleanProps[key] = value;
     }
@@ -44,9 +46,9 @@ async function extractGeometries(
 }
 
 /** Write geometry entries to entity_geometry table */
-async function syncGeometries(entityId: string, geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }>) {
+async function syncGeometries(entityId: string, geoEntries: GeoEntry[]) {
   for (const entry of geoEntries) {
-    await setEntityGeometry(entityId, entry.fieldKey, entry.geojson, entry.srid);
+    await setEntityGeometry(entityId, entry.fieldKey, entry.geojson, entry.srid, entry.mode);
   }
 }
 
@@ -208,7 +210,7 @@ export async function createEntityInternal(
 
   // Separate geometry fields from regular properties
   let cleanProps = data.properties ?? {};
-  let geoEntries: Array<{ fieldKey: string; geojson: { type: string; coordinates: unknown }; srid: number }> = [];
+  let geoEntries: GeoEntry[] = [];
   if (modelDefId && data.properties) {
     const extracted = await extractGeometries(modelDefId, data.properties);
     cleanProps = extracted.cleanProps;

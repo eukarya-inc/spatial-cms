@@ -158,30 +158,32 @@ async function main() {
   });
   console.log(`  → model.id = ${model.id}`);
 
-  console.log("\nStep 3: Adding fields (footprint geometry + attributes)…");
+  console.log("\nStep 3: Adding fields (attributes first, then 2.5D geometry that links to height_m)…");
+  // Order matters: height_m must exist before the 2.5D geometry field can reference it.
   await api(`/definitions/models/${model.id}/fields`, {
     method: "POST",
     body: JSON.stringify([
+      { key: "name",      label: "Building Name", fieldType: "string", orderIndex: 0 },
+      { key: "height_m",  label: "Height (m)",    fieldType: "number", validationJson: { min: 0 }, orderIndex: 1 },
+      {
+        key: "use_type",
+        label: "Use Type",
+        fieldType: "enum_",
+        enumValues: ["residential", "commercial", "industrial", "institutional", "mixed_use", "other"],
+        orderIndex: 2,
+      },
+      { key: "year_built", label: "Year Built", fieldType: "number", orderIndex: 3 },
       {
         key: "footprint",
         label: "Footprint",
         fieldType: "geometry",
         geometryType: "POLYGON",
         geometrySrid: 4326,
-        geometryIs3D: false,
+        geometryMode: "2.5D",
+        heightFieldKey: "height_m",
         isRequired: true,
-        orderIndex: 0,
+        orderIndex: 4,
       },
-      { key: "name",      label: "Building Name", fieldType: "string", orderIndex: 1 },
-      { key: "height_m",  label: "Height (m)",    fieldType: "number", validationJson: { min: 0 }, orderIndex: 2 },
-      {
-        key: "use_type",
-        label: "Use Type",
-        fieldType: "enum_",
-        enumValues: ["residential", "commercial", "industrial", "institutional", "mixed_use", "other"],
-        orderIndex: 3,
-      },
-      { key: "year_built", label: "Year Built", fieldType: "number", orderIndex: 4 },
     ]),
   });
 
