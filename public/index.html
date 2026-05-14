@@ -505,6 +505,18 @@ async function api(path, opts = {}) {
   if (!res.ok) throw new Error(data.error || JSON.stringify(data.details) || 'Request failed');
   return data;
 }
+// HTML-escape a JSON-stringified value so it's safe inside an HTML attribute
+// regardless of whether the attribute uses ' or " as the quote char. Browser
+// HTML-decodes the attribute before passing to the JS parser, so &quot;v&quot;
+// → "v" at runtime.
+function escapeAttrJson(v) {
+  return JSON.stringify(v)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;');
+}
+
 // ─── Workspace switcher ──────────────────────────────────
 async function loadWorkspaces() {
   try {
@@ -523,7 +535,7 @@ async function renderWorkspaceSwitcher() {
     list.map(w => {
       const deleteBtn = w.slug === 'default'
         ? ''
-        : `<button class="ws-delete-btn" onclick="event.stopPropagation(); confirmDeleteWorkspace('${w.slug}', ${JSON.stringify(w.name)})" title="Delete workspace">✕</button>`;
+        : `<button class="ws-delete-btn" onclick="event.stopPropagation(); confirmDeleteWorkspace('${w.slug}', ${escapeAttrJson(w.name)})" title="Delete workspace">✕</button>`;
       return `<div class="ws-menu-item${w.slug === current ? ' is-current' : ''}">
         <span class="ws-menu-item-label" onclick="switchWorkspace('${w.slug}')">
           <span>${w.name}</span>
