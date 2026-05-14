@@ -94,6 +94,7 @@ scripts/
   seed.ts                     # Sample data
   seed-taito.ts               # Real data: 1000 buildings from OSM (Tokyo Taito-ku)
   migrate-entity-types.ts     # One-time entity.type → modelDefinitionId migration
+  seed-lod2-buildings.ts      # LOD2 demo: building_lod2 + boundary_surface in lod2-building workspace
 tests/
   README.md                   # Test documentation + template
   helpers/
