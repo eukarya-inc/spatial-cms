@@ -67,9 +67,10 @@
     .ws-menu-action { padding: 7px 12px; font-size: 12px; color: #93c5fd; cursor: pointer; display: flex; align-items: center; gap: 6px; }
     .ws-menu-action:hover { background: rgba(255,255,255,0.06); }
     .ws-menu-item-label { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding-right: 8px; }
-    .ws-delete-btn { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 3px; visibility: hidden; line-height: 1; flex: 0 0 auto; }
-    .ws-menu-item:hover .ws-delete-btn { visibility: visible; }
+    .ws-delete-btn, .ws-edit-btn { background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 3px; visibility: hidden; line-height: 1; flex: 0 0 auto; }
+    .ws-menu-item:hover .ws-delete-btn, .ws-menu-item:hover .ws-edit-btn { visibility: visible; }
     .ws-delete-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+    .ws-edit-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
     .ws-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(59,130,246,0.1); color: var(--primary); font-size: 12px; font-weight: 500; cursor: pointer; margin-right: 4px; vertical-align: middle; }
     .ws-pill:hover { background: rgba(59,130,246,0.2); }
     .sidebar-section { padding: 16px 20px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255,255,255,0.3); }
@@ -533,6 +534,7 @@ async function renderWorkspaceSwitcher() {
   const menu = document.getElementById('ws-menu');
   menu.innerHTML =
     list.map(w => {
+      const editBtn = `<button class="ws-edit-btn" onclick='event.stopPropagation(); openEditWorkspaceModal(${JSON.stringify(w.slug)}, ${JSON.stringify(w.name)}, ${JSON.stringify(w.description || "")})' title="Rename workspace">✎</button>`;
       const deleteBtn = w.slug === 'default'
         ? ''
         : `<button class="ws-delete-btn" onclick="event.stopPropagation(); confirmDeleteWorkspace('${w.slug}', ${escapeAttrJson(w.name)})" title="Delete workspace">✕</button>`;
@@ -541,6 +543,7 @@ async function renderWorkspaceSwitcher() {
           <span>${w.name}</span>
           <span class="ws-menu-item-meta">${w.slug}</span>
         </span>
+        ${editBtn}
         ${deleteBtn}
       </div>`;
     }).join('') +
@@ -623,6 +626,34 @@ async function openCreateWorkspaceModal() {
     });
     toast(`Workspace "${result.name}" created`);
     await switchWorkspace(result.slug.trim());
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function openEditWorkspaceModal(slug, currentName, currentDescription) {
+  document.getElementById('ws-menu')?.classList.remove('is-open');
+  const result = await modalPrompt(`Edit Workspace (${slug})`, [
+    { key: 'name', label: 'Name', value: currentName, type: 'text' },
+    { key: 'description', label: 'Description (optional)', value: currentDescription || '', type: 'text' },
+  ]);
+  if (!result) return;
+  const name = (result.name || '').trim();
+  if (!name) { toast('Name cannot be empty', 'error'); return; }
+  const description = result.description?.trim() || null;
+  const currentDesc = (currentDescription || '').trim() || null;
+  if (name === currentName && description === currentDesc) return; // no-op
+  try {
+    await api('/workspaces/' + slug, {
+      method: 'PATCH',
+      body: JSON.stringify({ name, description }),
+    });
+    if (slug === window.currentWorkspaceSlug) {
+      window._currentWorkspaceName = name;
+      updateTabTitle();
+    }
+    await renderWorkspaceSwitcher();
+    toast(`Workspace renamed to "${name}"`);
   } catch (err) {
     toast(err.message, 'error');
   }

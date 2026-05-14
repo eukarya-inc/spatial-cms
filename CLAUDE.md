@@ -36,7 +36,7 @@ npx tsx scripts/seed-taito.ts
 #    Login: admin / admin (Keycloak)
 ```
 
-Run tests: `npm test` (55 integration tests)
+Run tests: `npm test` (61 integration tests)
 
 ### Dev Service Manager (`dev.sh`)
 
@@ -107,6 +107,7 @@ tests/
     api-keys-auth.test.ts     # API Key scopes, auth middleware, bootstrap, revoke
     publish-metadata.test.ts  # Publish channels, field projection, DCAT metadata
     multi-geometry.test.ts    # Multi-geometry fields, primaryGeometryField, field reorder
+    workspace-crud.test.ts    # Workspace rename (PATCH /workspaces/:slug)
 examples/
   viewer/                     # Consumer demo app (Delivery API + MapLibre GL JS)
     index.html                # Dataset selector, schema-driven, 2D/3D toggle, bbox/near search
@@ -308,6 +309,7 @@ Each dataset controls which APIs expose its data:
 - `GET /api/v1/workspaces` — list all workspaces (manage scope)
 - `GET /api/v1/workspaces/:slug` — workspace detail
 - `POST /api/v1/workspaces` — create (admin scope)
+- `PATCH /api/v1/workspaces/:slug` — rename name and/or description (admin scope; `slug` is immutable)
 - `DELETE /api/v1/workspaces/:slug` — cascade delete; refuses `default` (admin scope)
 - `GET /api/v1/workspaces/locate/{entity|model|dataset}/:id` — find which workspace owns a record; used by the UI to recover from cross-workspace 404s on detail pages
 
