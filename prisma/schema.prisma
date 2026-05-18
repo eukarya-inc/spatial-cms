@@ -298,14 +298,21 @@ model GovernancePolicy {
 }
 
 model ApiKey {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  keyHash   String    @unique @map("key_hash")
-  keyPrefix String    @map("key_prefix")
-  scope     String    @default("delivery")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  keyHash     String    @unique @map("key_hash")
+  keyPrefix   String    @map("key_prefix")
+  scope       String    @default("delivery")
+  // Every API key is strictly bound to one workspace — workspace = user-level
+  // isolation, no cross-workspace keys (no global key concept). Platform-level
+  // operations (workspace CRUD) bypass this check at the route level.
+  workspaceId String    @map("workspace_id") @db.Uuid
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
   @@map("api_key")
 }
 
@@ -322,6 +329,7 @@ model Workspace {
   models    ModelDefinition[]
   datasets  DatasetDefinition[]
   proposals Proposal[]
+  apiKeys   ApiKey[]
 
   @@map("workspace")
 }
