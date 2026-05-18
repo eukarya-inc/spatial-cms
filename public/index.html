@@ -306,6 +306,17 @@
     .empty-state-inline .empty-state-desc { font-size: 12px; margin-bottom: 8px; }
     .empty-state-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
+    /* Workflow status banner — pinned-to-top guidance on workflow pages
+       (dataset detail). Color stripe on the left signals state. */
+    .workflow-banner { display: flex; align-items: center; gap: 16px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); margin-bottom: 16px; box-shadow: var(--shadow); }
+    .workflow-banner.is-warning { border-left-color: var(--warning); }
+    .workflow-banner.is-info    { border-left-color: var(--primary); }
+    .workflow-banner.is-success { border-left-color: var(--success); }
+    .workflow-banner.is-danger  { border-left-color: var(--danger); }
+    .workflow-banner-message { flex: 1; font-size: 14px; color: var(--text); line-height: 1.4; }
+    .workflow-banner-message .wb-sub { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .workflow-banner-action { flex: 0 0 auto; }
+
     /* Collapsible doc section. Build with collapsibleCard(). */
     .card-collapsible { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden; }
     .card-collapsible > summary { cursor: pointer; padding: 14px 16px; display: flex; align-items: center; gap: 10px; list-style: none; user-select: none; font-weight: 600; font-size: 15px; }
@@ -760,6 +771,54 @@ function collapsibleCard({ title, body, open = false, sub = '' }) {
     <summary><span class="cc-chevron">▸</span><span class="cc-title">${title}</span>${sub ? `<span class="cc-sub">${sub}</span>` : ''}</summary>
     <div class="cc-body">${body}</div>
   </details>`;
+}
+
+// ─── Dataset workflow state machine ─────────────────
+// Reads the dataset shape (bindings count + snapshot states) and decides which
+// step the user is on. Drives the workflow-banner UI in viewDatasetDetail so
+// the user always sees "what's the current state + what's the next action" at
+// the top of the page, without scrolling between Generate / Publish buttons.
+function getDatasetStatus(d, bindings) {
+  if (!bindings || bindings.length === 0) {
+    return { state: 'no_bindings', level: 'warning',
+      message: 'No models bound yet. Bind at least one model to continue.',
+      sub: 'A dataset needs to know which models it publishes.',
+      actionLabel: '+ Bind a model', actionId: 'banner-bind' };
+  }
+  const snapshots = d.snapshots || [];
+  if (snapshots.length === 0) {
+    return { state: 'no_snapshot', level: 'info',
+      message: `${bindings.length} model${bindings.length === 1 ? '' : 's'} bound. Ready to generate the first snapshot.`,
+      sub: 'Snapshot freezes the current state of bound models for publishing.',
+      actionLabel: 'Generate snapshot', actionId: 'banner-generate' };
+  }
+  const latest = [...snapshots].sort((a, b) => (b.version || 0) - (a.version || 0))[0];
+  const entityCount = Array.isArray(latest.manifest) ? latest.manifest.length : '?';
+  if (latest.status === 'pending') {
+    return { state: 'pending_snapshot', level: 'info',
+      message: `⏳ Snapshot v${latest.version} is generating…`,
+      sub: 'Refresh in a few seconds to check progress.',
+      actionLabel: 'Refresh', actionId: 'banner-refresh' };
+  }
+  if (latest.status === 'invalid') {
+    return { state: 'snapshot_invalid', level: 'danger',
+      message: `✗ Snapshot v${latest.version} failed validation.`,
+      sub: 'Fix the data and generate a new snapshot.',
+      actionLabel: 'Generate new snapshot', actionId: 'banner-generate' };
+  }
+  if (latest.status === 'ready') {
+    return { state: 'ready_to_publish', level: 'success',
+      message: `✓ Snapshot v${latest.version} is ready (${entityCount} entities).`,
+      sub: 'Publish to make it accessible via Delivery / OGC API.',
+      actionLabel: `Publish v${latest.version}`, actionId: 'banner-publish', actionData: latest.id };
+  }
+  if (latest.status === 'published') {
+    return { state: 'published', level: 'success',
+      message: `✓ Published v${latest.version} · ${entityCount} entities · ${new Date(latest.createdAt).toLocaleDateString()}`,
+      sub: 'Regenerate a snapshot to capture the latest data.',
+      actionLabel: 'Generate new snapshot', actionId: 'banner-generate' };
+  }
+  return { state: 'unknown', level: 'info', message: `Snapshot v${latest.version} status: ${latest.status}`, actionLabel: 'Refresh', actionId: 'banner-refresh' };
 }
 
 // ─── Field constraint helpers ───────────────────────
@@ -2998,6 +3057,125 @@ async function viewProposalDetail(main, proposalId) {
 }
 
 // ─── Datasets ──────────────────────────────────────
+
+// Modal: New Dataset (name + optional multi-select model bindings).
+// Replaces the previous inline #ds-create-form on the list page so creation
+// can collect "minimum-usable" state in one step (dataset + bindings together)
+// and land the user straight in the detail page where the workflow banner
+// takes over.
+async function openCreateDatasetModal() {
+  let models = [];
+  try {
+    models = await api('/definitions/models');
+  } catch (err) {
+    toast('Failed to load models: ' + err.message, 'error');
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const modelsSectionHtml = models.length
+    ? `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px">
+        ${models.map(m => `
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;color:var(--text);margin:0">
+            <input type="checkbox" data-model-id="${m.id}" style="width:auto;margin:0">
+            <span>${escapeHtml(m.name)} <span style="color:var(--muted);font-size:12px">(${escapeHtml(m.key)})</span></span>
+          </label>
+        `).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tip: You can add or remove bindings later in the dataset detail page.</div>`
+    : `<div style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:12px;font-size:13px;color:var(--muted);margin-bottom:16px">
+        No models in this workspace yet. <a href="#" id="_ds_modal_define_link" style="color:var(--primary)">Create a model first</a>, or create an empty dataset and bind models later.
+      </div>`;
+
+  overlay.innerHTML = `<div class="modal-card" style="max-width:520px">
+    <h3>New Dataset</h3>
+    <label>Name</label>
+    <input id="_ds_modal_name" type="text" placeholder="e.g. City GeoData" autocomplete="off">
+    <label>Bind models (optional)</label>
+    ${modelsSectionHtml}
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="_ds_modal_cancel">Cancel</button>
+      <button class="btn btn-primary" id="_ds_modal_create" disabled>Create dataset</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const nameInput = overlay.querySelector('#_ds_modal_name');
+  const createBtn = overlay.querySelector('#_ds_modal_create');
+  const cancelBtn = overlay.querySelector('#_ds_modal_cancel');
+  const defineLink = overlay.querySelector('#_ds_modal_define_link');
+
+  let escHandler;
+  const close = () => {
+    document.removeEventListener('keydown', escHandler);
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+  };
+  cancelBtn.onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  escHandler = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', escHandler);
+  if (defineLink) defineLink.onclick = (e) => { e.preventDefault(); close(); nav('define/models'); };
+
+  // Enable Create only when name has content.
+  const refreshState = () => { createBtn.disabled = nameInput.value.trim().length === 0; };
+  nameInput.addEventListener('input', refreshState);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !createBtn.disabled) createBtn.click(); });
+  setTimeout(() => nameInput.focus(), 0);
+
+  createBtn.onclick = async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const checkedIds = Array.from(overlay.querySelectorAll('input[type="checkbox"][data-model-id]:checked'))
+      .map(i => i.dataset.modelId);
+    createBtn.disabled = true;
+    cancelBtn.disabled = true;
+    createBtn.textContent = 'Creating…';
+    let datasetId;
+    try {
+      const ds = await api('/datasets', { method: 'POST', body: JSON.stringify({ name }) });
+      datasetId = ds.id;
+    } catch (err) {
+      toast(err.message, 'error');
+      createBtn.disabled = false;
+      cancelBtn.disabled = false;
+      createBtn.textContent = 'Create dataset';
+      return;
+    }
+    let okCount = 0, failCount = 0;
+    for (const modelId of checkedIds) {
+      try {
+        await api(`/definitions/datasets/${datasetId}/bindings`, {
+          method: 'POST',
+          body: JSON.stringify({ modelDefinitionId: modelId }),
+        });
+        okCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    close();
+    if (failCount === 0) {
+      const suffix = okCount ? ` · ${okCount} model${okCount > 1 ? 's' : ''} bound` : '';
+      toast('Dataset created' + suffix);
+    } else {
+      toast(`Dataset created but ${failCount} of ${checkedIds.length} bindings failed`, 'error');
+    }
+    nav('publish/datasets/' + datasetId);
+  };
+}
+
+// Minimal HTML escape for model name/key insertion in modal markup.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function viewDatasets(main) {
   setBreadcrumb(['Publish'], ['Datasets']);
   setActiveNav('publish/datasets');
@@ -3006,26 +3184,8 @@ async function viewDatasets(main) {
   main.innerHTML = '';
   const header = h('div', { className: 'page-header' });
   const info = h('div', {}, h('h2', {}, 'Datasets'), h('div', { className: 'sub' }, `${datasets.length} datasets`));
-  const btn = h('button', { className: 'btn btn-primary', onclick: () => { $('ds-create-form').style.display = 'block'; } }, '+ New Dataset');
+  const btn = h('button', { className: 'btn btn-primary', onclick: openCreateDatasetModal }, '+ New Dataset');
   header.append(info, btn); main.append(header);
-
-  const form = h('div', { id: 'ds-create-form', className: 'card', style: { display: 'none' } });
-  form.innerHTML = `<h3>New Dataset</h3>
-    <div class="form-group"><label>Name</label><input id="ds-name" type="text" placeholder="e.g. City GeoData"></div>
-    <div style="display:flex;gap:8px"><button class="btn btn-primary" id="ds-create-btn">Create</button><button class="btn btn-outline" onclick="document.getElementById('ds-create-form').style.display='none'">Cancel</button></div>`;
-  main.append(form);
-
-  setTimeout(() => {
-    const createBtn = $('ds-create-btn');
-    if (createBtn) createBtn.onclick = async () => {
-      try {
-        const name = $('ds-name').value;
-        if (!name) { toast('Name is required', 'error'); return; }
-        await api('/datasets', { method: 'POST', body: JSON.stringify({ name }) });
-        toast('Dataset created'); nav('publish/datasets');
-      } catch (err) { toast(err.message, 'error'); }
-    };
-  }, 0);
 
   if (datasets.length) {
     const t = document.createElement('table');
@@ -3062,7 +3222,7 @@ async function viewDatasets(main) {
       icon: '📦',
       title: `${wsName} has no datasets yet`,
       description: 'A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.',
-      actions: [`<button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>`],
+      actions: [`<button class="btn btn-primary" onclick="openCreateDatasetModal()">+ New Dataset</button>`],
       size: 'page',
     });
     main.append(wrap.firstElementChild);
@@ -3085,8 +3245,52 @@ async function viewDatasetDetail(main, datasetId) {
   setBreadcrumb(['Publish'], ['Datasets', `nav('publish/datasets')`], [d.name]);
   setActiveNav('publish/datasets');
 
+  // Compute workflow status — drives the top banner (single source of truth
+  // for "what's the current state + what's the next action"). The old top
+  // "Generate Snapshot" button is gone; the banner button is the only CTA.
+  const wfStatus = getDatasetStatus(d, bindings);
+
+  // Snapshot table: only show newest 3 inline; older behind a toggle to keep
+  // the page short. Latest 3 covers the typical workflow ("did my last
+  // snapshot succeed?"); older are reference-only.
+  const sortedSnaps = (d.snapshots || []).slice().sort((a, b) => (b.version || 0) - (a.version || 0));
+  const recentSnaps = sortedSnaps.slice(0, 3);
+  const olderSnaps = sortedSnaps.slice(3);
+
+  const dcatMetaBody = `
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Description</label><textarea id="ds-description" rows="2" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;resize:vertical">${d.description || ''}</textarea><div style="font-size:11px;color:var(--muted);margin-top:2px">Brief description of the dataset content, coverage, and purpose.</div></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>License</label><select id="ds-license" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px" onchange="if(this.value==='_other'){this.style.display='none';document.getElementById('ds-license-custom').style.display=''}">
+        <option value="">None</option>
+        <option value="CC-BY-4.0" ${d.license==='CC-BY-4.0'?'selected':''}>CC BY 4.0 (Attribution)</option>
+        <option value="CC-BY-SA-4.0" ${d.license==='CC-BY-SA-4.0'?'selected':''}>CC BY-SA 4.0 (Attribution ShareAlike)</option>
+        <option value="CC0-1.0" ${d.license==='CC0-1.0'?'selected':''}>CC0 1.0 (Public Domain)</option>
+        <option value="ODbL-1.0" ${d.license==='ODbL-1.0'?'selected':''}>ODbL 1.0 (Open Database)</option>
+        <option value="_other" ${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0'].includes(d.license)?'selected':''}>Other (custom)</option>
+      </select><input id="ds-license-custom" value="${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? d.license : ''}" placeholder="SPDX identifier or URL" style="display:${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? '' : 'none'};width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;margin-top:4px"><div style="font-size:11px;color:var(--muted);margin-top:2px">Usage terms for consumers. SPDX identifier recommended.</div></div>
+      <div class="form-group"><label>Source / Provider</label><input id="ds-source" value="${d.source || ''}" placeholder="e.g. OpenStreetMap, PLATEAU"><div style="font-size:11px;color:var(--muted);margin-top:2px">Where the original data comes from.</div></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Contact Name</label><input id="ds-contact-name" value="${d.contactName || ''}" placeholder="Organization or person"><div style="font-size:11px;color:var(--muted);margin-top:2px">Who maintains this dataset.</div></div>
+      <div class="form-group"><label>Contact Email</label><input id="ds-contact-email" value="${d.contactEmail || ''}" type="email" placeholder="admin@example.com"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Keywords</label><input id="ds-keywords" value="${(d.keywords || []).join(', ')}" placeholder="building, tokyo, spatial, 3d"><div style="font-size:11px;color:var(--muted);margin-top:2px">Comma-separated. Used by data catalogs for search and discovery.</div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-outline btn-sm" id="ds-save-meta">Save Metadata</button>
+      <a href="#" id="ds-preview-dcat" style="font-size:12px;color:var(--primary)">Preview DCAT JSON-LD</a>
+    </div>`;
+
   main.innerHTML = `<div class="page-header"><div><h2>${d.name}</h2></div>
-    <div style="display:flex;gap:8px"><button class="btn btn-primary" id="gen-snap-btn">Generate Snapshot</button><button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-ds-btn">Delete Dataset</button></div></div>
+    <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm" style="color:var(--danger)" id="del-ds-btn">Delete Dataset</button></div></div>
+
+    <div class="workflow-banner is-${wfStatus.level}">
+      <div class="workflow-banner-message">${wfStatus.message}${wfStatus.sub ? `<span class="wb-sub">${wfStatus.sub}</span>` : ''}</div>
+      <div class="workflow-banner-action"><button class="btn btn-primary" id="${wfStatus.actionId}"${wfStatus.actionData ? ` data-snapshot-id="${wfStatus.actionData}"` : ''}>${wfStatus.actionLabel}</button></div>
+    </div>
 
     <div class="card"><h3>Publish Channels</h3>
       <div style="display:flex;gap:24px;font-size:13px">
@@ -3095,42 +3299,14 @@ async function viewDatasetDetail(main, datasetId) {
       </div>
     </div>
 
-    <div class="card"><h3>Dataset Metadata <span style="font-size:11px;font-weight:400;color:var(--muted)">(DCAT compatible)</span></h3>
-      <div class="form-row">
-        <div class="form-group" style="flex:2"><label>Description</label><textarea id="ds-description" rows="2" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;resize:vertical">${d.description || ''}</textarea><div style="font-size:11px;color:var(--muted);margin-top:2px">Brief description of the dataset content, coverage, and purpose.</div></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>License</label><select id="ds-license" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px" onchange="if(this.value==='_other'){this.style.display='none';document.getElementById('ds-license-custom').style.display=''}">
-          <option value="">None</option>
-          <option value="CC-BY-4.0" ${d.license==='CC-BY-4.0'?'selected':''}>CC BY 4.0 (Attribution)</option>
-          <option value="CC-BY-SA-4.0" ${d.license==='CC-BY-SA-4.0'?'selected':''}>CC BY-SA 4.0 (Attribution ShareAlike)</option>
-          <option value="CC0-1.0" ${d.license==='CC0-1.0'?'selected':''}>CC0 1.0 (Public Domain)</option>
-          <option value="ODbL-1.0" ${d.license==='ODbL-1.0'?'selected':''}>ODbL 1.0 (Open Database)</option>
-          <option value="_other" ${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0'].includes(d.license)?'selected':''}>Other (custom)</option>
-        </select><input id="ds-license-custom" value="${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? d.license : ''}" placeholder="SPDX identifier or URL" style="display:${d.license && !['CC-BY-4.0','CC-BY-SA-4.0','CC0-1.0','ODbL-1.0',''].includes(d.license) ? '' : 'none'};width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;margin-top:4px"><div style="font-size:11px;color:var(--muted);margin-top:2px">Usage terms for consumers. SPDX identifier recommended.</div></div>
-        <div class="form-group"><label>Source / Provider</label><input id="ds-source" value="${d.source || ''}" placeholder="e.g. OpenStreetMap, PLATEAU"><div style="font-size:11px;color:var(--muted);margin-top:2px">Where the original data comes from.</div></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Contact Name</label><input id="ds-contact-name" value="${d.contactName || ''}" placeholder="Organization or person"><div style="font-size:11px;color:var(--muted);margin-top:2px">Who maintains this dataset.</div></div>
-        <div class="form-group"><label>Contact Email</label><input id="ds-contact-email" value="${d.contactEmail || ''}" type="email" placeholder="admin@example.com"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Keywords</label><input id="ds-keywords" value="${(d.keywords || []).join(', ')}" placeholder="building, tokyo, spatial, 3d"><div style="font-size:11px;color:var(--muted);margin-top:2px">Comma-separated. Used by data catalogs for search and discovery.</div></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-outline btn-sm" id="ds-save-meta">Save Metadata</button>
-        <a href="#" id="ds-preview-dcat" style="font-size:12px;color:var(--primary)">Preview DCAT JSON-LD</a>
-      </div>
-    </div>
-
-    <div class="card"><h3>Model Bindings</h3>
+    <div class="card" id="bindings-section"><h3>Model Bindings</h3>
       ${bindings.length ? bindings.map(b => {
         const proj = b.projectionJson;
         const projLabel = proj?.fields?.length
           ? `<span style="font-size:11px;color:var(--primary);margin-left:8px">${proj.mode === 'include' ? 'Include' : 'Exclude'}: ${proj.fields.join(', ')}</span>`
           : '<span style="font-size:11px;color:var(--muted);margin-left:8px">All fields</span>';
         return `<div class="field-item" style="flex-wrap:wrap"><div class="fi-main" style="flex:1"><div class="fi-label">${b.modelDefinition.name} ${projLabel}</div><div class="fi-meta">${b.modelDefinition.key}</div></div><button class="btn btn-ghost btn-sm" style="color:var(--primary)" data-edit-proj="${b.id}" data-model-id="${b.modelDefinition.id}" data-binding-proj='${JSON.stringify(proj || {})}'>Fields</button><button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-unbind="${b.id}">Remove</button></div>`;
-      }).join('') : '<p style="color:var(--muted);padding:12px 0">No model bindings yet.</p>'}
+      }).join('') : renderEmptyState({ icon: '🔗', title: 'No models bound yet', description: 'Select a model below to bind it to this dataset. A dataset must have at least one binding before you can generate a snapshot.', size: 'section' })}
       <div style="margin-top:12px;display:flex;gap:8px;align-items:end">
         <div class="form-group" style="flex:1;margin:0"><label>Add Model</label><select id="bind-select"><option value="">Select model...</option>${modelCache.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}</select></div>
         <button class="btn btn-outline btn-sm" id="bind-btn" style="margin-bottom:1px">Add</button>
@@ -3138,18 +3314,75 @@ async function viewDatasetDetail(main, datasetId) {
     </div>
 
     <div class="card"><h3>Snapshots</h3>
-      ${d.snapshots?.length ? `<table><thead><tr><th>Version</th><th>Status</th><th>Entities</th><th>Created</th><th></th></tr></thead>
-        <tbody>${d.snapshots.map(s => `<tr>
+      ${recentSnaps.length ? `<table><thead><tr><th>Version</th><th>Status</th><th>Entities</th><th>Created</th><th></th></tr></thead>
+        <tbody id="ds-snap-rows">${recentSnaps.map(s => `<tr>
           <td>v${s.version}</td><td>${badge(s.status)}</td>
           <td>${Array.isArray(s.manifest) ? s.manifest.length : '?'}</td>
           <td style="color:var(--muted)">${new Date(s.createdAt).toLocaleDateString()}</td>
           <td>${s.status === 'ready' ? `<button class="btn btn-primary btn-sm" data-publish="${s.id}">Publish</button>` : '—'}</td>
-        </tr>`).join('')}</tbody></table>` : '<p style="color:var(--muted)">No snapshots yet.</p>'}
+        </tr>`).join('')}</tbody></table>
+        ${olderSnaps.length ? `<button class="btn btn-ghost btn-sm" id="ds-show-older-snaps" style="margin-top:8px;font-size:12px;color:var(--muted)">Show ${olderSnaps.length} older snapshot${olderSnaps.length === 1 ? '' : 's'}</button>` : ''}` : '<p style="color:var(--muted)">No snapshots yet. Use the button in the banner above when ready.</p>'}
     </div>
 
-    <div class="card"><h3>Publication History</h3><div id="ds-pub-history" style="color:var(--muted)">Loading...</div></div>`;
+    ${collapsibleCard({ title: 'Dataset Metadata', sub: 'DCAT-compatible — license, description, contact, keywords', body: dcatMetaBody })}
 
-  $('gen-snap-btn').onclick = async () => { try { await api(`/datasets/${datasetId}/snapshot`, { method: 'POST' }); toast('Snapshot generated'); nav(`publish/datasets/${datasetId}`); } catch (err) { toast(err.message, 'error'); } };
+    ${collapsibleCard({ title: 'Publication History', sub: 'audit log of publish / rollback events', body: '<div id="ds-pub-history" style="color:var(--muted)">Loading...</div>' })}`;
+
+  // Banner action handler — state-driven CTA
+  {
+    const banner = main.querySelector('.workflow-banner-action button');
+    if (banner) {
+      const generate = async () => {
+        try { await api(`/datasets/${datasetId}/snapshot`, { method: 'POST' }); toast('Snapshot generation started'); nav(`publish/datasets/${datasetId}`); }
+        catch (err) { toast(err.message, 'error'); }
+      };
+      switch (wfStatus.state) {
+        case 'no_bindings':
+          banner.onclick = () => {
+            document.getElementById('bindings-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(() => $('bind-select')?.focus(), 350);
+          };
+          break;
+        case 'no_snapshot':
+        case 'snapshot_invalid':
+        case 'published':
+          banner.onclick = generate;
+          break;
+        case 'pending_snapshot':
+        case 'unknown':
+          banner.onclick = () => nav(`publish/datasets/${datasetId}`);
+          break;
+        case 'ready_to_publish':
+          banner.onclick = async () => {
+            try { await api('/publications/publish', { method: 'POST', body: JSON.stringify({ datasetSnapshotId: banner.dataset.snapshotId }) }); toast('Published!'); nav(`publish/datasets/${datasetId}`); }
+            catch (err) { toast(err.message, 'error'); }
+          };
+          break;
+      }
+    }
+  }
+
+  // Show-older-snapshots toggle (newest 3 shown by default, rest behind a button)
+  {
+    const btn = $('ds-show-older-snaps');
+    if (btn) {
+      btn.onclick = () => {
+        const rows = $('ds-snap-rows');
+        if (!rows) return;
+        rows.insertAdjacentHTML('beforeend', olderSnaps.map(s => `<tr>
+          <td>v${s.version}</td><td>${badge(s.status)}</td>
+          <td>${Array.isArray(s.manifest) ? s.manifest.length : '?'}</td>
+          <td style="color:var(--muted)">${new Date(s.createdAt).toLocaleDateString()}</td>
+          <td>${s.status === 'ready' ? `<button class="btn btn-primary btn-sm" data-publish="${s.id}">Publish</button>` : '—'}</td>
+        </tr>`).join(''));
+        btn.remove();
+        // Wire any new publish buttons revealed
+        rows.querySelectorAll('[data-publish]').forEach(b => {
+          b.onclick = async () => { try { await api('/publications/publish', { method: 'POST', body: JSON.stringify({ datasetSnapshotId: b.dataset.publish }) }); toast('Published!'); nav(`publish/datasets/${datasetId}`); } catch (err) { toast(err.message, 'error'); } };
+        });
+      };
+    }
+  }
   $('pub-delivery').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToDelivery: e.target.checked }) }); toast(e.target.checked ? 'Delivery API enabled' : 'Delivery API disabled'); } catch (err) { toast(err.message, 'error'); } };
   $('pub-ogc').onchange = async (e) => { try { await api(`/datasets/${datasetId}`, { method: 'PUT', body: JSON.stringify({ publishToOgc: e.target.checked }) }); toast(e.target.checked ? 'OGC Services enabled' : 'OGC Services disabled'); } catch (err) { toast(err.message, 'error'); } };
   $('ds-preview-dcat').onclick = (e) => { e.preventDefault(); window.open(`${API}/delivery/datasets/${datasetId}/metadata`, '_blank'); };
