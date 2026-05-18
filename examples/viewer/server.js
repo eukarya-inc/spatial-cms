@@ -15,6 +15,10 @@ if (fs.existsSync(envPath)) {
 const PORT = parseInt(process.env.PORT || "8090");
 const CMS_URL = process.env.CMS_URL || "http://localhost:3001/api/v1";
 const CMS_API_KEY = process.env.CMS_API_KEY || "";
+// CMS Delivery API is workspace-scoped — the proxy needs to send X-Workspace-Key
+// matching the workspace this CMS_API_KEY is bound to. Defaults to "default";
+// for non-default workspaces, set CMS_WORKSPACE in .env.
+const CMS_WORKSPACE = process.env.CMS_WORKSPACE || "default";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const MIME = {
@@ -35,7 +39,10 @@ const server = http.createServer(async (req, res) => {
     const targetUrl = `${CMS_URL}${targetPath}${url.search}`;
 
     try {
-      const headers = { "Content-Type": "application/json" };
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Workspace-Key": CMS_WORKSPACE,
+      };
       if (CMS_API_KEY) headers["X-API-Key"] = CMS_API_KEY;
 
       const cmsRes = await fetch(targetUrl, { headers });
@@ -70,5 +77,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Viewer running on http://localhost:${PORT}`);
   console.log(`CMS API: ${CMS_URL}`);
+  console.log(`Workspace: ${CMS_WORKSPACE}`);
   console.log(`API Key: ${CMS_API_KEY ? CMS_API_KEY.substring(0, 13) + "..." : "(not set)"}`);
 });
