@@ -12,3 +12,5 @@ deploy/.deployment_secrets.txt
 
 # Local plan + memory files (per-machine, not for the repo)
 .claude/
+# Per-machine Claude Code working notes — not project documentation.
+CLAUDE.md
