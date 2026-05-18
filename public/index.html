@@ -305,6 +305,17 @@
     .empty-state-desc { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 0 auto 16px; max-width: 520px; }
     .empty-state-inline .empty-state-desc { font-size: 12px; margin-bottom: 8px; }
     .empty-state-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+    /* Collapsible doc section. Build with collapsibleCard(). */
+    .card-collapsible { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden; }
+    .card-collapsible > summary { cursor: pointer; padding: 14px 16px; display: flex; align-items: center; gap: 10px; list-style: none; user-select: none; font-weight: 600; font-size: 15px; }
+    .card-collapsible > summary::-webkit-details-marker { display: none; }
+    .card-collapsible > summary::marker { content: ''; }
+    .card-collapsible > summary:hover { background: var(--bg); }
+    .cc-chevron { display: inline-block; transition: transform 0.15s; color: var(--muted); font-size: 14px; min-width: 10px; }
+    .card-collapsible[open] .cc-chevron { transform: rotate(90deg); }
+    .cc-sub { color: var(--muted); font-size: 12px; font-weight: normal; margin-left: 8px; }
+    .cc-body { padding: 0 16px 16px; }
   </style>
 </head>
 <body>
@@ -737,6 +748,18 @@ function renderEmptyState({ icon, title, description, actions = [], size = 'page
     ${descHtml}
     ${actionsHtml}
   </div>`;
+}
+
+// ─── Collapsible doc section ────────────────────────
+// Used on long doc pages (Delivery / OGC / Management / Ingestion API docs) so
+// users don't scroll forever — sections default closed, click summary to expand.
+// title goes in <summary>; body is the HTML for the section content. Optional sub
+// is a small grey hint (e.g. "5 endpoints") so users know what's inside without opening.
+function collapsibleCard({ title, body, open = false, sub = '' }) {
+  return `<details class="card-collapsible"${open ? ' open' : ''}>
+    <summary><span class="cc-chevron">▸</span><span class="cc-title">${title}</span>${sub ? `<span class="cc-sub">${sub}</span>` : ''}</summary>
+    <div class="cc-body">${body}</div>
+  </details>`;
 }
 
 // ─── Field constraint helpers ───────────────────────
@@ -3281,13 +3304,16 @@ async function viewDeliveryDocs(main) {
   main.innerHTML = `
     <div class="page-header"><div><h2>Delivery API</h2><div class="sub">Read-only API for external consumers. Only published data is exposed.</div></div></div>
 
-    <div class="card">
-      <h3>Authentication</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Authentication</span><span class="cc-sub">delivery scope key or JWT</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6">Requires <code>delivery</code> scope API Key or any Keycloak JWT role. <code>X-API-Key: scms_xxx</code> or <code>Authorization: Bearer &lt;token&gt;</code></p>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Overview</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Overview</span><span class="cc-sub">Delivery vs Management — when to use which</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
         The Delivery API provides read-only access to published datasets. External applications (maps, mobile apps, analytics)
         use these endpoints to consume data. Unlike the Management API, consumers never see drafts, proposals, or internal workflow state.
@@ -3304,19 +3330,23 @@ async function viewDeliveryDocs(main) {
           <code style="font-size:12px">/api/v1/delivery/datasets</code>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Coordinate Reference System</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Coordinate Reference System</span><span class="cc-sub">crs field; stored as-is, no transformation</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6">
         Responses include a <code>crs</code> field (e.g. <code>"EPSG:4326"</code>) indicating the coordinate system of geometry data.
         CRS is defined per model — most use WGS84, some use local projections (e.g. EPSG:6677 for Japan).
         <strong>Coordinates are stored as-is. No transformation is applied by the API.</strong>
       </p>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Endpoints</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Endpoints</span><span class="cc-sub">7 GET endpoints — datasets / schema / models / entities / metadata</span></summary>
+      <div class="cc-body">
 
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -3439,10 +3469,12 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,
         </div>
         <p style="color:var(--muted);font-size:13px;margin-bottom:8px">Get a single entity by ID from a published dataset.</p>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Currently Published</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Currently Published</span><span class="cc-sub">${datasets.length} dataset${datasets.length === 1 ? '' : 's'} in this workspace</span></summary>
+      <div class="cc-body">
       ${datasets.length ? datasets.map(d => `
         <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fafafa">
@@ -3457,10 +3489,12 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,
           </div>
           <div id="delivery-preview-${d.id}" style="display:none;padding:16px;border-top:1px solid var(--border)"></div>
         </div>`).join('') : renderEmptyState({ title: 'No datasets published yet', description: 'Publish a dataset snapshot first to see it here.', size: 'inline' })}
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Consumer Example</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Consumer Example</span><span class="cc-sub">JS fetch sample</span></summary>
+      <div class="cc-body">
       <pre style="font-size:13px">// Fetch published building data (read-only)
 const response = await fetch('${baseUrl}/delivery/datasets/{DATASET_ID}/entities');
 const { dataset, entities } = await response.json();
@@ -3470,7 +3504,8 @@ console.log(\`Dataset v\${dataset.snapshotVersion}: \${entities.length} entities
 entities.forEach(entity => {
   console.log(entity.properties.name, entity.geometry || entity.properties);
 });</pre>
-    </div>`;
+      </div>
+    </details>`;
 
   // Preview button handlers
   main.querySelectorAll('[data-preview-ds]').forEach(btn => {
@@ -3605,8 +3640,9 @@ async function viewImportApi(main) {
   main.innerHTML = `
     <div class="page-header"><div><h2>Ingestion API</h2><div class="sub">API endpoints for data pipelines and external system integration</div></div></div>
 
-    <div class="card">
-      <h3>Authentication</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Authentication</span><span class="cc-sub">manage scope or higher (JWT / X-API-Key)</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:8px">
         Ingestion API requires <strong>manage</strong> scope or higher.
       </p>
@@ -3614,10 +3650,12 @@ async function viewImportApi(main) {
         <tr><td>JWT (human)</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td>editor / reviewer / admin role</td></tr>
         <tr><td>API Key (machine)</td><td><code>X-API-Key: scms_xxx</code></td><td>manage or admin scope key</td></tr>
       </tbody></table>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Overview</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Overview</span><span class="cc-sub">4 endpoints: validate / governed / proposal-set / import</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">Four endpoints for different import scenarios:</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
         <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
@@ -3637,11 +3675,12 @@ async function viewImportApi(main) {
           <div style="color:var(--muted)">Direct write. Trusted sources only.</div>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Endpoints</h3>
-
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Endpoints — request body schemas</span><span class="cc-sub">/import and /proposal-set</span></summary>
+      <div class="cc-body">
       <div style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:12px;font-weight:700;color:var(--primary);background:rgba(99,102,241,0.1);padding:2px 8px;border-radius:4px">POST</span>
@@ -3685,10 +3724,12 @@ async function viewImportApi(main) {
 }</pre>
         <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Examples</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">curl Examples</span><span class="cc-sub">validate + governed import</span></summary>
+      <div class="cc-body">
       <pre style="font-size:12px"># Validate entities (dry-run, no writes)
 # X-Workspace-Key picks which workspace. Change "default" to your workspace slug.
 curl -X POST -H "X-API-Key: scms_xxx" \\
@@ -3703,10 +3744,12 @@ curl -X POST -H "X-API-Key: scms_xxx" \\
   -H "Content-Type: application/json" \\
   ${baseUrl}/ingestion/governed \\
   -d '{"entities":[{"type":"building","properties":{"name":"Test"}}],"source":"machine"}'</pre>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Test Data Generator</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Test Data Generator</span><span class="cc-sub">interactive — make sample records for any model</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Generate random test data for any model, optionally with errors to test validation.</p>
       <div class="form-row">
         <div class="form-group"><label>Model</label><select id="ing-model">${models.map(m => `<option value="${m.key}" data-id="${m.id}">${m.name} (${m.key})</option>`).join('')}</select></div>
@@ -3718,10 +3761,12 @@ curl -X POST -H "X-API-Key: scms_xxx" \\
         <label>Data Preview <span id="ing-data-count" style="color:var(--muted)"></span></label>
         <textarea id="ing-data" rows="10" style="font-family:monospace;font-size:12px" placeholder="Click Generate or paste your own JSON array..."></textarea>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Validate & Import</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Validate &amp; Import</span><span class="cc-sub">interactive — actually run validate + import on the data above</span></summary>
+      <div class="cc-body">
       <div class="form-group" style="margin-bottom:12px">
         <label>Import Mode</label>
         <select id="ing-mode">
@@ -3737,10 +3782,12 @@ curl -X POST -H "X-API-Key: scms_xxx" \\
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-left:12px"><input type="checkbox" id="ing-skip-invalid"> Skip invalid records</label>
       </div>
       <div id="ing-result"></div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Pipeline Example</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Pipeline Example</span><span class="cc-sub">bash + jq pipeline for GeoJSON → /ingestion/import</span></summary>
+      <div class="cc-body">
       <pre style="font-size:13px">#!/bin/bash
 # Import buildings from GeoJSON file
 cat buildings.geojson | jq '{
@@ -3755,7 +3802,8 @@ cat buildings.geojson | jq '{
   -H "X-Workspace-Key: default" \\
   -H "Content-Type: application/json" \\
   -d @-</pre>
-    </div>`;
+      </div>
+    </details>`;
 
   // ── Generate test data ──
   $('ing-generate').onclick = async () => {
@@ -4290,8 +4338,9 @@ async function viewManagementApi(main) {
   main.innerHTML = `
     <div class="page-header"><div><h2>Management API</h2><div class="sub">Full read/write API for external tools, scripts, and integrations</div></div></div>
 
-    <div class="card">
-      <h3>Authentication</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Authentication</span><span class="cc-sub">JWT or X-API-Key, scope-gated</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px">All API requests (except OGC) require authentication via <strong>JWT token</strong> (human users) or <strong>API Key</strong> (machine consumers).</p>
       <table style="box-shadow:none;font-size:13px"><thead><tr><th>Method</th><th>Header</th><th>For</th></tr></thead><tbody>
         <tr><td>JWT (Keycloak)</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td style="color:var(--muted)">Human users via browser login</td></tr>
@@ -4306,10 +4355,12 @@ async function viewManagementApi(main) {
           <tr><td><em>none</em></td><td>OGC API</td><td>public, no auth needed</td></tr>
         </tbody></table>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Overview</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Overview</span><span class="cc-sub">Delivery vs Ingestion vs Management — which API for which job</span></summary>
+      <div class="cc-body">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
         <div style="padding:12px;background:var(--bg);border-radius:var(--radius)">
           <div style="font-weight:600;color:var(--success);margin-bottom:4px">Delivery API</div>
@@ -4330,10 +4381,12 @@ async function viewManagementApi(main) {
           <code style="font-size:11px">/api/v1/entities, /proposals, ...</code>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Entities</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Entities</span><span class="cc-sub">3 GET endpoints + query params</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Read entities (including unpublished). To create or modify, use Proposals.</p>
       <table style="box-shadow:none;font-size:13px"><tbody>
         <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/entities</code></td><td>List entities with query support (see below)</td></tr>
@@ -4353,10 +4406,12 @@ async function viewManagementApi(main) {
           <tr><td><code>sort</code></td><td><code>createdAt:desc</code></td><td>Sort (createdAt, updatedAt, type, status)</td></tr>
         </tbody></table>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Proposals</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Proposals</span><span class="cc-sub">5 endpoints — create/list/approve/reject/batch</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">All data changes go through proposals. Create a proposal, then approve it.</p>
       <table style="box-shadow:none;font-size:13px"><tbody>
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/proposals</code></td><td>Create proposal (action: create/update/delete)</td></tr>
@@ -4378,10 +4433,12 @@ async function viewManagementApi(main) {
 }</pre>
         <div style="font-size:12px;color:var(--muted);margin-top:8px">Geometry values go in <code>properties</code> under the geometry field key (e.g. <code>location</code>, <code>boundary</code>). Check your model's fields in Model Designer.</div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Definitions</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Definitions</span><span class="cc-sub">5 endpoints — models / fields / governance</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Manage models, fields, and governance policies programmatically.</p>
       <table style="box-shadow:none;font-size:13px"><tbody>
         <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/definitions/models</code></td><td>List all model definitions</td></tr>
@@ -4390,10 +4447,12 @@ async function viewManagementApi(main) {
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/definitions/models/:id/fields</code></td><td>Add field to model</td></tr>
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/definitions/governance/policies</code></td><td>Set governance policy</td></tr>
       </tbody></table>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Datasets & Publishing</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Datasets &amp; Publishing</span><span class="cc-sub">5 endpoints — list / snapshot / publish / rollback</span></summary>
+      <div class="cc-body">
       <table style="box-shadow:none;font-size:13px"><tbody>
         <tr><td><span style="color:var(--success);font-weight:700;font-size:11px">GET</span></td><td><code>/api/v1/datasets</code></td><td>List datasets</td></tr>
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/datasets</code></td><td>Create dataset</td></tr>
@@ -4401,13 +4460,16 @@ async function viewManagementApi(main) {
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/publish</code></td><td>Publish snapshot</td></tr>
         <tr><td><span style="color:var(--primary);font-weight:700;font-size:11px">POST</span></td><td><code>/api/v1/publications/rollback</code></td><td>Rollback to previous</td></tr>
       </tbody></table>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Examples</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">curl Examples</span><span class="cc-sub">list / create proposal / approve</span></summary>
+      <div class="cc-body">
       <pre style="font-size:12px"># All Management API requests are scoped to a workspace via the
-# X-Workspace-Key header (default: "default"). The same X-API-Key works
-# across every workspace — change the header to target a different one.
+# X-Workspace-Key header (default: "default"). An API key only works
+# against the workspace it was bound to — to target another workspace,
+# generate a key from that workspace.
 
 # List entities (in default workspace)
 curl -H "X-API-Key: scms_xxx" \\
@@ -4425,10 +4487,12 @@ curl -X POST -H "X-API-Key: scms_xxx" \\
 curl -X POST -H "X-API-Key: scms_xxx" \\
   -H "X-Workspace-Key: parks" \\
   ${baseUrl}/proposals/{id}/approve</pre>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Integration Example: Deduplication Script</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Integration Example: Deduplication Script</span><span class="cc-sub">Python — find name dupes, create delete proposals</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Example Python script that finds duplicate buildings by name and creates delete proposals:</p>
       <pre style="font-size:12px">import requests
 
@@ -4465,7 +4529,8 @@ for name in duplicates:
 
 print(f"Created delete proposals for {len(duplicates)} duplicate groups")
 # → Go to Review Queue to approve/reject</pre>
-    </div>`;
+      </div>
+    </details>`;
 }
 
 // ─── API Keys ──────────────────────────────────────
@@ -4490,8 +4555,9 @@ async function viewApiKeys(main) {
       <div style="font-size:13px;color:#92400e">API key authentication is currently <strong>disabled</strong> (DELIVERY_API_KEY_REQUIRED=false). All Delivery API requests are allowed without a key.</div>
     </div>` : ''}
 
-    <div class="card">
-      <h3>How It Works</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">How It Works</span><span class="cc-sub">scopes, workspace binding, curl example</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:12px">
         API Keys authenticate machine consumers (ETL pipelines, external tools, viewer apps).
         Human users authenticate via Keycloak (JWT). Both methods are accepted on all protected endpoints.
@@ -4509,7 +4575,8 @@ async function viewApiKeys(main) {
       <pre style="font-size:12px">curl -H "X-API-Key: scms_your_key_here" \\
      -H "X-Workspace-Key: default" \\
      ${window.location.origin}/api/v1/entities</pre>
-    </div>
+      </div>
+    </details>
 
     <div id="key-created-area"></div>
 
@@ -4614,13 +4681,16 @@ async function viewOgcDocs(main) {
   main.innerHTML = `
     <div class="page-header"><div><h2>OGC Services</h2><div class="sub">OGC API - Features compliant endpoints for GIS tools</div></div></div>
 
-    <div class="card">
-      <h3>Authentication</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Authentication</span><span class="cc-sub">public, no auth</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);font-size:13px;line-height:1.6">Public — no authentication required. OGC API is designed for open access by GIS tools.</p>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Overview</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Overview</span><span class="cc-sub">Delivery API vs OGC API — when to use which</span></summary>
+      <div class="cc-body">
       <p style="color:var(--muted);line-height:1.6;margin-bottom:16px">
         OGC API - Features is the modern standard for serving spatial data over the web, replacing the legacy WFS protocol.
         GIS tools like QGIS, ArcGIS, and MapServer can connect directly to these endpoints without any custom code.
@@ -4635,10 +4705,12 @@ async function viewOgcDocs(main) {
           <div style="color:var(--muted);font-size:13px">For GIS professionals. Standard format, tool-compatible.</div>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Endpoints</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Endpoints</span><span class="cc-sub">7 GET endpoints — collections / items / schema</span></summary>
+      <div class="cc-body">
       <table style="box-shadow:none"><thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td><code>GET /api/v1/ogc/</code></td><td>Landing page — API description and links</td></tr>
@@ -4659,10 +4731,12 @@ async function viewOgcDocs(main) {
           <tr><td><code>bbox</code></td><td><code>139,35,140,36</code></td><td>Bounding box filter</td></tr>
         </tbody></table>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Connect from QGIS</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Connect from QGIS</span><span class="cc-sub">4-step GIS tool walkthrough</span></summary>
+      <div class="cc-body">
       <div style="color:var(--muted);font-size:14px;line-height:1.8">
         <p><strong>1.</strong> Open QGIS &rarr; Layer &rarr; Add Layer &rarr; Add WFS / OGC API - Features Layer</p>
         <p><strong>2.</strong> Click "New" to create a new connection</p>
@@ -4675,15 +4749,19 @@ async function viewOgcDocs(main) {
         <p>The data will appear as a vector layer in QGIS with full geometry and attributes.</p>
         <p style="margin-top:8px;font-size:12px;color:var(--muted)">Note: Make sure OGC Services is enabled on your dataset (Datasets &rarr; dataset detail &rarr; Publish Channels).</p>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>Published Collections</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">Published Collections</span><span class="cc-sub">live list of this workspace's OGC-enabled datasets</span></summary>
+      <div class="cc-body">
       <div id="ogc-collections"><span style="color:var(--muted)">Loading...</span></div>
-    </div>
+      </div>
+    </details>
 
-    <div class="card">
-      <h3>curl Examples</h3>
+    <details class="card-collapsible">
+      <summary><span class="cc-chevron">▸</span><span class="cc-title">curl Examples</span><span class="cc-sub">landing / collections / items / spatial query</span></summary>
+      <div class="cc-body">
       <pre style="font-size:12px"># Landing page
 curl ${baseUrl}/
 
@@ -4701,7 +4779,8 @@ curl ${baseUrl}/collections/{COLLECTION_ID}/items/{FEATURE_ID}</pre>
       <div style="font-size:13px;color:var(--muted);margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius)">
         OGC Feature output uses the model's <strong>primary geometry field</strong> as the GeoJSON <code>geometry</code>. Secondary geometry fields are included in <code>properties</code>.
       </div>
-    </div>`;
+      </div>
+    </details>`;
 
   // Load actual OGC collections — filter to current workspace's datasets
   // (collection id = "{datasetId}_{modelKey}"; match prefix against this-workspace ids)
