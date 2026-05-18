@@ -32,6 +32,16 @@ export async function resolveWorkspace(req: Request, _res: Response, next: NextF
       // Default workspace missing entirely — migration not run. Hard fail.
       return next(new Error("Default workspace missing — run migrations"));
     }
+    // Enforce: if the request authed with an API key, that key's workspace_id
+    // must match the resolved workspace. JWT users bypass (platform-level).
+    // Dev mode (req.apiKey unset because auth was skipped) also bypasses.
+    if (req.apiKey && req.apiKey.workspaceId !== workspace.id) {
+      const fr = _res as Response;
+      fr.status(403).json({
+        error: `API key is bound to a different workspace. This key cannot access workspace "${workspace.slug}".`,
+      });
+      return;
+    }
     req.workspace = { id: workspace.id, slug: workspace.slug, name: workspace.name };
     next();
   } catch (err) {

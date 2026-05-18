@@ -3,6 +3,17 @@ import crypto from "crypto";
 import prisma from "../db/client.js";
 import { extractJwtAuth } from "./jwtAuth.js";
 
+declare global {
+  namespace Express {
+    interface Request {
+      // Set by requireApiKey when API-key auth (vs JWT) was used. Downstream
+      // middleware (resolveWorkspace) reads this to enforce that the key's
+      // workspace matches the request's workspace.
+      apiKey?: { id: string; scope: string; workspaceId: string };
+    }
+  }
+}
+
 const SCOPE_LEVELS: Record<string, number> = {
   delivery: 1,
   manage: 2,
@@ -27,6 +38,8 @@ export function requireApiKey(requiredScope: string = "delivery") {
         res.status(403).json({ error: `Insufficient role. Required scope: ${requiredScope}, your roles: ${jwtAuth.roles.join(", ")}` });
         return;
       }
+      // JWT users are platform-level (no workspace binding in this iteration);
+      // resolveWorkspace skips the workspace match when req.apiKey is unset.
       return next();
     }
 
@@ -49,6 +62,8 @@ export function requireApiKey(requiredScope: string = "delivery") {
         res.status(403).json({ error: `Insufficient scope. Required: ${requiredScope}, got: ${apiKey.scope}` });
         return;
       }
+      // Stash for resolveWorkspace's workspace-match check
+      req.apiKey = { id: apiKey.id, scope: apiKey.scope, workspaceId: apiKey.workspaceId };
       next();
     } catch (err) {
       next(err);

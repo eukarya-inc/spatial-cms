@@ -1,13 +1,36 @@
 import prisma from "../../db/client.js";
 import { BusinessError, NotFoundError } from "../../shared/errors.js";
 
-export async function listWorkspaces() {
-  return prisma.workspace.findMany({ orderBy: [{ slug: "asc" }] });
+/**
+ * List workspaces visible to the caller.
+ * - admin scope (API key) or JWT user → all workspaces (platform-level visibility)
+ * - manage / delivery scope key → only the workspace the key is bound to
+ *
+ * This enforces workspace = user-level isolation: a non-admin key shouldn't even
+ * know that other workspaces exist.
+ */
+export async function listWorkspaces(opts?: { callerScope?: string; callerWorkspaceId?: string }) {
+  // Admin scope or JWT (no apiKey context) → full list
+  if (!opts || opts.callerScope === "admin" || !opts.callerWorkspaceId) {
+    return prisma.workspace.findMany({ orderBy: [{ slug: "asc" }] });
+  }
+  // Otherwise: only the caller's own workspace
+  return prisma.workspace.findMany({
+    where: { id: opts.callerWorkspaceId },
+    orderBy: [{ slug: "asc" }],
+  });
 }
 
-export async function getWorkspaceBySlug(slug: string) {
+/**
+ * Get one workspace by slug. Non-admin api-key callers can only fetch their own.
+ */
+export async function getWorkspaceBySlug(slug: string, opts?: { callerScope?: string; callerWorkspaceId?: string }) {
   const ws = await prisma.workspace.findUnique({ where: { slug } });
   if (!ws) throw new NotFoundError(`Workspace '${slug}'`);
+  if (opts && opts.callerScope !== "admin" && opts.callerWorkspaceId && opts.callerWorkspaceId !== ws.id) {
+    // Don't acknowledge cross-workspace existence — treat as 404
+    throw new NotFoundError(`Workspace '${slug}'`);
+  }
   return ws;
 }
 

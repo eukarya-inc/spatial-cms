@@ -86,7 +86,10 @@ app.use("/api/v1/datasets", requireApiKey("manage"), resolveWorkspace, datasetRo
 app.use("/api/v1/publications", requireApiKey("manage"), resolveWorkspace, publicationRouter);
 app.use("/api/v1/ingestion", requireApiKey("manage"), resolveWorkspace, ingestionRouter);
 app.use("/api/v1/definitions", requireApiKey("manage"), resolveWorkspace, definitionRouter);
-app.use("/api/v1/api-keys", requireApiKey("admin"), apiKeyRouter);
+// API keys are workspace-scoped (user-level isolation): a key from workspace X
+// can only see / create / revoke keys in X. resolveWorkspace enforces the match
+// between the caller's API key and the X-Workspace-Key header.
+app.use("/api/v1/api-keys", requireApiKey("admin"), resolveWorkspace, apiKeyRouter);
 app.use("/api/v1/templates", requireApiKey("manage"), resolveWorkspace, templateRouter);
 // Delivery / OGC are workspace-agnostic (external consumers, dataset is uniquely
 // identified by id, workspace is internal organization concept).

@@ -22,10 +22,14 @@ const updateSchema = z
     message: "Provide at least one of: name, description",
   });
 
-// GET /api/v1/workspaces — visible to everyone (no scope check)
-workspaceRouter.get("/", async (_req, res, next) => {
+// GET /api/v1/workspaces — non-admin keys see only their own workspace;
+// admin keys + JWT users see all (platform-level visibility).
+workspaceRouter.get("/", async (req, res, next) => {
   try {
-    res.json(await workspaceService.listWorkspaces());
+    res.json(await workspaceService.listWorkspaces({
+      callerScope: req.apiKey?.scope,
+      callerWorkspaceId: req.apiKey?.workspaceId,
+    }));
   } catch (err) { next(err); }
 });
 
@@ -45,10 +49,13 @@ workspaceRouter.get("/locate/:kind/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/v1/workspaces/:slug
+// GET /api/v1/workspaces/:slug — non-admin keys can only fetch their own
 workspaceRouter.get("/:slug", async (req, res, next) => {
   try {
-    const ws = await workspaceService.getWorkspaceBySlug(req.params.slug);
+    const ws = await workspaceService.getWorkspaceBySlug(req.params.slug, {
+      callerScope: req.apiKey?.scope,
+      callerWorkspaceId: req.apiKey?.workspaceId,
+    });
     res.json(ws);
   } catch (err) { next(err); }
 });

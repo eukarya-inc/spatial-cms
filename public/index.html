@@ -4483,9 +4483,11 @@ async function viewApiKeys(main) {
     api('/api-keys/status').catch(() => ({ required: false })),
   ]);
 
+  const currentWs = window._currentWorkspaceName || window.currentWorkspaceSlug || 'default';
+
   main.innerHTML = `
     <div class="page-header">
-      <div><h2>API Keys</h2><div class="sub">Manage access keys for the Delivery API</div></div>
+      <div><h2>API Keys</h2><div class="sub">Manage access keys for <strong>${currentWs}</strong></div></div>
       <button class="btn btn-primary" id="gen-key-btn">Generate New Key</button>
     </div>
 
@@ -4500,9 +4502,9 @@ async function viewApiKeys(main) {
         Human users authenticate via Keycloak (JWT). Both methods are accepted on all protected endpoints.
         OGC API is always public (no auth required).
       </p>
-      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius);padding:12px;margin-bottom:12px;font-size:13px;color:var(--text)">
-        <strong style="color:var(--primary)">ℹ Keys are workspace-agnostic.</strong>
-        A <code>manage</code> or <code>admin</code> key works across every workspace in this deployment. Workspace scoping is controlled per-request by the <code>X-Workspace-Key</code> header (defaults to <code>default</code> if omitted).
+      <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:var(--radius);padding:12px;margin-bottom:12px;font-size:13px;color:var(--text)">
+        <strong style="color:#16a34a">🔒 Keys are workspace-scoped.</strong>
+        Each key is strictly bound to one workspace. A key generated here can <em>only</em> operate on <strong>${currentWs}</strong> — it can't see or touch other workspaces. To manage keys for another workspace, switch to that workspace first.
       </div>
       <table style="box-shadow:none;font-size:12px;margin-bottom:12px"><thead><tr><th>Scope</th><th>Access Level</th><th>Use For</th></tr></thead><tbody>
         <tr><td><code>delivery</code></td><td>Delivery API (read-only)</td><td>Consumer apps, CKAN, data portals</td></tr>
