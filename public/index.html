@@ -3220,7 +3220,7 @@ async function viewDatasetDetail(main, datasetId) {
           <td style="color:var(--muted)">${new Date(s.createdAt).toLocaleDateString()}</td>
           <td>${s.status === 'ready' ? `<button class="btn btn-primary btn-sm" data-publish="${s.id}">Publish</button>` : '—'}</td>
         </tr>`).join('')}</tbody></table>
-        ${olderSnaps.length ? `<button class="btn btn-ghost btn-sm" id="ds-show-older-snaps" style="margin-top:8px;font-size:12px;color:var(--muted)">Show ${olderSnaps.length} older snapshot${olderSnaps.length === 1 ? '' : 's'}</button>` : ''}` : '<p style="color:var(--muted)">No snapshots yet. Use the button in the banner above when you\\'re ready.</p>'}
+        ${olderSnaps.length ? `<button class="btn btn-ghost btn-sm" id="ds-show-older-snaps" style="margin-top:8px;font-size:12px;color:var(--muted)">Show ${olderSnaps.length} older snapshot${olderSnaps.length === 1 ? '' : 's'}</button>` : ''}` : '<p style="color:var(--muted)">No snapshots yet. Use the button in the banner above when ready.</p>'}
     </div>
 
     ${collapsibleCard({ title: 'Dataset Metadata', sub: 'DCAT-compatible — license, description, contact, keywords', body: dcatMetaBody })}
