@@ -91,9 +91,12 @@ app.use("/api/v1/definitions", requireApiKey("manage"), resolveWorkspace, defini
 // between the caller's API key and the X-Workspace-Key header.
 app.use("/api/v1/api-keys", requireApiKey("admin"), resolveWorkspace, apiKeyRouter);
 app.use("/api/v1/templates", requireApiKey("manage"), resolveWorkspace, templateRouter);
-// Delivery / OGC are workspace-agnostic (external consumers, dataset is uniquely
-// identified by id, workspace is internal organization concept).
-app.use("/api/v1/delivery", requireApiKey("delivery"), deliveryRouter);
+// Delivery API is workspace-scoped via the delivery key's binding (PR #26 + this fix):
+// a delivery key for workspace X only ever sees X's datasets, period. resolveWorkspace
+// enforces apiKey.workspaceId == request workspaceId.
+// OGC API stays public + unscoped (no auth, open-data standard for GIS tools — cross-
+// workspace by intent, this is the one remaining workspace-agnostic surface).
+app.use("/api/v1/delivery", requireApiKey("delivery"), resolveWorkspace, deliveryRouter);
 app.use("/api/v1/ogc", ogcRouter);
 
 // Global error handler

@@ -3272,12 +3272,10 @@ async function viewDeliveryDocs(main) {
   setBreadcrumb(['Publish'], ['Delivery API']);
   setActiveNav('publish/delivery');
 
-  // Fetch live data for examples. /delivery/datasets is workspace-agnostic by design
-  // (external consumers don't know about workspaces) — filter to the current workspace
-  // for the CMS Admin view so it matches the user's expectation.
-  const allDatasets = await api('/delivery/datasets').catch(() => []);
-  const datasets = allDatasets.filter(d => d.workspaceSlug === window.currentWorkspaceSlug);
-  const otherWsCount = allDatasets.length - datasets.length;
+  // /delivery/datasets is now workspace-scoped server-side (the calling key's
+  // workspace), so the response already contains only this workspace's data.
+  // No client-side filter needed; we never see other workspaces' existence.
+  const datasets = await api('/delivery/datasets').catch(() => []);
   const baseUrl = window.location.origin + '/api/v1';
 
   main.innerHTML = `
@@ -3445,9 +3443,6 @@ curl "${baseUrl}/delivery/datasets/{id}/entities?format=geojson&bbox=139,35,140,
 
     <div class="card">
       <h3>Currently Published</h3>
-      ${otherWsCount > 0 ? `<div style="font-size:12px;color:var(--muted);margin-bottom:12px;padding:8px 12px;background:rgba(59,130,246,0.06);border-left:3px solid var(--primary);border-radius:4px">
-        Showing ${datasets.length} dataset${datasets.length === 1 ? '' : 's'} published from <strong>${window._currentWorkspaceName || window.currentWorkspaceSlug}</strong>. ${otherWsCount} more ${otherWsCount === 1 ? 'is' : 'are'} published from other workspaces (still externally accessible via the public Delivery API, just hidden from this view).
-      </div>` : ''}
       ${datasets.length ? datasets.map(d => `
         <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fafafa">
@@ -4612,10 +4607,9 @@ async function viewOgcDocs(main) {
   setActiveNav('publish/ogc');
 
   const baseUrl = window.location.origin + '/api/v1/ogc';
-  // OGC is workspace-agnostic to external GIS tools; filter the docs view to current workspace.
-  const allDatasets = await api('/delivery/datasets').catch(() => []);
-  const datasets = allDatasets.filter(d => d.workspaceSlug === window.currentWorkspaceSlug);
-  const otherWsCount = allDatasets.length - datasets.length;
+  // /delivery/datasets is workspace-scoped server-side now — these are this
+  // workspace's datasets only. Used to build per-dataset example links below.
+  const datasets = await api('/delivery/datasets').catch(() => []);
 
   main.innerHTML = `
     <div class="page-header"><div><h2>OGC Services</h2><div class="sub">OGC API - Features compliant endpoints for GIS tools</div></div></div>

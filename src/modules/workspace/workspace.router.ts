@@ -34,8 +34,10 @@ workspaceRouter.get("/", async (req, res, next) => {
 });
 
 // GET /api/v1/workspaces/locate/{entity|model|dataset}/:id
-// Returns the workspace that owns the given record, or 404. Used by the
-// frontend to recover from cross-workspace 404s.
+// Returns the workspace that owns the given record. Per the workspace-isolation
+// principle, non-admin callers can only see records in their own workspace —
+// cross-workspace requests get a 404 (don't acknowledge existence).
+// Admin scope and JWT users see all (platform-level visibility).
 workspaceRouter.get("/locate/:kind/:id", async (req, res, next) => {
   try {
     const kind = z.enum(["entity", "model", "dataset"]).parse(req.params.kind);
@@ -45,6 +47,10 @@ workspaceRouter.get("/locate/:kind/:id", async (req, res, next) => {
     else if (kind === "model") ws = await workspaceService.locateModel(id);
     else ws = await workspaceService.locateDataset(id);
     if (!ws) return res.status(404).json({ error: `${kind} not found in any workspace` });
+    // Non-admin API keys: must own the workspace to see it
+    if (req.apiKey && req.apiKey.scope !== "admin" && req.apiKey.workspaceId !== ws.id) {
+      return res.status(404).json({ error: `${kind} not found in any workspace` });
+    }
     res.json({ workspace: { id: ws.id, slug: ws.slug, name: ws.name } });
   } catch (err) { next(err); }
 });
