@@ -3057,6 +3057,125 @@ async function viewProposalDetail(main, proposalId) {
 }
 
 // ─── Datasets ──────────────────────────────────────
+
+// Modal: New Dataset (name + optional multi-select model bindings).
+// Replaces the previous inline #ds-create-form on the list page so creation
+// can collect "minimum-usable" state in one step (dataset + bindings together)
+// and land the user straight in the detail page where the workflow banner
+// takes over.
+async function openCreateDatasetModal() {
+  let models = [];
+  try {
+    models = await api('/definitions/models');
+  } catch (err) {
+    toast('Failed to load models: ' + err.message, 'error');
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const modelsSectionHtml = models.length
+    ? `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px">
+        ${models.map(m => `
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;color:var(--text);margin:0">
+            <input type="checkbox" data-model-id="${m.id}" style="width:auto;margin:0">
+            <span>${escapeHtml(m.name)} <span style="color:var(--muted);font-size:12px">(${escapeHtml(m.key)})</span></span>
+          </label>
+        `).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tip: You can add or remove bindings later in the dataset detail page.</div>`
+    : `<div style="background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:12px;font-size:13px;color:var(--muted);margin-bottom:16px">
+        No models in this workspace yet. <a href="#" id="_ds_modal_define_link" style="color:var(--primary)">Create a model first</a>, or create an empty dataset and bind models later.
+      </div>`;
+
+  overlay.innerHTML = `<div class="modal-card" style="max-width:520px">
+    <h3>New Dataset</h3>
+    <label>Name</label>
+    <input id="_ds_modal_name" type="text" placeholder="e.g. City GeoData" autocomplete="off">
+    <label>Bind models (optional)</label>
+    ${modelsSectionHtml}
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="_ds_modal_cancel">Cancel</button>
+      <button class="btn btn-primary" id="_ds_modal_create" disabled>Create dataset</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const nameInput = overlay.querySelector('#_ds_modal_name');
+  const createBtn = overlay.querySelector('#_ds_modal_create');
+  const cancelBtn = overlay.querySelector('#_ds_modal_cancel');
+  const defineLink = overlay.querySelector('#_ds_modal_define_link');
+
+  let escHandler;
+  const close = () => {
+    document.removeEventListener('keydown', escHandler);
+    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+  };
+  cancelBtn.onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  escHandler = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', escHandler);
+  if (defineLink) defineLink.onclick = (e) => { e.preventDefault(); close(); nav('define/models'); };
+
+  // Enable Create only when name has content.
+  const refreshState = () => { createBtn.disabled = nameInput.value.trim().length === 0; };
+  nameInput.addEventListener('input', refreshState);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !createBtn.disabled) createBtn.click(); });
+  setTimeout(() => nameInput.focus(), 0);
+
+  createBtn.onclick = async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const checkedIds = Array.from(overlay.querySelectorAll('input[type="checkbox"][data-model-id]:checked'))
+      .map(i => i.dataset.modelId);
+    createBtn.disabled = true;
+    cancelBtn.disabled = true;
+    createBtn.textContent = 'Creating…';
+    let datasetId;
+    try {
+      const ds = await api('/datasets', { method: 'POST', body: JSON.stringify({ name }) });
+      datasetId = ds.id;
+    } catch (err) {
+      toast(err.message, 'error');
+      createBtn.disabled = false;
+      cancelBtn.disabled = false;
+      createBtn.textContent = 'Create dataset';
+      return;
+    }
+    let okCount = 0, failCount = 0;
+    for (const modelId of checkedIds) {
+      try {
+        await api(`/definitions/datasets/${datasetId}/bindings`, {
+          method: 'POST',
+          body: JSON.stringify({ modelDefinitionId: modelId }),
+        });
+        okCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    close();
+    if (failCount === 0) {
+      const suffix = okCount ? ` · ${okCount} model${okCount > 1 ? 's' : ''} bound` : '';
+      toast('Dataset created' + suffix);
+    } else {
+      toast(`Dataset created but ${failCount} of ${checkedIds.length} bindings failed`, 'error');
+    }
+    nav('publish/datasets/' + datasetId);
+  };
+}
+
+// Minimal HTML escape for model name/key insertion in modal markup.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function viewDatasets(main) {
   setBreadcrumb(['Publish'], ['Datasets']);
   setActiveNav('publish/datasets');
@@ -3065,26 +3184,8 @@ async function viewDatasets(main) {
   main.innerHTML = '';
   const header = h('div', { className: 'page-header' });
   const info = h('div', {}, h('h2', {}, 'Datasets'), h('div', { className: 'sub' }, `${datasets.length} datasets`));
-  const btn = h('button', { className: 'btn btn-primary', onclick: () => { $('ds-create-form').style.display = 'block'; } }, '+ New Dataset');
+  const btn = h('button', { className: 'btn btn-primary', onclick: openCreateDatasetModal }, '+ New Dataset');
   header.append(info, btn); main.append(header);
-
-  const form = h('div', { id: 'ds-create-form', className: 'card', style: { display: 'none' } });
-  form.innerHTML = `<h3>New Dataset</h3>
-    <div class="form-group"><label>Name</label><input id="ds-name" type="text" placeholder="e.g. City GeoData"></div>
-    <div style="display:flex;gap:8px"><button class="btn btn-primary" id="ds-create-btn">Create</button><button class="btn btn-outline" onclick="document.getElementById('ds-create-form').style.display='none'">Cancel</button></div>`;
-  main.append(form);
-
-  setTimeout(() => {
-    const createBtn = $('ds-create-btn');
-    if (createBtn) createBtn.onclick = async () => {
-      try {
-        const name = $('ds-name').value;
-        if (!name) { toast('Name is required', 'error'); return; }
-        await api('/datasets', { method: 'POST', body: JSON.stringify({ name }) });
-        toast('Dataset created'); nav('publish/datasets');
-      } catch (err) { toast(err.message, 'error'); }
-    };
-  }, 0);
 
   if (datasets.length) {
     const t = document.createElement('table');
@@ -3121,7 +3222,7 @@ async function viewDatasets(main) {
       icon: '📦',
       title: `${wsName} has no datasets yet`,
       description: 'A dataset bundles entities from one or more models for publishing to the Delivery API and OGC services.',
-      actions: [`<button class="btn btn-primary" onclick="document.getElementById('ds-create-form').style.display='block'">+ New Dataset</button>`],
+      actions: [`<button class="btn btn-primary" onclick="openCreateDatasetModal()">+ New Dataset</button>`],
       size: 'page',
     });
     main.append(wrap.firstElementChild);
