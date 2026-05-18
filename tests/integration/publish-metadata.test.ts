@@ -67,6 +67,18 @@ describe("Publish channels, field projection, metadata", () => {
     assert.ok(data.some((d: any) => d.id === datasetId));
   });
 
+  it("should include workspaceSlug + workspaceName in delivery response", async () => {
+    // Lets the CMS Admin filter the Delivery API docs page to current workspace.
+    // External consumers can ignore these fields.
+    const { data } = await apiRequest("/delivery/datasets");
+    const ds = data.find((d: any) => d.id === datasetId);
+    assert.ok(ds, "test dataset should be in delivery list");
+    assert.strictEqual(typeof ds.workspaceSlug, "string");
+    assert.strictEqual(typeof ds.workspaceName, "string");
+    // Default workspace expected here (test setup uses default)
+    assert.strictEqual(ds.workspaceSlug, "default");
+  });
+
   it("should not list dataset in OGC by default (publishToOgc=false)", async () => {
     const { data } = await apiRequest("/ogc/collections");
     assert.strictEqual(data.collections.length, 0);
