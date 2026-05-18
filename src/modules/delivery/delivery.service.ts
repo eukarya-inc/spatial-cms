@@ -34,14 +34,19 @@ export async function listPublishedDatasets(channel?: 'delivery' | 'ogc') {
   const releases = await prisma.activeReleaseState.findMany({
     where,
     include: {
-      datasetDefinition: true,
+      datasetDefinition: { include: { workspace: true } },
       activeSnapshot: true,
     },
   });
 
+  // workspaceSlug / workspaceName are added so the CMS Admin UI can filter to the
+  // current workspace's published datasets (the Delivery API itself stays workspace-
+  // agnostic for external consumers, who can ignore these fields).
   return releases.map((r) => ({
     id: r.datasetDefinitionId,
     name: r.datasetDefinition.name,
+    workspaceSlug: r.datasetDefinition.workspace.slug,
+    workspaceName: r.datasetDefinition.workspace.name,
     description: r.datasetDefinition.description,
     license: r.datasetDefinition.license,
     source: r.datasetDefinition.source,

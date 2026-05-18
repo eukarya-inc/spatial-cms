@@ -36,7 +36,7 @@ npx tsx scripts/seed-taito.ts
 #    Login: admin / admin (Keycloak)
 ```
 
-Run tests: `npm test` (71 integration tests)
+Run tests: `npm test` (72 integration tests)
 
 ### Dev Service Manager (`dev.sh`)
 
@@ -143,8 +143,11 @@ unknown header falls back to `default` — this is why existing tests, seed
 scripts, and external API clients keep working without changes.
 
 Delivery API and OGC API are **workspace-agnostic** (datasets are
-globally-unique by id; consumers don't need to know about workspaces). API keys
-are also workspace-agnostic for MVP — every key sees every workspace.
+globally-unique by id; consumers don't need to know about workspaces). The
+`/delivery/datasets` response includes `workspaceSlug` + `workspaceName` so the
+CMS Admin can filter the "Currently Published" view to the current workspace;
+external consumers can ignore these fields. API keys are also workspace-agnostic
+for MVP — every key sees every workspace.
 
 Frontend keeps the current workspace in `window.currentWorkspaceSlug` (persisted
 to `localStorage['workspace_slug']`); the `api()` helper auto-attaches the
