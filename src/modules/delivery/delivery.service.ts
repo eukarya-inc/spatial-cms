@@ -25,28 +25,30 @@ interface QueryOptions {
   modelKey?: string;
 }
 
-/** List all datasets that have an active published release, filtered by channel */
-export async function listPublishedDatasets(channel?: 'delivery' | 'ogc') {
-  const where: Record<string, unknown> = {};
-  if (channel === 'delivery') where.datasetDefinition = { publishToDelivery: true };
-  if (channel === 'ogc') where.datasetDefinition = { publishToOgc: true };
+/**
+ * List datasets with an active published release.
+ * - `workspaceId` (optional) scopes results to one workspace — used by the Delivery
+ *   route (workspace-scoped per PR #26 + delivery isolation fix). OGC route omits it
+ *   to stay cross-workspace (public open-data surface).
+ * - `channel` filters by which publish target the dataset opts into.
+ */
+export async function listPublishedDatasets(
+  channel?: 'delivery' | 'ogc',
+  workspaceId?: string,
+) {
+  const datasetDefinitionWhere: Record<string, unknown> = {};
+  if (channel === 'delivery') datasetDefinitionWhere.publishToDelivery = true;
+  if (channel === 'ogc') datasetDefinitionWhere.publishToOgc = true;
+  if (workspaceId) datasetDefinitionWhere.workspaceId = workspaceId;
 
   const releases = await prisma.activeReleaseState.findMany({
-    where,
-    include: {
-      datasetDefinition: { include: { workspace: true } },
-      activeSnapshot: true,
-    },
+    where: Object.keys(datasetDefinitionWhere).length ? { datasetDefinition: datasetDefinitionWhere } : {},
+    include: { datasetDefinition: true, activeSnapshot: true },
   });
 
-  // workspaceSlug / workspaceName are added so the CMS Admin UI can filter to the
-  // current workspace's published datasets (the Delivery API itself stays workspace-
-  // agnostic for external consumers, who can ignore these fields).
   return releases.map((r) => ({
     id: r.datasetDefinitionId,
     name: r.datasetDefinition.name,
-    workspaceSlug: r.datasetDefinition.workspace.slug,
-    workspaceName: r.datasetDefinition.workspace.name,
     description: r.datasetDefinition.description,
     license: r.datasetDefinition.license,
     source: r.datasetDefinition.source,
@@ -61,8 +63,18 @@ export async function listPublishedDatasets(channel?: 'delivery' | 'ogc') {
   }));
 }
 
+/**
+ * Helper: refuses cross-workspace dataset access. If workspaceId is passed and the
+ * release's dataset belongs to a different workspace, returns null (caller turns
+ * into 404). This is how the Delivery API enforces workspace isolation at the
+ * data-resolution step.
+ */
+function crossWorkspace(release: { datasetDefinition: { workspaceId: string } } | null, workspaceId?: string) {
+  return !!(release && workspaceId && release.datasetDefinition.workspaceId !== workspaceId);
+}
+
 /** Get a specific published dataset with its active snapshot metadata */
-export async function getPublishedDataset(datasetDefinitionId: string) {
+export async function getPublishedDataset(datasetDefinitionId: string, workspaceId?: string) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
     include: {
@@ -71,7 +83,7 @@ export async function getPublishedDataset(datasetDefinitionId: string) {
     },
   });
 
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   const manifest = release.activeSnapshot.manifest as unknown as ManifestItem[];
 
@@ -99,6 +111,7 @@ export async function getPublishedDataset(datasetDefinitionId: string) {
 export async function getPublishedEntities(
   datasetDefinitionId: string,
   options: QueryOptions = {},
+  workspaceId?: string,
 ) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
@@ -108,7 +121,7 @@ export async function getPublishedEntities(
     },
   });
 
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   const {
     page = 1,
@@ -274,13 +287,14 @@ export async function getPublishedEntities(
 export async function getPublishedEntity(
   datasetDefinitionId: string,
   entityId: string,
+  workspaceId?: string,
 ) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
-    include: { activeSnapshot: true },
+    include: { datasetDefinition: true, activeSnapshot: true },
   });
 
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   const manifest = release.activeSnapshot.manifest as unknown as ManifestItem[];
   const item = manifest.find((m) => m.entityId === entityId);
@@ -301,12 +315,12 @@ export async function getPublishedEntity(
 }
 
 /** List models bound to a published dataset */
-export async function listPublishedDatasetModels(datasetDefinitionId: string) {
+export async function listPublishedDatasetModels(datasetDefinitionId: string, workspaceId?: string) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
     include: { datasetDefinition: true },
   });
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   const bindings = await prisma.datasetModelBinding.findMany({
     where: { datasetDefinitionId },
@@ -339,11 +353,12 @@ export async function listPublishedDatasetModels(datasetDefinitionId: string) {
 }
 
 /** Get schema for a single model in a published dataset */
-export async function getPublishedModelSchema(datasetDefinitionId: string, modelKey: string) {
+export async function getPublishedModelSchema(datasetDefinitionId: string, modelKey: string, workspaceId?: string) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
+    include: { datasetDefinition: true },
   });
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   const bindings = await prisma.datasetModelBinding.findMany({
     where: { datasetDefinitionId },
@@ -380,12 +395,12 @@ export async function getPublishedModelSchema(datasetDefinitionId: string, model
 }
 
 /** Get schema for all models bound to a published dataset */
-export async function getPublishedDatasetSchema(datasetDefinitionId: string) {
+export async function getPublishedDatasetSchema(datasetDefinitionId: string, workspaceId?: string) {
   const release = await prisma.activeReleaseState.findUnique({
     where: { datasetDefinitionId },
     include: { datasetDefinition: true },
   });
-  if (!release) return null;
+  if (!release || crossWorkspace(release, workspaceId)) return null;
 
   // Get model bindings
   const bindings = await prisma.datasetModelBinding.findMany({

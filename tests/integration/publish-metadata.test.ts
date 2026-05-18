@@ -67,16 +67,69 @@ describe("Publish channels, field projection, metadata", () => {
     assert.ok(data.some((d: any) => d.id === datasetId));
   });
 
-  it("should include workspaceSlug + workspaceName in delivery response", async () => {
-    // Lets the CMS Admin filter the Delivery API docs page to current workspace.
-    // External consumers can ignore these fields.
+  it("delivery list is workspace-scoped (returns only this workspace's datasets)", async () => {
+    // Delivery API is workspace-scoped via the calling key/header. Test setup uses
+    // default workspace; create another workspace + dataset and confirm it doesn't
+    // leak into the default-scoped response.
+    await prisma.workspace.deleteMany({ where: { slug: "ws_delivery_iso" } });
+    const otherWs = await prisma.workspace.create({
+      data: { slug: "ws_delivery_iso", name: "Delivery Iso Test" },
+    });
+    const otherModel = await prisma.modelDefinition.create({
+      data: { workspaceId: otherWs.id, key: "iso_model", name: "Iso Model" },
+    });
+    const otherDs = await prisma.datasetDefinition.create({
+      data: { workspaceId: otherWs.id, name: "Iso DS", entityTypes: [], publishToDelivery: true },
+    });
+    const snap = await prisma.datasetSnapshot.create({
+      data: { datasetDefinitionId: otherDs.id, version: 1, manifest: [], status: "published" },
+    });
+    await prisma.activeReleaseState.create({
+      data: { datasetDefinitionId: otherDs.id, activeSnapshotId: snap.id },
+    });
+
+    // Call /delivery/datasets with default workspace header (test default).
+    // Should NOT include the other workspace's dataset.
     const { data } = await apiRequest("/delivery/datasets");
-    const ds = data.find((d: any) => d.id === datasetId);
-    assert.ok(ds, "test dataset should be in delivery list");
-    assert.strictEqual(typeof ds.workspaceSlug, "string");
-    assert.strictEqual(typeof ds.workspaceName, "string");
-    // Default workspace expected here (test setup uses default)
-    assert.strictEqual(ds.workspaceSlug, "default");
+    const ids = data.map((d: any) => d.id);
+    assert.ok(ids.includes(datasetId), "this-workspace dataset is present");
+    assert.ok(!ids.includes(otherDs.id), "cross-workspace dataset must NOT appear");
+
+    // Cleanup
+    await prisma.activeReleaseState.deleteMany({ where: { datasetDefinitionId: otherDs.id } });
+    await prisma.datasetSnapshot.deleteMany({ where: { datasetDefinitionId: otherDs.id } });
+    await prisma.datasetDefinition.delete({ where: { id: otherDs.id } });
+    await prisma.modelDefinition.delete({ where: { id: otherModel.id } });
+    await prisma.workspace.delete({ where: { id: otherWs.id } });
+  });
+
+  it("delivery get-by-id 404s for cross-workspace datasets", async () => {
+    await prisma.workspace.deleteMany({ where: { slug: "ws_delivery_iso2" } });
+    const otherWs = await prisma.workspace.create({
+      data: { slug: "ws_delivery_iso2", name: "Iso 2" },
+    });
+    const otherModel = await prisma.modelDefinition.create({
+      data: { workspaceId: otherWs.id, key: "iso2_model", name: "Iso 2 Model" },
+    });
+    const otherDs = await prisma.datasetDefinition.create({
+      data: { workspaceId: otherWs.id, name: "Iso 2 DS", entityTypes: [], publishToDelivery: true },
+    });
+    const snap = await prisma.datasetSnapshot.create({
+      data: { datasetDefinitionId: otherDs.id, version: 1, manifest: [], status: "published" },
+    });
+    await prisma.activeReleaseState.create({
+      data: { datasetDefinitionId: otherDs.id, activeSnapshotId: snap.id },
+    });
+
+    const { status } = await apiRequest(`/delivery/datasets/${otherDs.id}`);
+    assert.strictEqual(status, 404, "cross-workspace dataset lookup must 404");
+
+    // Cleanup
+    await prisma.activeReleaseState.deleteMany({ where: { datasetDefinitionId: otherDs.id } });
+    await prisma.datasetSnapshot.deleteMany({ where: { datasetDefinitionId: otherDs.id } });
+    await prisma.datasetDefinition.delete({ where: { id: otherDs.id } });
+    await prisma.modelDefinition.delete({ where: { id: otherModel.id } });
+    await prisma.workspace.delete({ where: { id: otherWs.id } });
   });
 
   it("should not list dataset in OGC by default (publishToOgc=false)", async () => {

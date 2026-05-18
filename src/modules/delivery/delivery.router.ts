@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as deliveryService from "./delivery.service.js";
+import { workspaceId } from "../../shared/workspace.js";
 
 export const deliveryRouter = Router();
 
@@ -52,10 +53,13 @@ function parseQueryOptions(query: Record<string, unknown>) {
   return options;
 }
 
+// All Delivery endpoints scope to the caller's workspace (set by resolveWorkspace
+// middleware via the API key's binding). Cross-workspace dataset access → 404.
+
 // GET /api/v1/delivery/datasets
-deliveryRouter.get("/datasets", async (_req, res, next) => {
+deliveryRouter.get("/datasets", async (req, res, next) => {
   try {
-    const datasets = await deliveryService.listPublishedDatasets('delivery');
+    const datasets = await deliveryService.listPublishedDatasets('delivery', workspaceId(req));
     res.json(datasets);
   } catch (err) {
     next(err);
@@ -66,7 +70,7 @@ deliveryRouter.get("/datasets", async (_req, res, next) => {
 deliveryRouter.get("/datasets/:id", async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
-    const dataset = await deliveryService.getPublishedDataset(id);
+    const dataset = await deliveryService.getPublishedDataset(id, workspaceId(req));
     if (!dataset)
       return res
         .status(404)
@@ -81,7 +85,7 @@ deliveryRouter.get("/datasets/:id", async (req, res, next) => {
 deliveryRouter.get("/datasets/:id/schema", async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
-    const schema = await deliveryService.getPublishedDatasetSchema(id);
+    const schema = await deliveryService.getPublishedDatasetSchema(id, workspaceId(req));
     if (!schema)
       return res
         .status(404)
@@ -96,7 +100,7 @@ deliveryRouter.get("/datasets/:id/schema", async (req, res, next) => {
 deliveryRouter.get("/datasets/:id/models", async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
-    const models = await deliveryService.listPublishedDatasetModels(id);
+    const models = await deliveryService.listPublishedDatasetModels(id, workspaceId(req));
     if (!models) return res.status(404).json({ error: "Dataset not published or not found" });
     res.json(models);
   } catch (err) { next(err); }
@@ -107,7 +111,7 @@ deliveryRouter.get("/datasets/:id/models/:key/schema", async (req, res, next) =>
   try {
     const { id } = uuidParam.parse(req.params);
     const key = req.params.key;
-    const schema = await deliveryService.getPublishedModelSchema(id, key);
+    const schema = await deliveryService.getPublishedModelSchema(id, key, workspaceId(req));
     if (!schema) return res.status(404).json({ error: "Model not found in this dataset" });
     res.json(schema);
   } catch (err) { next(err); }
@@ -119,7 +123,7 @@ deliveryRouter.get("/datasets/:id/models/:key/entities", async (req, res, next) 
     const { id } = uuidParam.parse(req.params);
     const options = parseQueryOptions(req.query as Record<string, unknown>);
     options.modelKey = req.params.key;
-    const result = await deliveryService.getPublishedEntities(id, options);
+    const result = await deliveryService.getPublishedEntities(id, options, workspaceId(req));
     if (!result) return res.status(404).json({ error: "Dataset not published or not found" });
     res.json(result);
   } catch (err) { next(err); }
@@ -130,7 +134,7 @@ deliveryRouter.get("/datasets/:id/entities", async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
     const options = parseQueryOptions(req.query as Record<string, unknown>);
-    const result = await deliveryService.getPublishedEntities(id, options);
+    const result = await deliveryService.getPublishedEntities(id, options, workspaceId(req));
     if (!result)
       return res
         .status(404)
@@ -145,9 +149,9 @@ deliveryRouter.get("/datasets/:id/entities", async (req, res, next) => {
 deliveryRouter.get("/datasets/:id/metadata", async (req, res, next) => {
   try {
     const { id } = uuidParam.parse(req.params);
-    const dataset = await deliveryService.getPublishedDataset(id);
+    const dataset = await deliveryService.getPublishedDataset(id, workspaceId(req));
     if (!dataset) return res.status(404).json({ error: "Dataset not published or not found" });
-    const models = await deliveryService.listPublishedDatasetModels(id);
+    const models = await deliveryService.listPublishedDatasetModels(id, workspaceId(req));
     const baseUrl = `${req.protocol}://${req.get("host")}/api/v1`;
 
     // Check OGC channel
@@ -192,7 +196,7 @@ deliveryRouter.get("/datasets/:id/entities/:entityId", async (req, res, next) =>
   try {
     const datasetId = z.string().uuid().parse(req.params.id);
     const entityId = z.string().uuid().parse(req.params.entityId);
-    const entity = await deliveryService.getPublishedEntity(datasetId, entityId);
+    const entity = await deliveryService.getPublishedEntity(datasetId, entityId, workspaceId(req));
     if (!entity)
       return res
         .status(404)
