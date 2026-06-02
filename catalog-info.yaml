@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: spatial-cms
+  namespace: eukarya-inc
+  annotations:
+    github.com/project-slug: eukarya-inc/spatial-cms
+  links:
+  - url: https://github.com/eukarya-inc/spatial-cms
+    title: GitHub
+    icon: github
+  tags:
+  - html
+spec:
+  type: service
+  lifecycle: experimental
+  owner: eukarya-inc/design
