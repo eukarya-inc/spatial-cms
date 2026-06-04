@@ -53,8 +53,12 @@ export async function getEntityGeometry(
   entityId: string,
   fieldKey: string,
 ): Promise<GeoJsonGeometry | null> {
+  // Precision 15 preserves PLATEAU's per-vertex floating-point noise (top-left vs
+  // bottom-left of a vertical wall share the same XY corner only at ~9 digits, but
+  // differ at digits 10-14). Default precision (9) collapses those distinct points,
+  // making the wall's 2D projection degenerate and breaking frontend earcut.
   const result = await prisma.$queryRaw<{ geojson: string | null }[]>`
-    SELECT ST_AsGeoJSON(geometry) as geojson
+    SELECT ST_AsGeoJSON(geometry, 15) as geojson
     FROM entity_geometry
     WHERE entity_id = ${entityId}::uuid AND field_key = ${fieldKey}
   `;
@@ -67,7 +71,7 @@ export async function getEntityGeometries(
   entityId: string,
 ): Promise<Record<string, GeoJsonGeometry>> {
   const rows = await prisma.$queryRaw<{ field_key: string; geojson: string }[]>`
-    SELECT field_key, ST_AsGeoJSON(geometry) as geojson
+    SELECT field_key, ST_AsGeoJSON(geometry, 15) as geojson
     FROM entity_geometry
     WHERE entity_id = ${entityId}::uuid
   `;
