@@ -43,12 +43,19 @@
     .prop-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; }
     .prop-row .k { color: var(--muted); }
     .prop-row .v { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); text-align: right; word-break: break-all; }
-    .surfaces-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
-    .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .chip.wall   { background: rgba(156,163,175,0.18); color:#d1d5db; } .chip.wall .dot { background: #9ca3af; }
-    .chip.roof   { background: rgba(185,28,28,0.18);   color:#fca5a5; } .chip.roof .dot { background: #b91c1c; }
-    .chip.ground { background: rgba(107,114,128,0.22); color:#cbd5e1; } .chip.ground .dot { background: #6b7280; }
+    .surface-list { display: flex; flex-direction: column; gap: 10px; }
+    .surface-group { display: flex; flex-direction: column; gap: 1px; }
+    .surface-group-head { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+    .surface-group-name { flex: 1; }
+    .surface-group-count { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 999px; font-size: 10px; }
+    .surface-row { display: flex; align-items: center; gap: 6px; padding: 4px 4px; font-size: 11px; cursor: pointer; border-radius: 3px; }
+    .surface-row:hover { background: rgba(255,255,255,0.05); }
+    .surface-row.active { background: rgba(59,130,246,0.22); outline: 1px solid var(--accent); }
+    .surface-label { font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-wall   { background: #9ca3af; }
+    .dot-roof   { background: #b91c1c; }
+    .dot-ground { background: #6b7280; }
 
     .log { background: #0b1220; border-top: 1px solid var(--border); padding: 8px 14px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; }
     .log h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
@@ -138,6 +145,9 @@ const state = {
   workspace: null,        // displayed in header — pulled from /datasets[0] metadata
   buildings: [],          // [{ id, properties: {...}, ... }] from list call
   currentBuildingId: null,
+  currentBuilding: null,    // last-fetched building entity
+  currentSurfaces: null,    // last-fetched surfaces for that building
+  highlightSurfaceId: null, // when a surface row is clicked
   apiLog: [],             // most-recent-last
 };
 
@@ -233,7 +243,10 @@ function showError(msg) {
 // ─── Step 0: load building list ─────────────────────────────────────────────
 
 async function loadBuildings() {
-  const r = await apiGet(`/api/datasets/${state.dsId}/entities?modelKey=building_lod2&pageSize=100&sort=createdAt:asc`);
+  // Path-based form `/models/:key/entities` is the only way to filter by model
+  // through the Delivery API — the flat `/entities?modelKey=…` query is silently
+  // ignored, which would mix building_lod2 + boundary_surface in the list.
+  const r = await apiGet(`/api/datasets/${state.dsId}/models/building_lod2/entities?pageSize=200&sort=createdAt:asc`);
   state.buildings = r.entities || [];
 
   const list = document.getElementById('building-list');
@@ -291,13 +304,19 @@ async function selectBuilding(buildingId) {
   if (!building) return;
 
   // ── Step 2: surfaces — the reference filter is the key bit ──
+  // Note: path-based `/models/:key/entities` (not flat `?modelKey=…`) — the
+  // flat query is silently ignored by the Delivery API.
   const filterEnc = encodeURIComponent(buildingId);
   const surfResp = await apiGet(
-    `/api/datasets/${state.dsId}/entities?modelKey=boundary_surface` +
-    `&filter%5Bbuilding_id%5D=${filterEnc}&pageSize=500`
+    `/api/datasets/${state.dsId}/models/boundary_surface/entities` +
+    `?filter%5Bbuilding_id%5D=${filterEnc}&pageSize=500`
   ).catch((e) => { showError(`Step 2 failed: ${e.message}`); return null; });
   if (!surfResp) return;
   const surfaces = surfResp.entities || [];
+
+  state.currentBuilding = building;
+  state.currentSurfaces = surfaces;
+  state.highlightSurfaceId = null;
 
   renderDetail(building, surfaces);
   renderBuilding3D(building, surfaces);
@@ -308,12 +327,13 @@ async function selectBuilding(buildingId) {
 function renderDetail(building, surfaces) {
   const p = building.properties || {};
 
-  // Group surfaces by type
-  const counts = { wall: 0, roof: 0, ground: 0 };
+  // Group surfaces by type, preserve order: ground → roof → wall
+  const groups = { ground: [], roof: [], wall: [] };
   for (const s of surfaces) {
     const t = s.properties?.surface_type;
-    if (counts[t] != null) counts[t]++;
+    if (groups[t]) groups[t].push(s);
   }
+  const counts = { wall: groups.wall.length, roof: groups.roof.length, ground: groups.ground.length };
 
   const propRows = [
     ['gml_id', p.gml_id],
@@ -325,6 +345,35 @@ function renderDetail(building, surfaces) {
     ['creation_date', p.creation_date],
   ].filter(([_, v]) => v != null && v !== '');
 
+  // Surface list: each row = colored dot + gml_id (short) + short uuid hint.
+  // Listed under one combined section grouped by type so the user can scan
+  // "what does this building contain" without losing the building→surface
+  // hierarchy.
+  function surfaceRow(s) {
+    const t = s.properties?.surface_type || 'wall';
+    const gml = s.properties?.gml_id || '';
+    const short = gml || s.id.slice(0, 8);
+    return `
+      <div class="surface-row" data-id="${s.id}" data-type="${t}">
+        <span class="dot dot-${t}"></span>
+        <span class="surface-label" title="${escapeHtml(gml)}">${escapeHtml(short)}</span>
+      </div>
+    `;
+  }
+
+  const surfaceListHtml = ['ground', 'roof', 'wall']
+    .filter((t) => groups[t].length)
+    .map((t) => `
+      <div class="surface-group">
+        <div class="surface-group-head">
+          <span class="dot dot-${t}"></span>
+          <span class="surface-group-name">${t}s</span>
+          <span class="surface-group-count">${groups[t].length}</span>
+        </div>
+        ${groups[t].map(surfaceRow).join('')}
+      </div>
+    `).join('');
+
   document.getElementById('detail').innerHTML = `
     <div class="detail-section">
       <h3>Attributes</h3>
@@ -334,17 +383,54 @@ function renderDetail(building, surfaces) {
     </div>
     <div class="detail-section">
       <h3>Surfaces (${surfaces.length})</h3>
-      <div class="surfaces-chips">
-        ${counts.wall ? `<span class="chip wall"><span class="dot"></span>walls × ${counts.wall}</span>` : ''}
-        ${counts.roof ? `<span class="chip roof"><span class="dot"></span>roofs × ${counts.roof}</span>` : ''}
-        ${counts.ground ? `<span class="chip ground"><span class="dot"></span>grounds × ${counts.ground}</span>` : ''}
+      <div class="surface-list">
+        ${surfaceListHtml || '<div style="color:var(--muted);font-size:12px">(none)</div>'}
       </div>
     </div>
     <div class="detail-section">
       <h3>Entity ID</h3>
-      <div class="prop-row"><span class="v">${building.id}</span></div>
+      <div class="prop-row"><span class="v" style="font-size:10px">${building.id}</span></div>
     </div>
   `;
+
+  // Click a surface row → highlight that surface in the 3D scene (bring its
+  // outline to white, others dim) and fly to it. Reveals which list row
+  // corresponds to which painted surface.
+  document.querySelectorAll('.surface-row').forEach((el) => {
+    el.onclick = () => highlightSurface(el.dataset.id);
+  });
+}
+
+function highlightSurface(surfaceId) {
+  // Find the surface in our last-rendered set and re-render with it
+  // emphasized. Simpler than maintaining per-surface picking state.
+  document.querySelectorAll('.surface-row').forEach((el) => {
+    el.classList.toggle('active', el.dataset.id === surfaceId);
+  });
+  state.highlightSurfaceId = surfaceId;
+  if (state.currentBuilding && state.currentSurfaces) {
+    renderBuilding3D(state.currentBuilding, state.currentSurfaces);
+    // Camera fly to highlighted surface bbox
+    const s = state.currentSurfaces.find((x) => x.id === surfaceId);
+    if (s?.properties?.geometry?.coordinates?.[0]) {
+      flyToSurface(s);
+    }
+  }
+}
+
+function flyToSurface(surface) {
+  const ring = surface.properties.geometry.coordinates[0];
+  const lons = ring.map((c) => c[0]);
+  const lats = ring.map((c) => c[1]);
+  const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const padMeters = 5;
+  const padLat = padMeters / 111000;
+  const padLon = padMeters / (111000 * (Math.cos(cLat * Math.PI / 180) || 1));
+  map.fitBounds(
+    [[Math.min(...lons) - padLon, Math.min(...lats) - padLat],
+     [Math.max(...lons) + padLon, Math.max(...lats) + padLat]],
+    { duration: 600, padding: 60, maxZoom: 22, pitch: 60, bearing: -20 },
+  );
 }
 
 // ─── 3D render: assemble surfaces into one building scene ──────────────────
@@ -364,14 +450,21 @@ function renderBuilding3D(building, surfaces) {
 
   const groups = { wall: [], roof: [], ground: [] };
   const allLonLat = [];
+  const highlight = state.highlightSurfaceId;
   for (const s of surfaces) {
     const t = s.properties?.surface_type;
     const coords = s.properties?.geometry?.coordinates;
     if (!groups[t] || !coords?.[0]) continue;
     const ring = coords[0].map((c) => [c[0], c[1], (typeof c[2] === 'number' ? c[2] : 0) - minZ]);
+    const isHi = highlight === s.id;
     groups[t].push({
       ring,
       color: s.properties?.material_color || COLOR[t],
+      // When a surface is highlighted, dim others to ~30% alpha and keep the
+      // highlighted one at full opacity so it pops without losing the context.
+      alpha: highlight ? (isHi ? 255 : 70) : 200,
+      edgeAlpha: highlight ? (isHi ? 255 : 50) : 255,
+      isHighlight: isHi,
     });
     for (const c of coords[0]) allLonLat.push([c[0], c[1]]);
   }
@@ -392,7 +485,7 @@ function renderBuilding3D(building, surfaces) {
       id: `${type}-fill`,
       data: list,
       getPolygon: (d) => d.ring,
-      getFillColor: (d) => hexToRgba(d.color, type === 'wall' ? 180 : 220),
+      getFillColor: (d) => hexToRgba(d.color, d.alpha),
       getLineColor: [255, 255, 255, 120],
       extruded: false,
       filled: true,
@@ -400,19 +493,21 @@ function renderBuilding3D(building, surfaces) {
       wireframe: true,
       lineWidthMinPixels: 0.5,
       pickable: false,
+      updateTriggers: { getFillColor: highlight },
     }));
     // Edge outline: bullet-proof for vertical walls even if fill triangulation
     // ever degenerates (e.g. data imported through a tool that pre-snapped
     // coincident vertices to exact equality).
     layers.push(new deck.PathLayer({
       id: `${type}-edge`,
-      data: list.map((d) => ({ path: d.ring, color: d.color })),
+      data: list.map((d) => ({ path: d.ring, color: d.color, edgeAlpha: d.edgeAlpha, isHighlight: d.isHighlight })),
       getPath: (d) => d.path,
-      getColor: (d) => hexToRgba(d.color, 255),
-      getWidth: 1.5,
+      getColor: (d) => d.isHighlight ? [255, 255, 255, 255] : hexToRgba(d.color, d.edgeAlpha),
+      getWidth: (d) => d.isHighlight ? 3 : 1.5,
       widthUnits: 'pixels',
       widthMinPixels: 1,
       pickable: false,
+      updateTriggers: { getColor: highlight, getWidth: highlight },
     }));
   }
 
