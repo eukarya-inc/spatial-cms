@@ -69,8 +69,25 @@ export async function updateModelDefinition(
   },
 ) {
   // Verify ownership; 404 if not in this workspace.
-  const existing = await prisma.modelDefinition.findFirst({ where: { id, workspaceId } });
+  const existing = await prisma.modelDefinition.findFirst({
+    where: { id, workspaceId },
+    include: { fields: true },
+  });
   if (!existing) throw new NotFoundError("Model");
+
+  // displayField must point at an actual field on this model. Without this
+  // check the API silently accepts any string, which (combined with a UI
+  // dropdown that filters out some field types) lets the persisted value
+  // diverge from what the user sees — see the PLATEAU seed scenario where
+  // `surface_type` was saved despite not being in the dropdown's options.
+  if (data.displayField !== undefined && data.displayField !== null) {
+    const fieldKeys = new Set(existing.fields.map((f) => f.key));
+    if (!fieldKeys.has(data.displayField)) {
+      throw new BusinessError(
+        `displayField "${data.displayField}" must reference an existing field on this model`,
+      );
+    }
+  }
 
   return prisma.modelDefinition.update({
     where: { id },

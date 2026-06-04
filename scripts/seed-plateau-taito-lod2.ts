@@ -404,7 +404,7 @@ async function main() {
       name: "Boundary Surface (LOD2)",
       description: "Wall / roof / ground polygon with material color; references its parent LOD2 Building. 3D mode — vertex Z required.",
       primaryGeometryField: "geometry",
-      displayField: "surface_type",
+      displayField: "gml_id",
     }),
   });
   await api(`/definitions/models/${surfModel.id}/fields`, {

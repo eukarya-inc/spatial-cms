@@ -5903,7 +5903,19 @@ async function viewModelDetail(main, modelId) {
       <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Which field identifies a record in lists and dropdowns.</p>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="md-display-field" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px">
-          ${m.fields.filter(f => f.fieldType === 'string').map(f => `<option value="${f.key}" ${m.displayField === f.key ? 'selected' : ''}>${f.label} (${f.key})</option>`).join('')}
+          ${(() => {
+            // Allow both string and enum_ fields — both make sense as a record label.
+            const options = m.fields.filter(f => f.fieldType === 'string' || f.fieldType === 'enum_');
+            const optionKeys = options.map(f => f.key);
+            // If the saved displayField points to a value not in the option set
+            // (e.g. an orphaned/deleted field, or a type we don't show like reference/geometry),
+            // surface that as a disabled sentinel option so the dropdown reflects
+            // the *actual* persisted state rather than browser-default-first-option.
+            const orphan = m.displayField && !optionKeys.includes(m.displayField)
+              ? `<option value="${m.displayField}" selected disabled>⚠ ${m.displayField} (current value — pick a real field and click Save)</option>`
+              : '';
+            return orphan + options.map(f => `<option value="${f.key}" ${m.displayField === f.key ? 'selected' : ''}>${f.label} (${f.key})</option>`).join('');
+          })()}
         </select>
         <button class="btn btn-outline btn-sm" id="md-save-display">Save</button>
       </div>
