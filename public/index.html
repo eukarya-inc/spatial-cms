@@ -1497,16 +1497,30 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         map.addControl(overlay);
         // Hide MapLibre's flat-projected fill so it doesn't double-draw underneath the 3D face
         map.setLayoutProperty('feature-fill', 'visibility', 'none');
-        // Vertical panels (walls) have a degenerate 2D bbox — fitBounds zooms to max,
-        // making the wall fill the screen or sit off the edge. Override after fit:
-        // centre on the panel's 2D centroid + a sane zoom so the panel renders as a
-        // recognisable rectangle.
+        // Vertical panels need an adaptive camera: the panel's 2D bbox ranges
+        // from degenerate (a line) to a normal 5×10m rectangle, and Z extent
+        // from 0.5m (LOD2 detail fragment) to 30m+ (full-height wall). A
+        // single hardcoded zoom + pitch turns either extreme into a sliver.
+        // Pad the 2D bbox by an amount tied to the Z range so fitBounds always
+        // frames the panel as a visible rectangle.
         const lons = allVerts.map(v => v[0]);
         const lats = allVerts.map(v => v[1]);
-        if (lons.length) {
-          const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-          const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-          map.jumpTo({ center: [cLon, cLat], zoom: 19, pitch: 60, bearing: -20 });
+        const zs = allVerts.map(v => typeof v[2] === 'number' ? v[2] : 0);
+        if (lons.length >= 2) {
+          const lonMin = Math.min(...lons), lonMax = Math.max(...lons);
+          const latMin = Math.min(...lats), latMax = Math.max(...lats);
+          const zRange = Math.max(...zs) - Math.min(...zs);
+          const cLat = (latMin + latMax) / 2;
+          // Pad in meters: at least ~3m so a thin wall gets a frame, scaling
+          // with Z range so a 30m wall gets ~45m of context.
+          const padMeters = Math.max(zRange, 3) * 1.5;
+          const padLat = padMeters / 111000;
+          const padLon = padMeters / (111000 * (Math.cos(cLat * Math.PI / 180) || 1));
+          const bounds = [
+            [lonMin - padLon, latMin - padLat],
+            [lonMax + padLon, latMax + padLat],
+          ];
+          map.fitBounds(bounds, { duration: 0, padding: 40, maxZoom: 22, pitch: 60, bearing: -20 });
         } else {
           map.setPitch(60);
           map.setBearing(-20);
