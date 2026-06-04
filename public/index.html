@@ -1477,6 +1477,13 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         const data = polygons.map((rings) => ({
           ring: (rings[0] || []).map(c => [c[0], c[1], (typeof c[2] === 'number' ? c[2] : 0) - minZ]),
         }));
+        // Edge outline as a PathLayer, drawn alongside the fill. For walls and
+        // any other vertical polygon, the SolidPolygonLayer above renders
+        // nothing visible (earcut fails on degenerate 2D projection), so this
+        // line layer is the only thing the user sees — a clean rectangle
+        // wireframe of the surface. For horizontal polygons (roof / ground)
+        // it's an additional outline on top of the fill (harmless).
+        const edgeColor = hexToRgba(props.material_color || props.color, 255);
         const overlay = new window.deck.MapboxOverlay({
           layers: [
             new window.deck.SolidPolygonLayer({
@@ -1490,6 +1497,16 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
               stroked: true,
               wireframe: true,
               lineWidthMinPixels: 1,
+              pickable: false,
+            }),
+            new window.deck.PathLayer({
+              id: 'feature-3d-edge',
+              data: data.map((d) => ({ path: d.ring })),
+              getPath: (d) => d.path,
+              getColor: edgeColor,
+              getWidth: 2,
+              widthUnits: 'pixels',
+              widthMinPixels: 2,
               pickable: false,
             }),
           ],
