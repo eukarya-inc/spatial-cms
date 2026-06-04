@@ -1464,7 +1464,19 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         // (MapLibre's fill-extrusion only handles 2D + height scalar — wrong for walls / roofs).
         const fillColor = hexToRgba(props.material_color || props.color);
         const polygons = value.type === 'MultiPolygon' ? value.coordinates : [value.coordinates];
-        const data = polygons.map((rings) => ({ ring: rings[0] })); // outer ring only; holes not modeled
+        // Normalize Z to start at 0 for the detail-view camera. PLATEAU stores absolute
+        // altitudes (e.g. a wall at z=42m..46m above sea level), which puts the panel far
+        // above the default MapLibre camera view; deck.gl would draw it correctly but
+        // off-screen. Subtracting the polygon's minZ shifts it to z=0..ΔZ without losing
+        // shape. The stored data is unchanged — this only affects this single-surface
+        // preview. Multi-surface renderers (viewer) need their own scene-wide baseline.
+        const allVerts = polygons.flatMap(rings => rings[0] || []);
+        let minZ = Infinity;
+        for (const v of allVerts) if (typeof v[2] === 'number' && v[2] < minZ) minZ = v[2];
+        if (!isFinite(minZ)) minZ = 0;
+        const data = polygons.map((rings) => ({
+          ring: (rings[0] || []).map(c => [c[0], c[1], (typeof c[2] === 'number' ? c[2] : 0) - minZ]),
+        }));
         const overlay = new window.deck.MapboxOverlay({
           layers: [
             new window.deck.SolidPolygonLayer({
@@ -1485,8 +1497,20 @@ function renderGeometryCard({ field, value, mode, isPrimary, containerEl, onChan
         map.addControl(overlay);
         // Hide MapLibre's flat-projected fill so it doesn't double-draw underneath the 3D face
         map.setLayoutProperty('feature-fill', 'visibility', 'none');
-        map.setPitch(45);
-        map.setBearing(-20);
+        // Vertical panels (walls) have a degenerate 2D bbox — fitBounds zooms to max,
+        // making the wall fill the screen or sit off the edge. Override after fit:
+        // centre on the panel's 2D centroid + a sane zoom so the panel renders as a
+        // recognisable rectangle.
+        const lons = allVerts.map(v => v[0]);
+        const lats = allVerts.map(v => v[1]);
+        if (lons.length) {
+          const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+          const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+          map.jumpTo({ center: [cLon, cLat], zoom: 19, pitch: 60, bearing: -20 });
+        } else {
+          map.setPitch(60);
+          map.setBearing(-20);
+        }
       } else if (extrudeHeight > 0) {
         // 2.5D: classic fill-extrusion
         map.addLayer({
@@ -6005,6 +6029,7 @@ async function viewModelDetail(main, modelId) {
         await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ primaryGeometryField: body.key }) });
       }
       toast('Field added');
+      await refreshModels();
       reload();
     } catch (err) { toast(err.message, 'error'); }
   };
@@ -6014,6 +6039,7 @@ async function viewModelDetail(main, modelId) {
     try {
       await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ displayField: $('md-display-field').value }) });
       toast('Display field saved');
+      await refreshModels();
     } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -6023,6 +6049,7 @@ async function viewModelDetail(main, modelId) {
       const val = $('md-pgf').value || null;
       await api(`/definitions/models/${modelId}`, { method: 'PUT', body: JSON.stringify({ primaryGeometryField: val }) });
       toast('Primary geometry field saved');
+      await refreshModels();
     } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -6047,6 +6074,7 @@ async function viewModelDetail(main, modelId) {
       try {
         await api(`/definitions/models/${modelId}/fields/${btn.dataset.delField}`, { method: 'DELETE' });
         toast('Field deleted');
+        await refreshModels();
         reload();
       } catch (err) { toast(err.message, 'error'); }
     };
@@ -6096,6 +6124,7 @@ async function viewModelDetail(main, modelId) {
 
         await api(`/definitions/models/${modelId}/fields/${fieldId}`, { method: 'PUT', body: JSON.stringify(body) });
         toast('Field updated');
+        await refreshModels();
         reload();
       } catch (err) { toast(err.message, 'error'); }
     };
@@ -6160,6 +6189,7 @@ async function viewModelDetail(main, modelId) {
       dragItem = null;
       try {
         await api(`/definitions/models/${modelId}/fields/reorder`, { method: 'PUT', body: JSON.stringify({ order: newOrder }) });
+        await refreshModels();
       } catch (err) { toast(err.message, 'error'); reload(); }
     });
   }
