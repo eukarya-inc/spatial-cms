@@ -12,13 +12,13 @@ LOG_DIR="$SCRIPT_DIR/.dev-logs"
 mkdir -p "$LOG_DIR"
 
 # Service definitions
-SVC_NAMES=(db keycloak directus cms viewer workbench)
-declare -A SVC_TYPE=( [db]=docker [keycloak]=docker [directus]=docker [cms]=node [viewer]=node [workbench]=node )
-declare -A SVC_PORT=( [db]=5434 [keycloak]=8180 [directus]=8055 [cms]=3001 [viewer]=8090 [workbench]=8095 )
-declare -A SVC_DESC=( [db]="PostGIS" [keycloak]="Keycloak Auth" [directus]="Directus Admin" [cms]="Express API" [viewer]="Viewer Example" [workbench]="Workbench Example" )
-declare -A SVC_URL=( [db]="" [keycloak]="http://localhost:8180" [directus]="http://localhost:8055" [cms]="http://localhost:3001" [viewer]="http://localhost:8090" [workbench]="http://localhost:8095" )
+SVC_NAMES=(db keycloak directus cms viewer workbench lod2-viewer)
+declare -A SVC_TYPE=( [db]=docker [keycloak]=docker [directus]=docker [cms]=node [viewer]=node [workbench]=node [lod2-viewer]=node )
+declare -A SVC_PORT=( [db]=5434 [keycloak]=8180 [directus]=8055 [cms]=3001 [viewer]=8090 [workbench]=8095 [lod2-viewer]=8091 )
+declare -A SVC_DESC=( [db]="PostGIS" [keycloak]="Keycloak Auth" [directus]="Directus Admin" [cms]="Express API" [viewer]="Viewer Example" [workbench]="Workbench Example" [lod2-viewer]="LOD2 Viewer Example" )
+declare -A SVC_URL=( [db]="" [keycloak]="http://localhost:8180" [directus]="http://localhost:8055" [cms]="http://localhost:3001" [viewer]="http://localhost:8090" [workbench]="http://localhost:8095" [lod2-viewer]="http://localhost:8091" )
 DOCKER_SERVICES=(db keycloak directus)
-NODE_SERVICES=(cms viewer workbench)
+NODE_SERVICES=(cms viewer workbench lod2-viewer)
 
 # Colors
 R='\033[0;31m' G='\033[0;32m' Y='\033[0;33m' C='\033[0;36m' B='\033[1m' D='\033[2m' N='\033[0m'
@@ -56,6 +56,7 @@ start_svc() {
       cms)       cd "$SCRIPT_DIR" && nohup npx tsx watch src/index.ts > "$log" 2>&1 & ;;
       viewer)    cd "$SCRIPT_DIR/examples/viewer" && nohup node server.js > "$log" 2>&1 & ;;
       workbench) cd "$SCRIPT_DIR/examples/workbench" && nohup node server.js > "$log" 2>&1 & ;;
+      lod2-viewer) cd "$SCRIPT_DIR/examples/lod2-viewer" && nohup node server.js > "$log" 2>&1 & ;;
     esac
     cd "$SCRIPT_DIR"
     local tries=0

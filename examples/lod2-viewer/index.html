@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LOD2 Viewer — Spatial CMS</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- deck.gl: SolidPolygonLayer + PathLayer for true 3D LOD2 surfaces -->
+  <script src="https://unpkg.com/deck.gl@9.0.40/dist.min.js"></script>
+  <style>
+    :root { --bg:#0f172a; --panel:#1e293b; --border:#334155; --text:#e2e8f0; --muted:#94a3b8; --accent:#3b82f6; --ok:#22c55e; --err:#ef4444; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); }
+    body { display: grid; grid-template-rows: 48px 1fr 180px; height: 100vh; }
+
+    header { display: flex; align-items: center; padding: 0 16px; background: #0b1220; border-bottom: 1px solid var(--border); gap: 14px; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.3px; }
+    header .meta { font-size: 12px; color: var(--muted); }
+    header .meta b { color: var(--text); font-weight: 500; }
+    header select { margin-left: auto; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+
+    main { display: grid; grid-template-columns: 260px 1fr 320px; overflow: hidden; }
+    aside { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; }
+    aside.right { border-right: none; border-left: 1px solid var(--border); }
+    aside h2 { margin: 0; padding: 12px 14px 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+
+    .building-list { padding: 6px 0; }
+    .building-list .item { padding: 8px 14px; cursor: pointer; font-size: 13px; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .building-list .item:hover { background: rgba(59,130,246,0.08); }
+    .building-list .item.active { background: rgba(59,130,246,0.18); border-left-color: var(--accent); color: white; }
+    .building-list .item .marker { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .building-list .item.active .marker { background: var(--accent); }
+    .building-list .item .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 11px; }
+    .building-list .item .h { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+    #map { width: 100%; height: 100%; }
+
+    .detail-empty { padding: 32px 16px; color: var(--muted); font-size: 13px; text-align: center; }
+    .detail-empty .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+    .detail-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .detail-section h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .prop-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; }
+    .prop-row .k { color: var(--muted); }
+    .prop-row .v { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); text-align: right; word-break: break-all; }
+    .surfaces-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .chip.wall   { background: rgba(156,163,175,0.18); color:#d1d5db; } .chip.wall .dot { background: #9ca3af; }
+    .chip.roof   { background: rgba(185,28,28,0.18);   color:#fca5a5; } .chip.roof .dot { background: #b91c1c; }
+    .chip.ground { background: rgba(107,114,128,0.22); color:#cbd5e1; } .chip.ground .dot { background: #6b7280; }
+
+    .log { background: #0b1220; border-top: 1px solid var(--border); padding: 8px 14px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; }
+    .log h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
+    .log .entry { display: grid; grid-template-columns: 18px 1fr 60px 60px; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,0.04); }
+    .log .entry:last-child { border-bottom: none; }
+    .log .entry .n { color: var(--muted); }
+    .log .entry .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; }
+    .log .entry .status { color: var(--ok); text-align: right; }
+    .log .entry .status.err { color: var(--err); }
+    .log .entry .ms { color: var(--muted); text-align: right; }
+
+    .legend { position: absolute; top: 12px; left: 12px; background: rgba(15,23,42,0.92); border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; font-size: 11px; display: flex; gap: 12px; pointer-events: none; }
+    .legend .item { display: flex; align-items: center; gap: 6px; color: var(--text); }
+    .legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    .banner { padding: 12px 14px; background: rgba(239,68,68,0.12); color: #fca5a5; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .banner.info { background: rgba(59,130,246,0.10); color: #93c5fd; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏛 LOD2 Viewer</h1>
+    <div class="meta">workspace · <b id="meta-ws">…</b></div>
+    <div class="meta">dataset · <b id="meta-ds">…</b></div>
+    <select id="ds-select" style="display:none"></select>
+  </header>
+
+  <main>
+    <aside>
+      <h2>Buildings <span id="building-count" style="color:var(--muted);font-weight:400"></span></h2>
+      <div id="building-list" class="building-list"></div>
+    </aside>
+
+    <div style="position:relative;width:100%;height:100%">
+      <div id="map"></div>
+      <div class="legend">
+        <div class="item"><span class="dot" style="background:#9ca3af"></span>wall</div>
+        <div class="item"><span class="dot" style="background:#b91c1c"></span>roof</div>
+        <div class="item"><span class="dot" style="background:#6b7280"></span>ground</div>
+        <div class="item"><span class="dot" style="background:rgba(100,100,100,0.4);border:1px solid #888"></span>footprint</div>
+      </div>
+    </div>
+
+    <aside class="right">
+      <h2>Building Detail</h2>
+      <div id="detail">
+        <div class="detail-empty">
+          <div class="icon">⬡</div>
+          <div>Pick a building on the left to fetch + render its LOD2 surfaces.</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="log" class="log">
+    <h2>API Log — demonstrates the two-step assembly</h2>
+    <div id="log-entries"></div>
+  </div>
+
+<script>
+// ─── Config + state ─────────────────────────────────────────────────────────
+//
+// This sample reads exclusively from the **Delivery API** through a same-origin
+// proxy at /api/*. The proxy (server.js) injects X-API-Key and X-Workspace-Key
+// from .env before forwarding to the CMS.
+//
+// The Spatial CMS LOD2 schema decomposes a building into two entity types:
+//   - building_lod2     — semantic anchor with attributes + 2D footprint
+//   - boundary_surface  — per-face 3D geometry (walls/roofs/grounds), linked to
+//                         its parent via a `building_id` reference field
+//
+// To assemble a complete 3D building, this sample issues exactly two requests
+// when the user picks a building from the list (see selectBuilding below):
+//   1. GET /datasets/:dsId/entities/:buildingId
+//   2. GET /datasets/:dsId/entities?modelKey=boundary_surface
+//                                   &filter[building_id]=<the_buildings_uuid>
+//
+// All ~6-100 surface entities for that building come back from request 2.
+// They're then grouped by surface_type and handed to deck.gl as separate
+// PolygonLayer + PathLayer pairs.
+
+const COLOR = { wall: '#9ca3af', roof: '#b91c1c', ground: '#6b7280' };
+
+const state = {
+  dsId: null,
+  dsName: null,
+  workspace: null,        // displayed in header — pulled from /datasets[0] metadata
+  buildings: [],          // [{ id, properties: {...}, ... }] from list call
+  currentBuildingId: null,
+  apiLog: [],             // most-recent-last
+};
+
+let map = null;
+let overlay = null;       // deck.MapboxOverlay; we replace .props.layers on each render
+
+// ─── API + logging helpers ──────────────────────────────────────────────────
+
+async function apiGet(path) {
+  const t0 = performance.now();
+  let status = 0, body = null, errMsg = null;
+  try {
+    const res = await fetch(path);
+    status = res.status;
+    body = await res.json();
+    if (!res.ok) errMsg = (body && body.error) || `HTTP ${status}`;
+  } catch (e) {
+    errMsg = e.message;
+  }
+  const ms = Math.round(performance.now() - t0);
+  state.apiLog.push({ path, status, ms, ok: !errMsg, err: errMsg });
+  if (state.apiLog.length > 20) state.apiLog.shift();
+  renderLog();
+  if (errMsg) throw new Error(errMsg);
+  return body;
+}
+
+function renderLog() {
+  const el = document.getElementById('log-entries');
+  el.innerHTML = state.apiLog.map((e, i) => `
+    <div class="entry">
+      <span class="n">${i + 1}.</span>
+      <span class="url" title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</span>
+      <span class="status${e.ok ? '' : ' err'}">${e.status || '✗'}</span>
+      <span class="ms">${e.ms}ms</span>
+    </div>
+  `).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── Init + dataset bootstrap ───────────────────────────────────────────────
+
+async function init() {
+  // The /api/* proxy already attached X-Workspace-Key from .env — Delivery API
+  // returns only datasets in that workspace.
+  const datasets = await apiGet('/api/datasets').catch((e) => {
+    showError(`Failed to load datasets: ${e.message}. Check CMS_API_KEY / CMS_WORKSPACE in .env.`);
+    return [];
+  });
+
+  if (!datasets.length) {
+    showError(
+      'No published datasets found in this workspace. ' +
+      'Open CMS Admin → Publish → Datasets → create one binding building_lod2 + ' +
+      'boundary_surface → Generate snapshot → Publish, then refresh this page.'
+    );
+    return;
+  }
+
+  state.dsId = datasets[0].id;
+  state.dsName = datasets[0].name;
+  state.workspace = await deriveWorkspaceFromUrl();
+
+  // Surface dataset switcher if there's more than one
+  const sel = document.getElementById('ds-select');
+  if (datasets.length > 1) {
+    sel.style.display = '';
+    sel.innerHTML = datasets.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+    sel.value = state.dsId;
+    sel.onchange = () => { state.dsId = sel.value; state.dsName = sel.selectedOptions[0].textContent; document.getElementById('meta-ds').textContent = state.dsName; loadBuildings(); };
+  }
+  document.getElementById('meta-ws').textContent = state.workspace;
+  document.getElementById('meta-ds').textContent = state.dsName;
+
+  initMap();
+  await loadBuildings();
+}
+
+// The browser only sees the proxy; the real workspace is in CMS_WORKSPACE on
+// the proxy side. We don't have a direct way to ask, so we show the workspace
+// header value we *guess* the server's using. Good enough for label purposes.
+async function deriveWorkspaceFromUrl() {
+  // Probe the proxy debug endpoint? We don't have one. Just fall back to a
+  // placeholder; the actual workspace identity is enforced server-side.
+  return '(via proxy)';
+}
+
+function showError(msg) {
+  const detail = document.getElementById('detail');
+  detail.innerHTML = `<div class="banner">${escapeHtml(msg)}</div>`;
+}
+
+// ─── Step 0: load building list ─────────────────────────────────────────────
+
+async function loadBuildings() {
+  const r = await apiGet(`/api/datasets/${state.dsId}/entities?modelKey=building_lod2&pageSize=100&sort=createdAt:asc`);
+  state.buildings = r.entities || [];
+
+  const list = document.getElementById('building-list');
+  document.getElementById('building-count').textContent = `(${state.buildings.length})`;
+  if (!state.buildings.length) {
+    list.innerHTML = `<div class="detail-empty"><div class="icon">⬡</div><div>No building_lod2 entities in this dataset.</div></div>`;
+    return;
+  }
+
+  list.innerHTML = state.buildings.map((b) => {
+    const label = b.properties.gml_id || b.id.slice(0, 8);
+    const h = b.properties.measured_height ? `${b.properties.measured_height}m` : '';
+    return `
+      <div class="item" data-id="${b.id}">
+        <span class="marker"></span>
+        <span class="label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+        <span class="h">${h}</span>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.item').forEach((el) => {
+    el.onclick = () => selectBuilding(el.dataset.id);
+  });
+
+  // Auto-pick the first building
+  selectBuilding(state.buildings[0].id);
+}
+
+// ─── Steps 1+2: fetch one building + its surfaces, then render ──────────────
+//
+// This function is the heart of the sample. It demonstrates the two-step
+// assembly pattern that any consumer of the building_lod2 + boundary_surface
+// schema needs to implement:
+//
+//   1. Fetch the building entity (for attributes + 2D footprint).
+//   2. Fetch all boundary_surface entities that reference this building
+//      via the `building_id` field, using the Delivery API's
+//      filter[building_id]=<UUID> query parameter.
+//
+// Both calls go through the same Delivery API; no joins, no graph queries —
+// just two REST round-trips and a property filter.
+
+async function selectBuilding(buildingId) {
+  state.currentBuildingId = buildingId;
+
+  // Highlight in list
+  document.querySelectorAll('.building-list .item').forEach((el) => {
+    el.classList.toggle('active', el.dataset.id === buildingId);
+  });
+
+  // ── Step 1: building ──
+  const building = await apiGet(`/api/datasets/${state.dsId}/entities/${buildingId}`)
+    .catch((e) => { showError(`Step 1 failed: ${e.message}`); return null; });
+  if (!building) return;
+
+  // ── Step 2: surfaces — the reference filter is the key bit ──
+  const filterEnc = encodeURIComponent(buildingId);
+  const surfResp = await apiGet(
+    `/api/datasets/${state.dsId}/entities?modelKey=boundary_surface` +
+    `&filter%5Bbuilding_id%5D=${filterEnc}&pageSize=500`
+  ).catch((e) => { showError(`Step 2 failed: ${e.message}`); return null; });
+  if (!surfResp) return;
+  const surfaces = surfResp.entities || [];
+
+  renderDetail(building, surfaces);
+  renderBuilding3D(building, surfaces);
+}
+
+// ─── Right-panel props ──────────────────────────────────────────────────────
+
+function renderDetail(building, surfaces) {
+  const p = building.properties || {};
+
+  // Group surfaces by type
+  const counts = { wall: 0, roof: 0, ground: 0 };
+  for (const s of surfaces) {
+    const t = s.properties?.surface_type;
+    if (counts[t] != null) counts[t]++;
+  }
+
+  const propRows = [
+    ['gml_id', p.gml_id],
+    ['measured_height', p.measured_height != null ? `${p.measured_height} m` : null],
+    ['storeys_above_ground', p.storeys_above_ground],
+    ['storeys_below_ground', p.storeys_below_ground],
+    ['class_code', p.class_code],
+    ['usage_code', p.usage_code],
+    ['creation_date', p.creation_date],
+  ].filter(([_, v]) => v != null && v !== '');
+
+  document.getElementById('detail').innerHTML = `
+    <div class="detail-section">
+      <h3>Attributes</h3>
+      ${propRows.map(([k, v]) => `
+        <div class="prop-row"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(String(v))}</span></div>
+      `).join('') || '<div style="color:var(--muted);font-size:12px">(none)</div>'}
+    </div>
+    <div class="detail-section">
+      <h3>Surfaces (${surfaces.length})</h3>
+      <div class="surfaces-chips">
+        ${counts.wall ? `<span class="chip wall"><span class="dot"></span>walls × ${counts.wall}</span>` : ''}
+        ${counts.roof ? `<span class="chip roof"><span class="dot"></span>roofs × ${counts.roof}</span>` : ''}
+        ${counts.ground ? `<span class="chip ground"><span class="dot"></span>grounds × ${counts.ground}</span>` : ''}
+      </div>
+    </div>
+    <div class="detail-section">
+      <h3>Entity ID</h3>
+      <div class="prop-row"><span class="v">${building.id}</span></div>
+    </div>
+  `;
+}
+
+// ─── 3D render: assemble surfaces into one building scene ──────────────────
+
+function renderBuilding3D(building, surfaces) {
+  // Per-building Z normalization. PLATEAU LOD2 polygons carry absolute altitude
+  // (e.g. z=30..38m), so without normalization deck.gl draws the building 30m
+  // above the camera's natural view height. We subtract the min Z so the model
+  // sits at z=0..h relative to the (flat) MapLibre ground. Data is unchanged.
+  let minZ = Infinity;
+  for (const s of surfaces) {
+    const coords = s.properties?.geometry?.coordinates;
+    if (!coords?.[0]) continue;
+    for (const v of coords[0]) if (typeof v[2] === 'number' && v[2] < minZ) minZ = v[2];
+  }
+  if (!isFinite(minZ)) minZ = 0;
+
+  const groups = { wall: [], roof: [], ground: [] };
+  const allLonLat = [];
+  for (const s of surfaces) {
+    const t = s.properties?.surface_type;
+    const coords = s.properties?.geometry?.coordinates;
+    if (!groups[t] || !coords?.[0]) continue;
+    const ring = coords[0].map((c) => [c[0], c[1], (typeof c[2] === 'number' ? c[2] : 0) - minZ]);
+    groups[t].push({
+      ring,
+      color: s.properties?.material_color || COLOR[t],
+    });
+    for (const c of coords[0]) allLonLat.push([c[0], c[1]]);
+  }
+
+  const layers = [];
+
+  // Order matters: ground at the bottom of the draw list, then walls, then
+  // roofs on top. With extruded=false deck.gl honours the array order for
+  // overlapping faces.
+  for (const type of ['ground', 'wall', 'roof']) {
+    const list = groups[type];
+    if (!list.length) continue;
+
+    // Fill: works for horizontal polygons (ground/roof) and — after the
+    // 15-digit precision fix — also for walls because their per-vertex
+    // floating-point noise survives serialization and earcut can tessellate.
+    layers.push(new deck.SolidPolygonLayer({
+      id: `${type}-fill`,
+      data: list,
+      getPolygon: (d) => d.ring,
+      getFillColor: (d) => hexToRgba(d.color, type === 'wall' ? 180 : 220),
+      getLineColor: [255, 255, 255, 120],
+      extruded: false,
+      filled: true,
+      stroked: true,
+      wireframe: true,
+      lineWidthMinPixels: 0.5,
+      pickable: false,
+    }));
+    // Edge outline: bullet-proof for vertical walls even if fill triangulation
+    // ever degenerates (e.g. data imported through a tool that pre-snapped
+    // coincident vertices to exact equality).
+    layers.push(new deck.PathLayer({
+      id: `${type}-edge`,
+      data: list.map((d) => ({ path: d.ring, color: d.color })),
+      getPath: (d) => d.path,
+      getColor: (d) => hexToRgba(d.color, 255),
+      getWidth: 1.5,
+      widthUnits: 'pixels',
+      widthMinPixels: 1,
+      pickable: false,
+    }));
+  }
+
+  // Building footprint (2D) as a faint ground reference. Optional, but it
+  // makes the "where on the map is this building" instantly readable.
+  const footprint = building.properties?.footprint;
+  if (footprint?.coordinates?.[0]) {
+    const fpRing = footprint.coordinates[0].map((c) => [c[0], c[1], 0]);
+    layers.push(new deck.PolygonLayer({
+      id: 'footprint',
+      data: [{ ring: fpRing }],
+      getPolygon: (d) => d.ring,
+      extruded: false,
+      filled: true,
+      stroked: true,
+      getFillColor: [100, 116, 139, 50],
+      getLineColor: [148, 163, 184, 200],
+      lineWidthMinPixels: 1,
+    }));
+    for (const c of fpRing) allLonLat.push([c[0], c[1]]);
+  }
+
+  overlay.setProps({ layers });
+
+  // Camera: fit to the (lon, lat) bbox of *all* vertices, with a min-3m
+  // padding scaled by the building's vertical extent — small fragments still
+  // get framed, tall buildings get their full height + context.
+  if (allLonLat.length) {
+    const lons = allLonLat.map((c) => c[0]);
+    const lats = allLonLat.map((c) => c[1]);
+    const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    const zRange = Math.max(...surfaces.flatMap((s) => (s.properties?.geometry?.coordinates?.[0] ?? []).map((c) => c[2] ?? 0))) - minZ;
+    const padMeters = Math.max(zRange * 0.6, 5);
+    const padLat = padMeters / 111000;
+    const padLon = padMeters / (111000 * (Math.cos(cLat * Math.PI / 180) || 1));
+    map.fitBounds(
+      [[Math.min(...lons) - padLon, Math.min(...lats) - padLat],
+       [Math.max(...lons) + padLon, Math.max(...lats) + padLat]],
+      { duration: 600, padding: 40, maxZoom: 21, pitch: 55, bearing: -20 },
+    );
+  }
+}
+
+// ─── Map init ───────────────────────────────────────────────────────────────
+
+function initMap() {
+  map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        carto: {
+          type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors © CARTO',
+        },
+      },
+      layers: [{ id: 'carto', type: 'raster', source: 'carto' }],
+    },
+    center: [139.78, 35.71],
+    zoom: 16,
+    pitch: 55,
+    bearing: -20,
+    maxPitch: 80,
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+  map.on('load', () => {
+    overlay = new deck.MapboxOverlay({ interleaved: false, layers: [] });
+    map.addControl(overlay);
+  });
+}
+
+// ─── Misc ───────────────────────────────────────────────────────────────────
+
+function hexToRgba(hex, alpha = 220) {
+  if (!hex || typeof hex !== 'string') return [156, 163, 175, alpha];
+  const m = hex.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) return [156, 163, 175, alpha];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255, alpha];
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+init();
+</script>
+</body>
+</html>
