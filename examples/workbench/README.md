@@ -48,27 +48,41 @@ Spatial CMS Management API (port 3001)
 
 1. Start the CMS (see root [README.md](../../README.md))
 
-2. Generate a **manage-scope** API Key in the CMS:
+2. In the CMS, switch to the **workspace** that holds the data you want to
+   work on (top-left workspace switcher).
+
+3. Generate a **manage-scope** API Key in that workspace:
    - Go to `http://localhost:3001/#integrate/api-keys`
    - Click "Generate New Key" → scope: manage
 
-3. Configure and start:
+   The key will be bound to the current workspace — it can only operate on
+   data from that workspace.
+
+4. Configure and start:
    ```bash
    cd examples/workbench
    cp .env.example .env
-   # Edit .env: paste your manage-scope API key
+   # Edit .env:
+   #   CMS_API_KEY     → paste the key from step 3
+   #   CMS_WORKSPACE   → set to the slug of the workspace from step 2 (e.g. "default")
    node server.js
    ```
 
-4. Open `http://localhost:8095`
+5. Open `http://localhost:8095`
 
 ## Configuration (.env)
 
 ```
 CMS_URL=http://localhost:3001/api/v1    # CMS Management API base URL
 CMS_API_KEY=scms_your_key_here          # manage-scope API Key
+CMS_WORKSPACE=default                   # workspace the API key is bound to
 PORT=8095                                # Workbench port
 ```
+
+**Workspace binding**: API keys are strictly workspace-scoped — `CMS_WORKSPACE`
+must match the workspace the key was generated in, otherwise every request
+returns `403 API key is bound to a different workspace`. On startup the server
+logs the active workspace so you can sanity-check the setting.
 
 ## Features
 
