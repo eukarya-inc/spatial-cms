@@ -5,6 +5,10 @@ dist/
 *.db-journal
 .dev-logs/
 
+# Large input data for seed scripts (CityGML, GeoJSON dumps, etc.).
+# Drop files here locally; they're too big and license-encumbered for the repo.
+scripts/data/
+
 # SSH keys (never commit)
 *.pem
 deploy/.keycloak_admin_password.txt
